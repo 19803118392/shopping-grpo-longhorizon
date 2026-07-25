@@ -123,23 +123,39 @@ PY
 `GRPO_MODEL_PATH` 必须指向已经合并 SFT LoRA 的完整 checkpoint，不是 adapter 目录。若 train/val parquet 尚未生成，按 [运行手册](runbook.md) 中的命令生成。正式 benchmark 不得用作 GRPO validation。
 
 ```bash
-export GRPO_MODEL_PATH=/root/autodl-tmp/checkpoints/qwen35-2b-shopping-sft-v2-merged
+export GRPO_MODEL_PATH=/root/autodl-tmp/shopping-grpo-longhorizon/checkpoints/qwen35-2b-shopping-sft-v3-merged
 export GRPO_TRAIN_FILE=/root/autodl-tmp/shopping-grpo-longhorizon/data/verl/grpo_train_v1.parquet
 export GRPO_VAL_FILE=/root/autodl-tmp/shopping-grpo-longhorizon/data/verl/grpo_val_v1.parquet
 export GRPO_OUTPUT_DIR=/root/autodl-tmp/checkpoints/qwen35-2b-shopping-grpo-smoke
 export SHOPSIM_BASE_URL=http://127.0.0.1:5700
 ```
 
+首次安装 veRL 0.8 后应用项目固定补丁：
+
+```bash
+python scripts/apply_verl_dynamic_sampling_patch.py
+python scripts/apply_verl_dynamic_sampling_patch.py --check
+```
+
+若该环境以前应用过旧版项目补丁，先恢复原文件，再应用当前补丁：
+
+```bash
+python scripts/apply_verl_dynamic_sampling_patch.py --restore
+python scripts/apply_verl_dynamic_sampling_patch.py
+python scripts/apply_verl_dynamic_sampling_patch.py --check
+```
+
 先只运行预检。它会在加载模型权重前检查 parquet、Python、依赖版本、CUDA、veRL 来源、内置 parser 和项目 AgentLoop：
 
 ```bash
-PYTHONPATH=src python scripts/check_grpo_runtime.py
+PYTHONPATH=src python scripts/check_grpo_runtime.py \
+  shopping_dynamic_sampling.enable=true
 ```
 
 ## 6. 运行 1 步 smoke
 
 ```bash
-bash scripts/run_vanilla_grpo.sh \
+bash scripts/run_vanilla_grpo.sh a1 \
   trainer.total_training_steps=1 \
   trainer.val_before_train=false \
   trainer.save_freq=-1 \
@@ -150,7 +166,7 @@ bash scripts/run_vanilla_grpo.sh \
 
 1. 实际生成 2 组 prompt，每组 4 条 rollout；
 2. 模型能输出 `qwen3_coder` tool call，ShopSimulator 能返回 observation；
-3. 只有环境正常 `done && over` 时使用原生终局 reward，其余终止 reward 为 0；
+3. 终局 reward_detail 完整；基础设施错误不会进入训练，模型行为失败按 A1 规则计分；
 4. 正常、异常、超步数和模型提前结束后，8 个环境租约都被释放；
 5. veRL 完成 1 次 policy update 后正常退出，无 HTTP 400、环境槽耗尽或旧 fork 导入。
 

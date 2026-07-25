@@ -7,6 +7,78 @@ from collections.abc import Hashable, Mapping, Sequence
 from typing import Any
 
 
+def aggregate_shopping_metrics(shopping_infos: Sequence[object]) -> dict[str, float]:
+    """把 AgentLoop 轨迹诊断聚合为 veRL 每步指标。"""
+    if not shopping_infos:
+        return {}
+
+    reward_keys = (
+        "full",
+        "strict",
+        "native",
+        "semantic",
+        "total",
+        "efficiency",
+        "penalty_overlong",
+        "penalty_unfinished",
+        "penalty_repeat",
+        "repeat_action_rate",
+        "r_type",
+        "r_att",
+        "r_option",
+        "r_price",
+    )
+    rewards = {key: [] for key in reward_keys}
+    steps = []
+    done = []
+    max_steps = []
+    infrastructure_invalid = []
+    for index, info in enumerate(shopping_infos):
+        if not isinstance(info, Mapping) or not isinstance(info.get("reward"), Mapping):
+            raise ValueError(f"shopping extra field at index {index} is missing reward diagnostics")
+        reward = info["reward"]
+        for key in reward_keys:
+            try:
+                value = float(reward[key])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"shopping reward at index {index} is missing numeric {key}"
+                ) from exc
+            if not math.isfinite(value):
+                raise ValueError(f"shopping reward {key} at index {index} is not finite")
+            rewards[key].append(value)
+        steps.append(float(info.get("steps", 0)))
+        done.append(float(info.get("done") is True))
+        max_steps.append(float(info.get("termination_reason") == "max_steps"))
+        infrastructure_invalid.append(float(bool(info.get("infrastructure_invalid"))))
+
+    def mean(values):
+        return sum(values) / len(values)
+
+    return {
+        "reward/full_mean": mean(rewards["full"]),
+        "reward/strict_mean": mean(rewards["strict"]),
+        "reward/native_mean": mean(rewards["native"]),
+        "reward/semantic_mean": mean(rewards["semantic"]),
+        "reward/shaped_min": min(rewards["total"]),
+        "reward/shaped_mean": mean(rewards["total"]),
+        "reward/shaped_max": max(rewards["total"]),
+        "reward/efficiency_mean": mean(rewards["efficiency"]),
+        "penalty/overlong_mean": mean(rewards["penalty_overlong"]),
+        "penalty/unfinished_mean": mean(rewards["penalty_unfinished"]),
+        "penalty/repeat_mean": mean(rewards["penalty_repeat"]),
+        "component/r_type_mean": mean(rewards["r_type"]),
+        "component/r_att_mean": mean(rewards["r_att"]),
+        "component/r_option_mean": mean(rewards["r_option"]),
+        "component/r_price_mean": mean(rewards["r_price"]),
+        "trajectory/average_steps": mean(steps),
+        "trajectory/done_rate": mean(done),
+        "trajectory/max_steps_rate": mean(max_steps),
+        "trajectory/repeat_action_rate": mean(rewards["repeat_action_rate"]),
+        "trajectory/infrastructure_invalid_rate": mean(infrastructure_invalid),
+    }
+
+
 def extract_shopping_group_signals(shopping_infos: Sequence[object]) -> tuple[list[float], list[bool]]:
     """从 AgentLoop extra_fields 提取动态采样所需的两个公开信号。"""
     semantic_rewards = []
@@ -139,6 +211,14 @@ def select_reward_varying_groups(
         "kept_uids": tuple(kept_uids),
         "dropped_uids": tuple(dropped_uids),
         "all_equal_group_count": sum(not group["reward_varying"] for group in groups),
+        "all_zero_semantic_group_count": sum(
+            max(abs(value) for value in group["semantic_rewards"]) <= tolerance
+            for group in groups
+        ),
+        "all_full_success_group_count": sum(
+            all(value >= 1.0 - tolerance for value in group["semantic_rewards"])
+            for group in groups
+        ),
         "no_semantic_signal_group_count": sum(
             not group["semantic_positive"] for group in groups
         ),

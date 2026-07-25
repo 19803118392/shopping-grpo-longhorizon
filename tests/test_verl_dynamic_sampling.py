@@ -3,6 +3,7 @@
 import unittest
 
 from shopping_grpo.verl_dynamic_sampling import (
+    aggregate_shopping_metrics,
     extract_shopping_group_signals,
     select_reward_varying_groups,
 )
@@ -13,11 +14,18 @@ class RewardGroupSelectionTest(unittest.TestCase):
         indices, stats = select_reward_varying_groups(["a"] * 4, [0, 0, 0, 0])
         self.assertEqual(indices, [])
         self.assertEqual(stats["dropped_uids"], ("a",))
+        self.assertEqual(stats["all_zero_semantic_group_count"], 1)
+        self.assertEqual(stats["all_full_success_group_count"], 0)
 
     def test_all_one_group_is_dropped(self):
-        indices, stats = select_reward_varying_groups(["a"] * 4, [1, 1, 1, 1])
+        indices, stats = select_reward_varying_groups(
+            ["a"] * 4,
+            [1, 1, 1, 1],
+            semantic_rewards=[1.7, 1.7, 1.7, 1.7],
+        )
         self.assertEqual(indices, [])
         self.assertEqual(stats["kept_group_count"], 0)
+        self.assertEqual(stats["all_full_success_group_count"], 1)
 
     def test_fractional_reward_variance_is_kept(self):
         rewards = [2 / 7, 4 / 7, 2 / 7, 2 / 7]
@@ -103,6 +111,64 @@ class RewardGroupSelectionTest(unittest.TestCase):
     def test_missing_shopping_filter_signal_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "shopping"):
             extract_shopping_group_signals([None])
+
+    def test_shopping_metrics_are_aggregated_for_a0_and_a1(self):
+        infos = [
+            {
+                "steps": 10,
+                "done": True,
+                "termination_reason": "environment_done",
+                "infrastructure_invalid": False,
+                "reward": {
+                    "full": 1.0,
+                    "strict": 1.0,
+                    "native": 1.0,
+                    "semantic": 1.7,
+                    "total": 1.73,
+                    "efficiency": 0.03,
+                    "penalty_overlong": 0.0,
+                    "penalty_unfinished": 0.0,
+                    "penalty_repeat": 0.0,
+                    "repeat_action_rate": 0.0,
+                    "r_type": 1.0,
+                    "r_att": 1.0,
+                    "r_option": 1.0,
+                    "r_price": 1.0,
+                },
+            },
+            {
+                "steps": 35,
+                "done": False,
+                "termination_reason": "max_steps",
+                "infrastructure_invalid": False,
+                "reward": {
+                    "full": 0.0,
+                    "strict": 0.0,
+                    "native": 0.0,
+                    "semantic": 0.0,
+                    "total": -0.05,
+                    "efficiency": 0.0,
+                    "penalty_overlong": 0.05,
+                    "penalty_unfinished": 0.0,
+                    "penalty_repeat": 0.0,
+                    "repeat_action_rate": 0.0,
+                    "r_type": 0.0,
+                    "r_att": 0.0,
+                    "r_option": 0.0,
+                    "r_price": 0.0,
+                },
+            },
+        ]
+
+        metrics = aggregate_shopping_metrics(infos)
+
+        self.assertEqual(metrics["reward/full_mean"], 0.5)
+        self.assertEqual(metrics["reward/shaped_min"], -0.05)
+        self.assertEqual(metrics["reward/shaped_max"], 1.73)
+        self.assertEqual(metrics["component/r_type_mean"], 0.5)
+        self.assertEqual(metrics["trajectory/average_steps"], 22.5)
+        self.assertEqual(metrics["trajectory/done_rate"], 0.5)
+        self.assertEqual(metrics["trajectory/max_steps_rate"], 0.5)
 
 
 if __name__ == "__main__":  # pragma: no cover

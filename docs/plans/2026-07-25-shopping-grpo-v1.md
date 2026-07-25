@@ -433,15 +433,7 @@ Clip：0.20 / 0.20
 运行覆盖项：
 
 ```bash
-SHOPPING_REWARD_MODE=native \
-bash scripts/run_vanilla_grpo.sh \
-  actor_rollout_ref.actor.use_kl_loss=false \
-  algorithm.use_kl_in_reward=false \
-  algorithm.norm_adv_by_std_in_grpo=true \
-  actor_rollout_ref.actor.loss_agg_mode=token-mean \
-  actor_rollout_ref.actor.clip_ratio_low=0.20 \
-  actor_rollout_ref.actor.clip_ratio_high=0.20 \
-  shopping_dynamic_sampling.enable=false
+bash scripts/run_vanilla_grpo.sh a0
 ```
 
 ### 6.3 A1：Shopping GRPO v1
@@ -459,17 +451,7 @@ Clip：0.20 / 0.20
 运行覆盖项：
 
 ```bash
-SHOPPING_REWARD_MODE=constraint_aware \
-bash scripts/run_vanilla_grpo.sh \
-  actor_rollout_ref.actor.use_kl_loss=false \
-  algorithm.use_kl_in_reward=false \
-  algorithm.norm_adv_by_std_in_grpo=false \
-  actor_rollout_ref.actor.loss_agg_mode=token-mean \
-  actor_rollout_ref.actor.clip_ratio_low=0.20 \
-  actor_rollout_ref.actor.clip_ratio_high=0.20 \
-  shopping_dynamic_sampling.enable=true \
-  shopping_dynamic_sampling.max_num_gen_batches=3 \
-  shopping_dynamic_sampling.reward_tolerance=1.0e-8
+bash scripts/run_vanilla_grpo.sh a1
 ```
 
 正式运行前必须额外传入：

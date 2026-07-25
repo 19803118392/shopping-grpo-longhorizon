@@ -3,3 +3,4 @@
   base_url: ${oc.env:SHOPSIM_BASE_URL,http://127.0.0.1:5700}
   timeout: 60
   max_steps: 35
+  reward_mode: ${oc.env:SHOPPING_REWARD_MODE,native}

@@ -106,6 +106,8 @@ def reward_breakdown(state: dict) -> dict[str, float | bool]:
         except ValueError:
             invalid = True
             components = {name: 0.0 for name in REWARD_COMPONENT_NAMES}
+    action_attempts = max(int(state.get("action_attempt_count", 0)), 1)
+    repeat_action_rate = int(state.get("repeat_action_count", 0)) / action_attempts
 
     if invalid:
         return {
@@ -118,6 +120,7 @@ def reward_breakdown(state: dict) -> dict[str, float | bool]:
             "penalty_overlong": 0.0,
             "penalty_unfinished": 0.0,
             "penalty_repeat": 0.0,
+            "repeat_action_rate": repeat_action_rate,
             "total": 0.0,
             "infrastructure_invalid": True,
         }
@@ -139,8 +142,7 @@ def reward_breakdown(state: dict) -> dict[str, float | bool]:
         if state.get("termination_reason") == "assistant_finished_without_environment_done"
         else 0.0
     )
-    action_attempts = max(int(state.get("action_attempt_count", 0)), 1)
-    penalty_repeat = 0.03 * int(state.get("repeat_action_count", 0)) / action_attempts
+    penalty_repeat = 0.03 * repeat_action_rate
     total = semantic + efficiency - penalty_overlong - penalty_unfinished - penalty_repeat
     return {
         **components,
@@ -152,6 +154,7 @@ def reward_breakdown(state: dict) -> dict[str, float | bool]:
         "penalty_overlong": penalty_overlong,
         "penalty_unfinished": penalty_unfinished,
         "penalty_repeat": penalty_repeat,
+        "repeat_action_rate": repeat_action_rate,
         "total": total,
         "infrastructure_invalid": False,
     }

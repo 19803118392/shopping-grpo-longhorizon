@@ -3,16 +3,18 @@
 @@ -19,0 +20,2 @@
 +
 +# SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V1
-@@ -1381,0 +1384,55 @@
+@@ -1380,0 +1383,6 @@
++        )
++
++        from shopping_grpo.verl_dynamic_sampling import (
++            aggregate_shopping_metrics,
++            extract_shopping_group_signals,
++            select_reward_varying_groups,
+@@ -1381,0 +1390,24 @@
 +
 +        dynamic_sampling_config = self.config.get("shopping_dynamic_sampling", {})
 +        dynamic_sampling_enabled = bool(dynamic_sampling_config.get("enable", False))
 +        if dynamic_sampling_enabled:
-+            from shopping_grpo.verl_dynamic_sampling import (
-+                extract_shopping_group_signals,
-+                select_reward_varying_groups,
-+            )
-+
 +            dynamic_sampling_metric = dynamic_sampling_config.get("metric", "seq_reward")
 +            dynamic_max_gen_batches = int(dynamic_sampling_config.get("max_num_gen_batches", 0))
 +            dynamic_reward_tolerance = float(dynamic_sampling_config.get("reward_tolerance", 1.0e-8))
@@ -33,7 +35,7 @@
 +                raise ValueError("shopping_dynamic_sampling requires rollout-log-prob bypass mode")
 +            if not self.config.actor_rollout_ref.rollout.calculate_log_probs:
 +                raise ValueError("shopping_dynamic_sampling requires rollout.calculate_log_probs=true")
-+
+@@ -1382,0 +1415,28 @@
 +            dynamic_target_prompts = int(self.config.data.train_batch_size)
 +            dynamic_rollout_n = int(self.config.actor_rollout_ref.rollout.n)
 +            dynamic_accepted_batches = []
@@ -42,6 +44,8 @@
 +            dynamic_generated_groups = 0
 +            dynamic_filtered_groups = 0
 +            dynamic_all_equal_groups = 0
++            dynamic_all_zero_semantic_groups = 0
++            dynamic_all_full_success_groups = 0
 +            dynamic_no_semantic_groups = 0
 +            dynamic_infrastructure_invalid_groups = 0
 +            dynamic_generated_trajectories = 0
@@ -59,34 +63,33 @@
 +                    sort_keys=True,
 +                )
 +            )
-@@ -1409,2 +1466,4 @@
++
+@@ -1409,2 +1469,4 @@
 -        # we start from step 1
 -        self.global_steps += 1
 +        # The unpatched trainer uses a one-based in-flight step. Dynamic sampling
 +        # keeps the committed counter unchanged until an optimizer update occurs.
 +        if not dynamic_sampling_enabled:
 +            self.global_steps += 1
-@@ -1414,0 +1474 @@
+@@ -1414,0 +1477 @@
 +        first_step = self.global_steps + 1 if dynamic_sampling_enabled else self.global_steps
-@@ -1416 +1476 @@
+@@ -1416 +1479 @@
 -            self.global_steps in self.config.global_profiler.steps
 +            first_step in self.config.global_profiler.steps
-@@ -1423,0 +1484,2 @@
+@@ -1423,0 +1487,2 @@
 +                current_step = self.global_steps + 1 if dynamic_sampling_enabled else self.global_steps
 +                optimizer_updated = False
-@@ -1446 +1508 @@
+@@ -1446 +1511 @@
 -                gen_batch.meta_info["global_steps"] = self.global_steps
 +                gen_batch.meta_info["global_steps"] = current_step
-@@ -1464 +1526 @@
+@@ -1464 +1529 @@
 -                is_last_step = self.global_steps >= self.total_training_steps
 +                is_last_step = current_step >= self.total_training_steps
-@@ -1471 +1533,2 @@
+@@ -1471 +1536,2 @@
 -                        self.checkpoint_manager.sleep_replicas()
 +                        if not dynamic_sampling_enabled:
 +                            self.checkpoint_manager.sleep_replicas()
-@@ -1524,0 +1588,108 @@
-+                        reward_tensor, reward_extra_infos_dict = extract_reward(batch)
-+
+@@ -1526,0 +1593,221 @@
 +                    if dynamic_sampling_enabled:
 +                        seq_rewards = reward_tensor.sum(dim=-1).detach().cpu().tolist()
 +                        batch_uids = batch.non_tensor_batch["uid"].tolist()
@@ -119,6 +122,12 @@
 +                        dynamic_generated_groups += group_stats["num_groups"]
 +                        dynamic_filtered_groups += group_stats["dropped_group_count"]
 +                        dynamic_all_equal_groups += group_stats["all_equal_group_count"]
++                        dynamic_all_zero_semantic_groups += group_stats[
++                            "all_zero_semantic_group_count"
++                        ]
++                        dynamic_all_full_success_groups += group_stats[
++                            "all_full_success_group_count"
++                        ]
 +                        dynamic_no_semantic_groups += group_stats["no_semantic_signal_group_count"]
 +                        dynamic_infrastructure_invalid_groups += group_stats[
 +                            "infrastructure_invalid_group_count"
@@ -193,28 +202,30 @@
 +                                continue
 +                            images_seqlens_all.extend(multi_modal_input["images_seqlens"].tolist())
 +                        batch.meta_info["images_seqlens"] = images_seqlens_all
-@@ -1525,0 +1697,61 @@
++                        reward_tensor, reward_extra_infos_dict = extract_reward(batch)
 +                        metrics.update(
 +                            {
-+                                "shopping_dynamic_sampling/generation_batches": dynamic_num_gen_batches,
-+                                "shopping_dynamic_sampling/generated_groups": dynamic_generated_groups,
-+                                "shopping_dynamic_sampling/filtered_groups": dynamic_filtered_groups,
-+                                "shopping_dynamic_sampling/all_equal_groups": (
-+                                    dynamic_all_equal_groups
-+                                ),
-+                                "shopping_dynamic_sampling/no_semantic_groups": (
-+                                    dynamic_no_semantic_groups
-+                                ),
-+                                "shopping_dynamic_sampling/infrastructure_invalid_groups": (
-+                                    dynamic_infrastructure_invalid_groups
-+                                ),
-+                                "shopping_dynamic_sampling/effective_group_ratio": (
++                                "group/generated": dynamic_generated_groups,
++                                "group/trained": dynamic_accepted_prompts,
++                                "group/effective_ratio": (
 +                                    dynamic_accepted_prompts / max(dynamic_generated_groups, 1)
 +                                ),
-+                                "shopping_dynamic_sampling/generated_trajectories": (
-+                                    dynamic_generated_trajectories
++                                "group/all_equal_ratio": (
++                                    dynamic_all_equal_groups / max(dynamic_generated_groups, 1)
 +                                ),
-+                                "shopping_dynamic_sampling/trained_groups": dynamic_accepted_prompts,
++                                "group/all_zero_semantic_ratio": (
++                                    dynamic_all_zero_semantic_groups
++                                    / max(dynamic_generated_groups, 1)
++                                ),
++                                "group/all_full_success_ratio": (
++                                    dynamic_all_full_success_groups
++                                    / max(dynamic_generated_groups, 1)
++                                ),
++                                "group/infrastructure_invalid": (
++                                    dynamic_infrastructure_invalid_groups
++                                ),
++                                "group/resample_batches": max(dynamic_num_gen_batches - 1, 0),
++                                "rollout/generated_total": dynamic_generated_trajectories,
 +                            }
 +                        )
 +                        ready_semantic_rewards, ready_infrastructure_invalid = (
@@ -252,38 +263,83 @@
 +                        dynamic_generated_groups = 0
 +                        dynamic_filtered_groups = 0
 +                        dynamic_all_equal_groups = 0
++                        dynamic_all_zero_semantic_groups = 0
++                        dynamic_all_full_success_groups = 0
 +                        dynamic_no_semantic_groups = 0
 +                        dynamic_infrastructure_invalid_groups = 0
 +                        dynamic_generated_trajectories = 0
-@@ -1643 +1875 @@
++
++                    if "shopping" not in batch.non_tensor_batch:
++                        raise RuntimeError(
++                            "Shopping GRPO requires AgentLoop shopping diagnostics"
++                        )
++                    metrics.update(
++                        aggregate_shopping_metrics(
++                            batch.non_tensor_batch["shopping"].tolist()
++                        )
++                    )
++                    if not dynamic_sampling_enabled:
++                        semantic_rewards, infrastructure_invalid = extract_shopping_group_signals(
++                            batch.non_tensor_batch["shopping"].tolist()
++                        )
++                        _, group_stats = select_reward_varying_groups(
++                            batch.non_tensor_batch["uid"].tolist(),
++                            reward_tensor.sum(dim=-1).detach().cpu().tolist(),
++                            semantic_rewards=semantic_rewards,
++                            infrastructure_invalid=infrastructure_invalid,
++                        )
++                        group_count = max(group_stats["num_groups"], 1)
++                        metrics.update(
++                            {
++                                "group/generated": group_stats["num_groups"],
++                                "group/trained": group_stats["num_groups"],
++                                "group/effective_ratio": 1.0,
++                                "group/all_equal_ratio": (
++                                    group_stats["all_equal_group_count"] / group_count
++                                ),
++                                "group/all_zero_semantic_ratio": (
++                                    group_stats["all_zero_semantic_group_count"] / group_count
++                                ),
++                                "group/all_full_success_ratio": (
++                                    group_stats["all_full_success_group_count"] / group_count
++                                ),
++                                "group/infrastructure_invalid": group_stats[
++                                    "infrastructure_invalid_group_count"
++                                ],
++                                "group/resample_batches": 0,
++                                "rollout/generated_total": group_stats["num_trajectories"],
++                            }
++                        )
++
+@@ -1643 +1930 @@
 -                    if self.config.trainer.critic_warmup > self.global_steps:
 +                    if self.config.trainer.critic_warmup > current_step:
-@@ -1645 +1877 @@
+@@ -1645 +1932 @@
 -                        self.checkpoint_manager.update_weights(self.global_steps)
 +                        self.checkpoint_manager.update_weights(current_step)
-@@ -1649,0 +1882,3 @@
+@@ -1649,0 +1937,3 @@
 +                        optimizer_updated = True
 +                        if dynamic_sampling_enabled:
 +                            self.global_steps = current_step
-@@ -1665 +1900 @@
+@@ -1665 +1955 @@
 -                            or self.global_steps % self.config.trainer.save_freq == 0
 +                            or current_step % self.config.trainer.save_freq == 0
-@@ -1675 +1910 @@
+@@ -1675 +1965 @@
 -                            self.checkpoint_manager.update_weights(self.global_steps)
 +                            self.checkpoint_manager.update_weights(current_step)
-@@ -1687 +1922 @@
+@@ -1687 +1977 @@
 -                    is_last_step or self.global_steps % self.config.trainer.test_freq == 0
 +                    is_last_step or current_step % self.config.trainer.test_freq == 0
-@@ -1697 +1932 @@
+@@ -1697 +1987 @@
 -                        self.global_steps + 1 in self.config.global_profiler.steps
 +                        current_step + 1 in self.config.global_profiler.steps
-@@ -1715 +1950 @@
+@@ -1715 +2005 @@
 -                        "training/global_step": self.global_steps,
 +                        "training/global_step": current_step,
-@@ -1750 +1985 @@
+@@ -1750 +2040 @@
 -                logger.log(data=metrics, step=self.global_steps)
 +                logger.log(data=metrics, step=current_step)
-@@ -1753 +1988,6 @@
+@@ -1753 +2043,6 @@
 -                self.global_steps += 1
 +                if dynamic_sampling_enabled and not optimizer_updated:
 +                    raise RuntimeError(

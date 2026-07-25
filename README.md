@@ -204,7 +204,7 @@ PYTHONPATH=src python3 scripts/train_lora_sft.py \
 
 ## Vanilla GRPO（服务器）
 
-第一版固定为 Qwen3.5 `qwen3_coder` 工具协议、group size 4、LoRA rank 16、环境执行上限 35 和 500 个更新步。配置在 `configs/verl/vanilla_grpo.yaml`。项目内的 Shopping AgentLoop 会在环境终局后立即停止，并在所有正常/异常路径归还租约；工具异常、超步数和非法动作循环的 reward 都是 0。
+第一版固定为 Qwen3.5 `qwen3_coder` 工具协议、group size 4、LoRA rank 16、环境执行上限 35 和 500 个更新步。配置在 `configs/verl/vanilla_grpo.yaml`。项目内的 Shopping AgentLoop 会在环境终局后立即停止，并在所有正常/异常路径归还租约；基础设施异常不进入 A1 更新，模型行为失败由确定性 reward 规则评分。
 
 先从未进入 train 的候选 task 冻结 validation，再分别生成 parquet。validation 不得使用最终 benchmark：
 
@@ -225,16 +225,30 @@ PYTHONPATH=src python3 scripts/prepare_verl_grpo_dataset.py \
 GRPO 使用独立的干净 Python 3.12 环境，固定版本和安装步骤见 [Vanilla GRPO 服务器执行手册](docs/grpo-runtime-setup.md)。不要安装或把相邻 `agentic-grpo-longhorizon/verl` reference fork 放进 `PYTHONPATH`。默认 `train_batch_size=2`、`rollout.n=4`，因此 ShopSimulator 至少启动 8 个环境槽。
 
 ```bash
-export GRPO_MODEL_PATH=/absolute/path/qwen35-2b-shopping-sft-v2-merged
+export GRPO_MODEL_PATH=/absolute/path/qwen35-2b-shopping-sft-v3-merged
 export GRPO_TRAIN_FILE=/absolute/path/data/verl/grpo_train_v1.parquet
 export GRPO_VAL_FILE=/absolute/path/data/verl/grpo_val_v1.parquet
 export GRPO_OUTPUT_DIR=/absolute/path/checkpoints/qwen35-2b-shopping-grpo-v1
 export SHOPSIM_BASE_URL=http://127.0.0.1:5700
 
-bash scripts/run_vanilla_grpo.sh
+# 查看两组实际参数，不启动模型：
+bash scripts/run_vanilla_grpo.sh a0 --dry-run
+bash scripts/run_vanilla_grpo.sh a1 --dry-run
+
+# A0：KL-free + 原生 reward，不做动态采样
+bash scripts/run_vanilla_grpo.sh a0
+
+# A1：约束感知 reward + Dr.GRPO + 动态采样
+bash scripts/run_vanilla_grpo.sh a1
 ```
 
-先做一更新步 smoke 时，在命令末尾添加 `trainer.total_training_steps=1 trainer.val_before_train=false trainer.save_freq=-1 trainer.test_freq=-1`，避免训练前先跑完整验证集。多 GPU 只通过 Hydra CLI 覆盖 `trainer.n_gpus_per_node` 和 `actor_rollout_ref.rollout.tensor_model_parallel_size`；不要先改正式基线文件。启动脚本不下载模型，权重位置完全由 `GRPO_MODEL_PATH` 决定。
+`a0`、`a1` 会固定各自的 reward、优势归一化和动态采样设置，额外 Hydra
+参数继续写在命令末尾。先做一更新步 smoke 时添加
+`trainer.total_training_steps=1 trainer.val_before_train=false trainer.save_freq=-1 trainer.test_freq=-1`，
+避免训练前先跑完整验证集。多 GPU 只通过 Hydra CLI 覆盖
+`trainer.n_gpus_per_node` 和
+`actor_rollout_ref.rollout.tensor_model_parallel_size`；不要先改正式基线文件。
+启动脚本不下载模型，权重位置完全由 `GRPO_MODEL_PATH` 决定。
 
 ## 验证
 

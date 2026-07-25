@@ -122,9 +122,12 @@ class VerlPatchScriptTest(unittest.TestCase):
                 fit_source,
             )
             self.assertIn("extract_shopping_group_signals", fit_source)
+            self.assertIn("aggregate_shopping_metrics", fit_source)
             self.assertIn("semantic_rewards=semantic_rewards", fit_source)
             self.assertIn("infrastructure_invalid=infrastructure_invalid", fit_source)
             self.assertIn('"drop_reason": group["drop_reason"]', fit_source)
+            self.assertIn('"group/all_zero_semantic_ratio"', fit_source)
+            self.assertIn('"group/all_full_success_ratio"', fit_source)
 
     def test_select_and_concat_keep_all_trajectory_fields_aligned(self):
         def make_batch(offset: int, uid_prefix: str) -> DataProto:

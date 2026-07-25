@@ -96,6 +96,7 @@ class ShoppingRewardTest(unittest.TestCase):
 
         self.assertEqual(state["action_attempt_count"], 3)
         self.assertEqual(state["repeat_action_count"], 1)
+        self.assertAlmostEqual(reward_breakdown(state)["repeat_action_rate"], 1 / 3)
 
     def test_different_parameters_or_page_are_not_repeated(self):
         state = make_runtime_state(task_id=1, max_steps=35)

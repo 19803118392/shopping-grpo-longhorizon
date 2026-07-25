@@ -147,13 +147,16 @@ PYTHONPATH=src python3 scripts/train_lora_sft.py \
 默认一次并发 `train_batch_size(2) × rollout.n(4) = 8` 条轨迹，因此 ShopSimulator 的 `env_max_num` 至少为 8。启动前设置 `GRPO_MODEL_PATH`、`GRPO_TRAIN_FILE`、`GRPO_VAL_FILE`、`GRPO_OUTPUT_DIR` 和 `SHOPSIM_BASE_URL`，然后运行：
 
 ```bash
-bash scripts/run_vanilla_grpo.sh \
+bash scripts/run_vanilla_grpo.sh a1 \
   trainer.total_training_steps=1 \
   trainer.val_before_train=false \
   trainer.save_freq=-1 \
   trainer.test_freq=-1
 ```
 
-一更新步 smoke 成功并确认 8 个环境全部释放后，去掉这些 smoke 覆盖项启动固定的 500-step Vanilla 基线。工具异常、动作守卫连续拒绝、max_steps 和 assistant 无工具结束都必须得到 0 reward；只有 ShopSimulator 正常 `done && over` 的终局 reward 可以进入 GRPO。
+一更新步 smoke 成功并确认 8 个环境全部释放后，先用 `a0`、`a1` 各跑相同
+optimizer steps 的短对比，再决定是否扩大。`a0` 使用原生 reward，`a1` 使用约束感知
+reward、Dr.GRPO 和动态采样；两组都关闭 Reference Model/KL，并保持 group size、学习率、
+最大步数和 rollout 参数一致。
 
 GRPO 必须在全新 `.venv-grpo-v080` 中运行，固定依赖、污染检查和服务器逐步命令见 [Vanilla GRPO 服务器执行手册](grpo-runtime-setup.md)。reference veRL fork 只作代码参考，不得进入 `PYTHONPATH`。

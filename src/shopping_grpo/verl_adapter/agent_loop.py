@@ -68,9 +68,12 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
             output.extra_fields["shopping"] = {
                 "task_id": task_id,
                 "steps": len(state["steps"]),
+                "done": bool(state["done"]),
                 "termination_reason": state["termination_reason"],
                 "error": state["error"],
                 "infrastructure_invalid": bool(state["infrastructure_invalid"]),
+                "action_attempts": int(state["action_attempt_count"]),
+                "repeat_actions": int(state["repeat_action_count"]),
                 "reward_mode": self.reward_mode,
                 "reward": breakdown,
             }
