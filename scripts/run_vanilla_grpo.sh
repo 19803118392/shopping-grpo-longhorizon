@@ -73,6 +73,12 @@ export SHOPPING_GRPO_ROOT="$PROJECT_ROOT"
 # 不继承旧 shell 中可能指向 reference fork 的 PYTHONPATH。
 export PYTHONPATH="$PROJECT_ROOT/src"
 export SHOPSIM_BASE_URL="${SHOPSIM_BASE_URL:-http://127.0.0.1:5700}"
+# veRL's W&B backend receives the exact same metrics dictionary as the console
+# logger. Keep online monitoring explicit while allowing an intentional
+# WANDB_MODE=offline override for disconnected debugging.
+export WANDB_MODE="${WANDB_MODE:-online}"
+export WANDB_DIR="${WANDB_DIR:-$GRPO_OUTPUT_DIR/wandb}"
+mkdir -p "$WANDB_DIR"
 
 cd "$PROJECT_ROOT"
 

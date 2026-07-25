@@ -124,7 +124,9 @@ trainer:
   save_freq: 50
   test_freq: 50
   val_before_train: true
-  logger: [console]
+  # Console keeps a complete local record; W&B mirrors the same per-step
+  # metrics dictionary (reward/group/policy/runtime) for online monitoring.
+  logger: [console, wandb]
   project_name: shopping-grpo
   experiment_name: vanilla-grpo-v1
   default_local_dir: ${oc.env:GRPO_OUTPUT_DIR}

@@ -38,6 +38,7 @@ class GrpoRuntimeAssetsTest(unittest.TestCase):
         self.assertIn("calculate_entropy: false", config)
         self.assertIn("use_kl_loss: false", config)
         self.assertIn("use_kl_in_reward: false", config)
+        self.assertIn("logger: [console, wandb]", config)
         self.assertIn(
             "worker_process_setup_hook: shopping_grpo.verl_compat.install_torch_padding_fallback",
             config,
@@ -93,6 +94,8 @@ class GrpoRuntimeAssetsTest(unittest.TestCase):
         )
         self.assertNotIn("agentic-grpo-longhorizon", content)
         self.assertNotIn("shop_interaction.json", content)
+        self.assertIn('export WANDB_MODE="${WANDB_MODE:-online}"', content)
+        self.assertIn('export WANDB_DIR="${WANDB_DIR:-$GRPO_OUTPUT_DIR/wandb}"', content)
 
     def test_runtime_setup_applies_the_numpy_override(self):
         setup = (ROOT / "docs/grpo-runtime-setup.md").read_text(encoding="utf-8")

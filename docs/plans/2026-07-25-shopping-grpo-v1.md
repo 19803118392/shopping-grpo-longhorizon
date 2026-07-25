@@ -523,6 +523,12 @@ runtime/step_seconds
 
 第一版不重新开启完整 logits entropy 计算。
 
+veRL 同时启用 `console` 与 `wandb` logger。二者接收完全相同的每步 metrics
+字典；本地日志用于完整追溯，W&B online 用于查看 reward、group、policy 和
+runtime 曲线。当前 veRL 原生字段中，clip fraction、GPU 显存和 step 耗时分别
+记录为 `actor/pg_clipfrac`、`actor/perf/max_memory_allocated_gb` 和
+`timing_s/step`。
+
 ### 7.4 离线多样性审计
 
 每个 checkpoint 评测完成后，从保存轨迹离线统计：
