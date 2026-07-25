@@ -109,6 +109,49 @@ class VerlAdapterRuntimeTest(unittest.TestCase):
             self.assertEqual(response.text, "Environment terminated.")
             self.assertTrue(state["terminate"])
             self.assertEqual(state["terminal_result"], {"done": True, "over": True})
+            self.assertTrue(state["infrastructure_invalid"])
+            self.assertIsNone(state["reward_components"])
+            self.assertNotIn("hidden", str(state))
+
+        asyncio.run(run())
+
+    def test_terminal_reward_components_are_validated_without_entering_tool_observation(self):
+        class FakeEnv:
+            def step(self, action):
+                return {
+                    "instruction": "Goal: hidden answer",
+                    "done": True,
+                    "over": True,
+                    "reward": 0.6,
+                    "goal": {"secret": True},
+                    "reward_detail": {
+                        "r_type": 1,
+                        "r_att": 1,
+                        "r_option": 0.5,
+                        "r_price": 1,
+                        "hidden_answer": "do not retain",
+                    },
+                }
+
+        async def run():
+            state = make_runtime_state(task_id=2, max_steps=35)
+            state["latest_observation"] = "搜索功能是否可用: True"
+            env_token = current_environment.set(FakeEnv())
+            state_token = current_runtime_state.set(state)
+            try:
+                response, _, _ = await make_tool("search_products").execute(
+                    "tool-1", {"query": "mug"}
+                )
+            finally:
+                current_runtime_state.reset(state_token)
+                current_environment.reset(env_token)
+
+            self.assertEqual(response.text, "Environment terminated.")
+            self.assertFalse(state["infrastructure_invalid"])
+            self.assertEqual(
+                state["reward_components"],
+                {"r_type": 1.0, "r_att": 1.0, "r_option": 0.5, "r_price": 1.0},
+            )
             self.assertNotIn("hidden", str(state))
 
         asyncio.run(run())
@@ -170,6 +213,9 @@ class VerlAdapterRuntimeTest(unittest.TestCase):
                 current_environment.reset(env_token)
             self.assertTrue(state["terminate"])
             self.assertEqual(state["error"], "too_many_guard_rejections")
+            self.assertEqual(state["steps"], [])
+            self.assertEqual(state["action_attempt_count"], 3)
+            self.assertEqual(state["repeat_action_count"], 2)
             self.assertIn("maximum", response.text)
 
         asyncio.run(run())

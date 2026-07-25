@@ -15,7 +15,10 @@ import torch
 from verl import DataProto
 
 from scripts import apply_verl_dynamic_sampling_patch as patcher
-from shopping_grpo.verl_dynamic_sampling import select_reward_varying_groups
+from shopping_grpo.verl_dynamic_sampling import (
+    extract_shopping_group_signals,
+    select_reward_varying_groups,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -118,6 +121,10 @@ class VerlPatchScriptTest(unittest.TestCase):
                 "                        with marked_timer(\"old_log_prob\"",
                 fit_source,
             )
+            self.assertIn("extract_shopping_group_signals", fit_source)
+            self.assertIn("semantic_rewards=semantic_rewards", fit_source)
+            self.assertIn("infrastructure_invalid=infrastructure_invalid", fit_source)
+            self.assertIn('"drop_reason": group["drop_reason"]', fit_source)
 
     def test_select_and_concat_keep_all_trajectory_fields_aligned(self):
         def make_batch(offset: int, uid_prefix: str) -> DataProto:
@@ -139,6 +146,19 @@ class VerlPatchScriptTest(unittest.TestCase):
                     "extra_info": np.array(
                         [{"task_id": int(row_id)} for row_id in row_ids], dtype=object
                     ),
+                    "shopping": np.array(
+                        [
+                            {
+                                "infrastructure_invalid": False,
+                                "reward": {
+                                    "semantic": float(reward),
+                                    "native": float(reward),
+                                },
+                            }
+                            for reward in rewards
+                        ],
+                        dtype=object,
+                    ),
                 },
                 meta_info={"reward_extra_keys": []},
             )
@@ -146,8 +166,14 @@ class VerlPatchScriptTest(unittest.TestCase):
         selected_batches = []
         for batch in (make_batch(0, "a"), make_batch(8, "b")):
             rewards = batch.batch["rm_scores"].sum(dim=-1).tolist()
+            semantic, invalid = extract_shopping_group_signals(
+                batch.non_tensor_batch["shopping"].tolist()
+            )
             indices, _ = select_reward_varying_groups(
-                batch.non_tensor_batch["uid"].tolist(), rewards
+                batch.non_tensor_batch["uid"].tolist(),
+                rewards,
+                semantic_rewards=semantic,
+                infrastructure_invalid=invalid,
             )
             selected_batches.append(batch.select_idxs(indices))
 

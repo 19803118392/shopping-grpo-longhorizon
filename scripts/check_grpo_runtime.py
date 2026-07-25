@@ -55,10 +55,27 @@ def validate_dynamic_sampling(config, verl_source: Path, installed):
         )
 
     try:
-        from shopping_grpo.verl_dynamic_sampling import select_reward_varying_groups
+        from shopping_grpo.verl_dynamic_sampling import (
+            extract_shopping_group_signals,
+            select_reward_varying_groups,
+        )
     except ImportError as exc:
         raise SystemExit(f"shopping dynamic sampling helper is unavailable: {exc}") from exc
-    indices, _ = select_reward_varying_groups(["preflight"] * 4, [0.0, 1.0, 0.0, 0.0])
+    semantic, invalid = extract_shopping_group_signals(
+        [
+            {
+                "infrastructure_invalid": False,
+                "reward": {"semantic": reward},
+            }
+            for reward in (0.0, 1.0, 0.0, 0.0)
+        ]
+    )
+    indices, _ = select_reward_varying_groups(
+        ["preflight"] * 4,
+        [0.0, 1.0, 0.0, 0.0],
+        semantic_rewards=semantic,
+        infrastructure_invalid=invalid,
+    )
     if indices != [0, 1, 2, 3]:
         raise SystemExit("shopping dynamic sampling helper failed its import-time sanity check")
 

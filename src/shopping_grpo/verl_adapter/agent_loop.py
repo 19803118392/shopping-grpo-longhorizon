@@ -6,6 +6,7 @@ from verl.experimental.agent_loop.tool_agent_loop import AgentState, ToolAgentLo
 
 from shopping_grpo.verl_adapter.runtime import (
     current_runtime_state,
+    reward_breakdown,
     task_id_from_kwargs,
     terminal_reward,
 )
@@ -21,6 +22,7 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         base_url="http://127.0.0.1:5700",
         timeout=60,
         max_steps=35,
+        reward_mode="native",
         env_factory=None,
         **kwargs,
     ):
@@ -28,6 +30,9 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         self.base_url = base_url
         self.timeout = int(timeout)
         self.max_steps = int(max_steps)
+        self.reward_mode = str(reward_mode)
+        if self.reward_mode not in {"native", "constraint_aware"}:
+            raise ValueError(f"unknown shopping reward mode: {self.reward_mode!r}")
         self.env_factory = env_factory
 
     async def _handle_processing_tools_state(self, agent_data):
@@ -58,12 +63,16 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
                 state["error"] = "assistant_finished_without_environment_done"
                 state["termination_reason"] = state["error"]
                 state["terminate"] = True
-            output.reward_score = terminal_reward(state)
+            breakdown = reward_breakdown(state)
+            output.reward_score = terminal_reward(state, mode=self.reward_mode)
             output.extra_fields["shopping"] = {
                 "task_id": task_id,
                 "steps": len(state["steps"]),
                 "termination_reason": state["termination_reason"],
                 "error": state["error"],
+                "infrastructure_invalid": bool(state["infrastructure_invalid"]),
+                "reward_mode": self.reward_mode,
+                "reward": breakdown,
             }
             return output
         finally:

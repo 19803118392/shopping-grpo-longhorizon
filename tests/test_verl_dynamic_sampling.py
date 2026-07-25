@@ -2,7 +2,10 @@
 
 import unittest
 
-from shopping_grpo.verl_dynamic_sampling import select_reward_varying_groups
+from shopping_grpo.verl_dynamic_sampling import (
+    extract_shopping_group_signals,
+    select_reward_varying_groups,
+)
 
 
 class RewardGroupSelectionTest(unittest.TestCase):
@@ -45,6 +48,61 @@ class RewardGroupSelectionTest(unittest.TestCase):
             tolerance=1.0e-8,
         )
         self.assertEqual(indices, [])
+
+    def test_varying_behavior_penalties_without_semantic_progress_are_dropped(self):
+        indices, stats = select_reward_varying_groups(
+            ["a"] * 4,
+            [-0.05, -0.02, -0.01, 0.0],
+            semantic_rewards=[0.0, 0.0, 0.0, 0.0],
+            infrastructure_invalid=[False] * 4,
+        )
+
+        self.assertEqual(indices, [])
+        self.assertEqual(stats["groups"][0]["drop_reason"], "no_semantic_signal")
+
+    def test_varying_group_with_semantic_progress_is_kept(self):
+        indices, stats = select_reward_varying_groups(
+            ["a"] * 4,
+            [0.0, 0.2, 0.0, 0.0],
+            semantic_rewards=[0.0, 0.2, 0.0, 0.0],
+            infrastructure_invalid=[False] * 4,
+        )
+
+        self.assertEqual(indices, [0, 1, 2, 3])
+        self.assertIsNone(stats["groups"][0]["drop_reason"])
+
+    def test_infrastructure_invalid_member_drops_the_whole_group(self):
+        indices, stats = select_reward_varying_groups(
+            ["a"] * 4,
+            [0.0, 0.2, 0.0, 0.0],
+            semantic_rewards=[0.0, 0.2, 0.0, 0.0],
+            infrastructure_invalid=[False, True, False, False],
+        )
+
+        self.assertEqual(indices, [])
+        self.assertEqual(stats["groups"][0]["drop_reason"], "infrastructure_invalid")
+        self.assertEqual(stats["infrastructure_invalid_group_count"], 1)
+
+    def test_shopping_extra_fields_are_reduced_to_filter_signals(self):
+        semantic, invalid = extract_shopping_group_signals(
+            [
+                {
+                    "infrastructure_invalid": False,
+                    "reward": {"semantic": 0.2, "native": 0.5},
+                },
+                {
+                    "infrastructure_invalid": True,
+                    "reward": {"semantic": 0.0, "native": 0.0},
+                },
+            ]
+        )
+
+        self.assertEqual(semantic, [0.2, 0.0])
+        self.assertEqual(invalid, [False, True])
+
+    def test_missing_shopping_filter_signal_fails_closed(self):
+        with self.assertRaisesRegex(ValueError, "shopping"):
+            extract_shopping_group_signals([None])
 
 
 if __name__ == "__main__":  # pragma: no cover

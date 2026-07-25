@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import math
 from typing import Any
 from uuid import uuid4
 
 from shopping_grpo.action_validation import action_reject_reason
 from shopping_grpo.shop_tools import tool_call_to_action
-from shopping_grpo.verl_adapter.runtime import current_environment, current_runtime_state
+from shopping_grpo.verl_adapter.runtime import (
+    current_environment,
+    current_runtime_state,
+    record_action_attempt,
+    validate_reward_components,
+)
 
 try:  # 本地单测不安装 veRL；部署时由 veRL 注入真实类型。
     from verl.tools.base_tool import BaseTool
@@ -56,6 +62,7 @@ class ShopSimulatorTool(BaseTool):
                 return ToolResponse(text="Error: maximum executed tool steps reached."), 0.0, step
             return ToolResponse(text="Reasoning recorded. Continue with one environment tool call."), 0.0, step
         observation = state.get("latest_observation", "")
+        record_action_attempt(state, self.name, parameters, observation)
         reason = action_reject_reason(self.name, parameters, observation)
         if reason:
             state["consecutive_guard_rejections"] += 1
@@ -77,7 +84,11 @@ class ShopSimulatorTool(BaseTool):
                 reward=float(result.get("reward", 0.0)),
             )
         except Exception as exc:
-            _terminate(state, f"tool_error:{exc.__class__.__name__}:{exc}")
+            _terminate(
+                state,
+                f"tool_error:{exc.__class__.__name__}:{exc}",
+                infrastructure_invalid=True,
+            )
             return ToolResponse(text=f"Error: ShopSimulator tool execution failed: {exc}"), 0.0, {"error": state["error"]}
         state["consecutive_guard_rejections"] = 0
         if step["done"]:
@@ -89,6 +100,18 @@ class ShopSimulatorTool(BaseTool):
                 "over": result.get("over") is True,
             }
             state["final_reward"] = step["reward"]
+            if result.get("over") is not True or not math.isfinite(step["reward"]):
+                _mark_infrastructure_invalid(state, "invalid_terminal_result")
+            else:
+                try:
+                    state["reward_components"] = validate_reward_components(
+                        result.get("reward_detail")
+                    )
+                except ValueError as exc:
+                    _mark_infrastructure_invalid(
+                        state,
+                        f"invalid_terminal_reward_detail:{exc}",
+                    )
             return ToolResponse(text="Environment terminated."), 0.0, step
         state["latest_observation"] = observation
         if len(state["steps"]) >= state["max_steps"]:
@@ -113,7 +136,15 @@ def _append_step(state, tool, parameters, done=False, reward=0.0):
     return step
 
 
-def _terminate(state, reason):
+def _mark_infrastructure_invalid(state, reason):
+    state["infrastructure_invalid"] = True
+    state["termination_reason"] = reason
+    state["error"] = reason
+
+
+def _terminate(state, reason, *, infrastructure_invalid=False):
     state["terminate"] = True
     state["termination_reason"] = reason
     state["error"] = reason
+    if infrastructure_invalid:
+        state["infrastructure_invalid"] = True
