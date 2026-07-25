@@ -21,6 +21,8 @@ EXPECTED_VERSIONS = {
     "numpy": "2.2.6",
 }
 PATCH_MARKER = "SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V2"
+MAX_SAFE_RESPONSE_LENGTH = 20480
+MAX_SAFE_SEQUENCE_LENGTH = 24576
 
 
 def compose_runtime_config(overrides):
@@ -114,6 +116,67 @@ def validate_dynamic_sampling(config, verl_source: Path, installed):
     )
 
 
+def validate_training_memory_budget(config):
+    prompt_length = int(config.data.max_prompt_length)
+    response_length = int(config.data.max_response_length)
+    total_length = prompt_length + response_length
+    actor = config.actor_rollout_ref.actor
+    rollout = config.actor_rollout_ref.rollout
+    reference = config.actor_rollout_ref.ref
+
+    if response_length > MAX_SAFE_RESPONSE_LENGTH:
+        raise SystemExit(
+            "unsafe GRPO response budget: "
+            f"max_response_length={response_length} exceeds {MAX_SAFE_RESPONSE_LENGTH}"
+        )
+    if total_length > MAX_SAFE_SEQUENCE_LENGTH:
+        raise SystemExit(
+            "unsafe GRPO sequence budget: "
+            f"max_prompt_length + max_response_length = {total_length}, "
+            f"limit is {MAX_SAFE_SEQUENCE_LENGTH}"
+        )
+    for name, value in (
+        ("rollout.max_model_len", int(rollout.max_model_len)),
+        ("rollout.max_num_batched_tokens", int(rollout.max_num_batched_tokens)),
+        ("actor.ppo_max_token_len_per_gpu", int(actor.ppo_max_token_len_per_gpu)),
+        ("ref.log_prob_max_token_len_per_gpu", int(reference.log_prob_max_token_len_per_gpu)),
+    ):
+        if value != MAX_SAFE_SEQUENCE_LENGTH:
+            raise SystemExit(
+                f"unsafe or inconsistent GRPO memory budget: {name} must equal "
+                f"{MAX_SAFE_SEQUENCE_LENGTH}, got {value}"
+            )
+    if bool(actor.use_dynamic_bsz):
+        raise SystemExit(
+            "actor.use_dynamic_bsz must be false so ppo_micro_batch_size_per_gpu=1 is enforced"
+        )
+    if int(actor.ppo_micro_batch_size_per_gpu) != 1:
+        raise SystemExit("actor.ppo_micro_batch_size_per_gpu must equal 1")
+    if bool(reference.log_prob_use_dynamic_bsz):
+        raise SystemExit(
+            "ref.log_prob_use_dynamic_bsz must be false so "
+            "log_prob_micro_batch_size_per_gpu=1 is enforced"
+        )
+    if int(reference.log_prob_micro_batch_size_per_gpu) != 1:
+        raise SystemExit("ref.log_prob_micro_batch_size_per_gpu must equal 1")
+
+    print(
+        "GRPO training memory budget preflight passed: "
+        + json.dumps(
+            {
+                "max_prompt_length": prompt_length,
+                "max_response_length": response_length,
+                "max_sequence_length": total_length,
+                "actor_micro_batch_size_per_gpu": 1,
+                "actor_dynamic_batch": False,
+                "reference_micro_batch_size_per_gpu": 1,
+                "reference_dynamic_batch": False,
+            },
+            sort_keys=True,
+        )
+    )
+
+
 def main():
     config = compose_runtime_config(sys.argv[1:])
     required_paths = {
@@ -123,6 +186,7 @@ def main():
     missing = [name for name, value in required_paths.items() if not value or not Path(value).is_file()]
     if missing:
         raise SystemExit("missing GRPO parquet file(s): " + ", ".join(missing))
+    validate_training_memory_budget(config)
 
     if sys.version_info[:2] != (3, 12):
         raise SystemExit(f"incompatible Python: expected 3.12, got {sys.version.split()[0]}")

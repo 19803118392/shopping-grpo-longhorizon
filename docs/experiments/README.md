@@ -14,6 +14,7 @@
 | 05 | [GRPO 运行时与任务适配踩坑实录](05-grpo-runtime-and-task-adaptation-pitfalls-2026-07-23.md) | 8 条 rollout 已通过，更新修复待实测 | veRL 0.8、vLLM 0.25.1、ShopSimulator 租约、LoRA 权重同步与 padding fallback |
 | 06 | [veRL 0.8 Vanilla GRPO 的有限 reward-group 动态采样](06-verl-080-bounded-dynamic-sampling-2026-07-23.md) | CPU 实现完成，GPU signal smoke 待运行 | 固定 wheel 窄补丁、常量 reward group 过滤、最多 3 批补采 |
 | 07 | [SFT v3：加入 100 条短成功轨迹后的重新冷启动](07-sft-v3-short-successes-2026-07-24.md) | 已完成训练、合并与 50 条评测 | 480 条 Action-only；购买率 28%，严格成功率 10%，记录 loss-only eval OOM 修复与早停 |
+| 08 | [GRPO A0 五步稳定性与 actor 长序列 OOM](08-grpo-a0-memory-stability-2026-07-25.md) | 首轮第 5 步 OOM，第一阶段修复待复测 | 强制 actor/ref micro-batch=1，将 response/总序列预算降到 20K/24K |
 
 ## 尚未启动：先放模板，禁止预填结果
 

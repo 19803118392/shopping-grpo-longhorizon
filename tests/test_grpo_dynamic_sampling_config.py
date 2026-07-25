@@ -10,10 +10,36 @@ from scripts.check_grpo_runtime import (
     PATCH_MARKER,
     compose_runtime_config,
     validate_dynamic_sampling,
+    validate_training_memory_budget,
 )
 
 
 class DynamicSamplingConfigTest(unittest.TestCase):
+    def test_training_memory_budget_enforces_real_micro_batch_one(self):
+        config = compose_runtime_config([])
+        validate_training_memory_budget(config)
+        self.assertEqual(config.data.max_response_length, 20480)
+        self.assertEqual(config.actor_rollout_ref.rollout.max_model_len, 24576)
+        self.assertFalse(config.actor_rollout_ref.actor.use_dynamic_bsz)
+        self.assertEqual(
+            config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu, 1
+        )
+        self.assertFalse(config.actor_rollout_ref.ref.log_prob_use_dynamic_bsz)
+        self.assertEqual(
+            config.actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu, 1
+        )
+
+    def test_training_memory_budget_rejects_unsafe_overrides(self):
+        unsafe_response = compose_runtime_config(["data.max_response_length=24576"])
+        with self.assertRaisesRegex(SystemExit, "unsafe GRPO response budget"):
+            validate_training_memory_budget(unsafe_response)
+
+        dynamic_actor = compose_runtime_config(
+            ["actor_rollout_ref.actor.use_dynamic_bsz=true"]
+        )
+        with self.assertRaisesRegex(SystemExit, "actor.use_dynamic_bsz must be false"):
+            validate_training_memory_budget(dynamic_actor)
+
     def test_hydra_overrides_resolve_project_top_level_config(self):
         config = compose_runtime_config(
             [

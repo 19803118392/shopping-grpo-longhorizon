@@ -13,7 +13,9 @@ data:
   train_batch_size: 2
   val_batch_size: 2
   max_prompt_length: 4096
-  max_response_length: 24576
+  # 96GB Blackwell 上 24K response 的 actor logits 会把最坏批次推到 OOM。
+  # 保留 35 个环境 step，但把可训练的累计 response 限制在 20K。
+  max_response_length: 20480
   return_raw_chat: true
   filter_overlong_prompts: true
   truncation: error
@@ -35,8 +37,10 @@ actor_rollout_ref:
   actor:
     ppo_mini_batch_size: 2
     ppo_micro_batch_size_per_gpu: 1
-    ppo_max_token_len_per_gpu: 28672
-    use_dynamic_bsz: true
+    ppo_max_token_len_per_gpu: 24576
+    # veRL dynamic batch 会忽略上面的固定 micro-batch=1 并重新组合轨迹。
+    # 对 248K 词表的 Qwen3.5，最坏长度组合会在 actor log-softmax 处 OOM。
+    use_dynamic_bsz: false
     freeze_vision_tower: true
     loss_agg_mode: token-mean
     clip_ratio_low: 0.20
@@ -61,8 +65,8 @@ actor_rollout_ref:
     tensor_model_parallel_size: 1
     gpu_memory_utilization: 0.45
     max_num_seqs: 8
-    max_model_len: 28672
-    max_num_batched_tokens: 28672
+    max_model_len: 24576
+    max_num_batched_tokens: 24576
     free_cache_engine: true
     # 直接保留 vLLM rollout policy 的 log-prob，供 PPO bypass mode 使用。
     calculate_log_probs: true
@@ -87,8 +91,8 @@ actor_rollout_ref:
       do_sample: false
   ref:
     log_prob_micro_batch_size_per_gpu: 1
-    log_prob_max_token_len_per_gpu: 28672
-    log_prob_use_dynamic_bsz: true
+    log_prob_max_token_len_per_gpu: 24576
+    log_prob_use_dynamic_bsz: false
     fsdp_config:
       param_offload: true
 

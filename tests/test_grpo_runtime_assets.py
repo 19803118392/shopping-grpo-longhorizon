@@ -39,6 +39,15 @@ class GrpoRuntimeAssetsTest(unittest.TestCase):
         self.assertIn("calculate_entropy: false", config)
         self.assertIn("use_kl_loss: false", config)
         self.assertIn("use_kl_in_reward: false", config)
+        self.assertIn("max_response_length: 20480", config)
+        self.assertIn("ppo_micro_batch_size_per_gpu: 1", config)
+        self.assertIn("ppo_max_token_len_per_gpu: 24576", config)
+        self.assertIn("use_dynamic_bsz: false", config)
+        self.assertIn("max_model_len: 24576", config)
+        self.assertIn("max_num_batched_tokens: 24576", config)
+        self.assertIn("log_prob_micro_batch_size_per_gpu: 1", config)
+        self.assertIn("log_prob_max_token_len_per_gpu: 24576", config)
+        self.assertIn("log_prob_use_dynamic_bsz: false", config)
         self.assertIn("logger: [console, wandb]", config)
         self.assertIn(
             "worker_process_setup_hook: shopping_grpo.verl_compat.install_torch_padding_fallback",

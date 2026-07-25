@@ -84,6 +84,12 @@ numpy=2.2.6
 
 veRL 0.8 在 old-log-prob 前处理阶段仍会无条件导入 `flash_attn.bert_padding`，即使 `use_remove_padding=false`。项目通过 Ray worker setup hook 复用 veRL 已内置的纯 PyTorch padding 实现；这只替换索引和 padding 工具，模型 attention 仍使用 SDPA，不需要安装 FlashAttention。
 
+96GB Blackwell 的 actor 训练固定使用 `max_response_length=20480`、总序列预算
+`24576`，并关闭 actor/reference dynamic batch。原因是 veRL 在
+`use_dynamic_bsz=true` 时不会严格执行 `micro_batch_size_per_gpu=1`；24K response
+最坏 batch 已在完整词表 log-softmax 处实测 OOM。`check_grpo_runtime.py` 会在加载
+模型前拒绝更大的长度覆盖或重新启用 dynamic batch。
+
 ## 4. 启动并验证 ShopSimulator
 
 ShopSimulator 继续使用它自己的 Python 3.10 环境。GRPO 的默认批次是 `2 prompt × 4 rollout`，所以必须初始化至少 8 个环境槽：
