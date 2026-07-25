@@ -83,8 +83,9 @@ actor_rollout_ref:
       max_user_turns: 40
       max_assistant_turns: 40
       max_parallel_calls: 1
-      max_tool_response_length: 32768
-      tool_response_truncate_side: right
+      # 极端页面使用确定性的首尾保留，避免单次 observation 吃掉整个 PPO 序列预算。
+      max_tool_response_length: 4096
+      tool_response_truncate_side: middle
       tool_config_path: ${oc.env:SHOPPING_GRPO_ROOT}/configs/verl/shop_tools.json
       tokenization_sanity_check_mode: ignore_strippable
     val_kwargs:

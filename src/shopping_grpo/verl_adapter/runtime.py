@@ -32,6 +32,8 @@ def make_runtime_state(task_id: int, max_steps: int) -> dict:
         "reward_components": None,
         "infrastructure_invalid": False,
         "error": None,
+        "context_compactions": 0,
+        "context_tokens_removed": 0,
     }
 
 

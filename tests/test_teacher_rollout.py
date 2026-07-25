@@ -634,6 +634,42 @@ class TeacherRolloutTest(unittest.TestCase):
 
         self.assertEqual(captured["payload"]["max_tokens"], 256)
 
+    def test_openai_client_compacts_old_complete_tool_groups_before_request(self):
+        captured = {}
+
+        def transport(url, payload, headers, timeout):
+            captured.update({"payload": payload})
+            return {"choices": [{"message": {"role": "assistant", "content": "ok"}}]}
+
+        messages = [
+            {"role": "system", "content": "rules"},
+            {"role": "user", "content": "task"},
+            assistant_tool("search_products", {"query": "old"}, "old"),
+            {"role": "tool", "tool_call_id": "old", "name": "search_products", "content": "old page"},
+            assistant_tool("search_products", {"query": "middle"}, "middle"),
+            {"role": "tool", "tool_call_id": "middle", "name": "search_products", "content": "middle page"},
+            assistant_tool("search_products", {"query": "latest"}, "latest"),
+            {"role": "tool", "tool_call_id": "latest", "name": "search_products", "content": "latest page"},
+        ]
+        client = OpenAIChatClient(
+            model="shopping",
+            base_url="http://127.0.0.1:8000/v1",
+            api_key="EMPTY",
+            max_tokens=2,
+            context_window=9,
+            context_safety_margin=1,
+            token_counter=lambda candidate, tools: len(candidate),
+            transport=transport,
+        )
+
+        client.complete(messages, tools=[])
+
+        self.assertNotIn("old page", str(captured["payload"]["messages"]))
+        self.assertIn("middle page", str(captured["payload"]["messages"]))
+        self.assertIn("latest page", str(captured["payload"]["messages"]))
+        self.assertEqual(client.last_context_event["removed_groups"], 1)
+        self.assertEqual(messages[3]["content"], "old page")
+
     def test_openai_client_thinking_mode_keeps_reasoning_for_tool_follow_up(self):
         captured = {}
 

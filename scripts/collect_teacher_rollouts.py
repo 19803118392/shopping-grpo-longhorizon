@@ -25,6 +25,13 @@ def parse_args():
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--max-tokens", type=int, default=512, help="单次模型生成 token 上限")
     parser.add_argument(
+        "--context-window",
+        type=int,
+        default=0,
+        help="可选的 vLLM 上下文窗口；0 表示不调用本地 /tokenize 做滑窗。",
+    )
+    parser.add_argument("--context-safety-margin", type=int, default=512)
+    parser.add_argument(
         "--max-steps",
         type=int,
         default=35,
@@ -62,6 +69,8 @@ def main():
         max_tokens=args.max_tokens,
         thinking=args.thinking,
         reasoning_effort=args.reasoning_effort,
+        context_window=args.context_window or None,
+        context_safety_margin=args.context_safety_margin,
     )
     written = collect_tasks(
         tasks,

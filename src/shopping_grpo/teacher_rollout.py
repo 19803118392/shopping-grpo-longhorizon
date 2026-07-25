@@ -12,6 +12,10 @@ from urllib.request import Request, urlopen
 from uuid import uuid4
 
 from shopping_grpo.action_validation import action_guard_tool_message, action_reject_reason
+from shopping_grpo.context_window import (
+    VllmChatTokenCounter,
+    compact_chat_messages,
+)
 from shopping_grpo.shop_http_env import ShopAgentEnv, ShopEnvironmentError, ShopHttpError
 from shopping_grpo.shop_tools import SHOP_TOOL_SCHEMAS, tool_call_to_action
 
@@ -53,6 +57,9 @@ class OpenAIChatClient:
         max_tokens=512,
         thinking=False,
         reasoning_effort="high",
+        context_window=None,
+        context_safety_margin=512,
+        token_counter=None,
         transport=None,
     ):
         self.model = model
@@ -66,12 +73,39 @@ class OpenAIChatClient:
             raise ValueError("max_tokens must be positive")
         self.thinking = bool(thinking)
         self.reasoning_effort = reasoning_effort
+        self.context_window = int(context_window) if context_window else None
+        self.context_safety_margin = int(context_safety_margin)
+        if self.context_window is not None:
+            if self.context_window <= self.max_tokens + self.context_safety_margin:
+                raise ValueError("context_window must exceed max_tokens plus context_safety_margin")
+            self.token_counter = token_counter or VllmChatTokenCounter(
+                model=self.model,
+                base_url=self.base_url,
+                api_key=self.api_key,
+                timeout=self.timeout,
+            )
+        else:
+            self.token_counter = token_counter
+        self.last_context_event = None
         self.transport = transport
 
     def complete(self, messages, tools):
+        self.last_context_event = None
+        request_messages = messages
+        if self.context_window is not None:
+            request_messages, stats = compact_chat_messages(
+                messages,
+                tools,
+                count_tokens=self.token_counter,
+                max_input_tokens=(
+                    self.context_window - self.max_tokens - self.context_safety_margin
+                ),
+            )
+            if stats.removed_groups:
+                self.last_context_event = stats.to_dict()
         payload = {
             "model": self.model,
-            "messages": messages,
+            "messages": request_messages,
             "tools": tools,
             "tool_choice": "auto",
             # 约束单个 assistant 回合的输出；--max-model-len 只限制上下文，
@@ -179,6 +213,7 @@ def collect_for_task(
         "steps": [],
         "blocked_tool_calls": [],
         "tool_call_truncations": [],
+        "context_compactions": [],
         "initial_result": {},
         "terminal_result": {},
         "final_reward": 0.0,
@@ -198,6 +233,14 @@ def collect_for_task(
 
         while len(trajectory["steps"]) < int(max_steps):
             assistant = client.complete(messages, tool_schemas)
+            context_event = getattr(client, "last_context_event", None)
+            if context_event:
+                trajectory["context_compactions"].append(
+                    {
+                        "step_index": len(trajectory["steps"]),
+                        **context_event,
+                    }
+                )
             assistant, dropped_tool_calls = _enforce_serial_tool_call(assistant)
             if dropped_tool_calls:
                 trajectory["tool_call_truncations"].append(
@@ -454,6 +497,8 @@ def client_from_env(
     max_tokens=512,
     thinking=False,
     reasoning_effort="high",
+    context_window=None,
+    context_safety_margin=512,
 ):
     api_key = api_key or os.environ.get("OPENAI_API_KEY")
     if not api_key:
@@ -468,4 +513,6 @@ def client_from_env(
         max_tokens=max_tokens,
         thinking=thinking,
         reasoning_effort=reasoning_effort,
+        context_window=context_window,
+        context_safety_margin=context_safety_margin,
     )

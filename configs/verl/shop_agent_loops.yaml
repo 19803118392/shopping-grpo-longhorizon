@@ -4,3 +4,9 @@
   timeout: 60
   max_steps: 35
   reward_mode: ${oc.env:SHOPPING_REWARD_MODE,native}
+  context_window_tokens: 24576
+  context_generation_reserve_tokens: 512
+  context_safety_margin_tokens: 512
+  # 给下一次 tool observation 和 20K PPO response 上限留出空间；超出时删最旧完整交互。
+  context_input_budget_tokens: 16384
+  context_preserve_recent_groups: 1

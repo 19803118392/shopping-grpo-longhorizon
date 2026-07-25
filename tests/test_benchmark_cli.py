@@ -56,6 +56,8 @@ class BenchmarkCliTest(unittest.TestCase):
         self.assertEqual(args.max_steps, 35)
         self.assertEqual(args.max_tokens, 512)
         self.assertEqual(args.temperature, 0.0)
+        self.assertEqual(args.context_window, 24576)
+        self.assertEqual(args.context_safety_margin, 512)
 
 
 if __name__ == "__main__":  # pragma: no cover

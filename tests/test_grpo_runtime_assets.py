@@ -14,6 +14,11 @@ class GrpoRuntimeAssetsTest(unittest.TestCase):
         self.assertIn("shopping_tool_agent", config)
         self.assertIn("shopping_grpo.verl_adapter.agent_loop.ShoppingToolAgentLoop", config)
         self.assertIn("reward_mode: ${oc.env:SHOPPING_REWARD_MODE,native}", config)
+        self.assertIn("context_window_tokens: 24576", config)
+        self.assertIn("context_generation_reserve_tokens: 512", config)
+        self.assertIn("context_safety_margin_tokens: 512", config)
+        self.assertIn("context_input_budget_tokens: 16384", config)
+        self.assertIn("context_preserve_recent_groups: 1", config)
 
     def test_vanilla_config_uses_qwen_parser_and_environment_reward_only(self):
         config = (ROOT / "configs/verl/vanilla_grpo.yaml").read_text(encoding="utf-8")
@@ -45,6 +50,8 @@ class GrpoRuntimeAssetsTest(unittest.TestCase):
         self.assertIn("use_dynamic_bsz: false", config)
         self.assertIn("max_model_len: 24576", config)
         self.assertIn("max_num_batched_tokens: 24576", config)
+        self.assertIn("max_tool_response_length: 4096", config)
+        self.assertIn("tool_response_truncate_side: middle", config)
         self.assertIn("log_prob_micro_batch_size_per_gpu: 1", config)
         self.assertIn("log_prob_max_token_len_per_gpu: 24576", config)
         self.assertIn("log_prob_use_dynamic_bsz: false", config)

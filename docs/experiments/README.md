@@ -16,6 +16,7 @@
 | 07 | [SFT v3：加入 100 条短成功轨迹后的重新冷启动](07-sft-v3-short-successes-2026-07-24.md) | 已完成训练、合并与 50 条评测 | 480 条 Action-only；购买率 28%，严格成功率 10%，记录 loss-only eval OOM 修复与早停 |
 | 08 | [GRPO A0 五步稳定性与 actor 长序列 OOM](08-grpo-a0-memory-stability-2026-07-25.md) | 修复后 5-step 已通过 | 强制三条 log-prob/actor 路径 micro-batch=1，将 response/总序列预算降到 20K/24K |
 | 09 | [GRPO A1 bounded dynamic sampling 五步稳定性](09-grpo-a1-dynamic-sampling-stability-2026-07-25.md) | 已通过 5 次非零更新 | 过滤常量/无 semantic signal group，3 次安全跳过，总计 168 条 rollout |
+| 10 | [Shopping Agent 确定性上下文窗口](10-agent-context-window-2026-07-25.md) | 实现与固定 50 条复评完成 | HTTP 400 从 29 降为 0；严格成功仍为相同的 5/50 |
 
 ## 尚未启动：先放模板，禁止预填结果
 

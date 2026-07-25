@@ -28,6 +28,8 @@ def parse_args():
         default=512,
         help="单次模型生成上限；防止未调用工具时耗尽完整上下文。",
     )
+    parser.add_argument("--context-window", type=int, default=24576)
+    parser.add_argument("--context-safety-margin", type=int, default=512)
     return parser.parse_args()
 
 
@@ -45,6 +47,8 @@ def main():
         raise SystemExit("--max-steps 必须为正数")
     if args.max_tokens < 1:
         raise SystemExit("--max-tokens 必须为正数")
+    if args.context_window <= args.max_tokens + args.context_safety_margin:
+        raise SystemExit("--context-window 必须大于 --max-tokens 与安全余量之和")
     tasks = load_tasks(args.benchmark)
     client = OpenAIChatClient(
         model=args.model,
@@ -54,6 +58,8 @@ def main():
         top_p=args.top_p,
         timeout=args.timeout,
         max_tokens=args.max_tokens,
+        context_window=args.context_window,
+        context_safety_margin=args.context_safety_margin,
     )
     collect_tasks(
         tasks,
@@ -72,6 +78,8 @@ def main():
         "max_tokens": args.max_tokens,
         "temperature": args.temperature,
         "top_p": args.top_p,
+        "context_window": args.context_window,
+        "context_safety_margin": args.context_safety_margin,
     }
     args.summary.parent.mkdir(parents=True, exist_ok=True)
     args.summary.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
