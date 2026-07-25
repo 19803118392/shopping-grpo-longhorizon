@@ -12,9 +12,10 @@
 | 03 | [SFT v2：显存实验与 Action-only 决策](03-sft-v2-memory-and-action-only-2026-07-20.md) | 已完成 | Liger + SDPA + Action-only；benchmark v2_50 严格成功率 12% |
 | 04 | [Vanilla GRPO v1：任务冻结与 veRL 接入准备](04-vanilla-grpo-v1-preparation-2026-07-21.md) | 准备完成 | 50 条评测、2,000 条 probe 候选池、veRL 最小适配层与 SFT 合并入口 |
 | 05 | [GRPO 运行时与任务适配踩坑实录](05-grpo-runtime-and-task-adaptation-pitfalls-2026-07-23.md) | 8 条 rollout 已通过，更新修复待实测 | veRL 0.8、vLLM 0.25.1、ShopSimulator 租约、LoRA 权重同步与 padding fallback |
-| 06 | [veRL 0.8 Vanilla GRPO 的有限 reward-group 动态采样](06-verl-080-bounded-dynamic-sampling-2026-07-23.md) | CPU 实现完成，GPU signal smoke 待运行 | 固定 wheel 窄补丁、常量 reward group 过滤、最多 3 批补采 |
+| 06 | [veRL 0.8 Vanilla GRPO 的有限 reward-group 动态采样](06-verl-080-bounded-dynamic-sampling-2026-07-23.md) | CPU 实现完成，GPU 行为见实验 09 | 固定 wheel 窄补丁、常量 reward group 过滤、最多 3 批补采 |
 | 07 | [SFT v3：加入 100 条短成功轨迹后的重新冷启动](07-sft-v3-short-successes-2026-07-24.md) | 已完成训练、合并与 50 条评测 | 480 条 Action-only；购买率 28%，严格成功率 10%，记录 loss-only eval OOM 修复与早停 |
-| 08 | [GRPO A0 五步稳定性与 actor 长序列 OOM](08-grpo-a0-memory-stability-2026-07-25.md) | 首轮第 5 步 OOM，第一阶段修复待复测 | 强制 actor/ref micro-batch=1，将 response/总序列预算降到 20K/24K |
+| 08 | [GRPO A0 五步稳定性与 actor 长序列 OOM](08-grpo-a0-memory-stability-2026-07-25.md) | 修复后 5-step 已通过 | 强制三条 log-prob/actor 路径 micro-batch=1，将 response/总序列预算降到 20K/24K |
+| 09 | [GRPO A1 bounded dynamic sampling 五步稳定性](09-grpo-a1-dynamic-sampling-stability-2026-07-25.md) | 已通过 5 次非零更新 | 过滤常量/无 semantic signal group，3 次安全跳过，总计 168 条 rollout |
 
 ## 尚未启动：先放模板，禁止预填结果
 
