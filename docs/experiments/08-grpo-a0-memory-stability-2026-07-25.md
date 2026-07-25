@@ -77,12 +77,47 @@ global step 和 StatefulDataLoader 状态。本次失败运行使用 `save_freq=
 内存中更新没有 checkpoint，不能恢复。稳定性验证通过后，初期正式训练应使用较短的
 保存间隔，例如 `save_freq=5`，并保留最近两个 checkpoint。
 
-## 待验证
+## 复测结果
 
-使用第一阶段修复重新执行同样的 A0 5-step。通过条件：
+第一阶段修复在提交 `700a72b43fc88bf42ba07f02e925907079b025f5` 上完成
+A0 5-step：
 
-- `global_step=5`；
-- 五次更新均正常退出；
-- loss、KL、grad norm 均为有限值（常量 reward group 允许 loss/grad norm 为 0）；
-- 无 OOM、HTTP 400 或环境泄漏；
-- 记录新的 GPU 峰值并与 94,529 MiB 对比。
+- 输出：`outputs/grpo_v1_checks/a0_stability_5step_memory_safe_20260725_v3/`
+- W&B run：`pxltqpwd`
+- 退出码：0
+- 总耗时：1,073 秒（17 分 53 秒，训练进度本身约 15 分 6 秒）
+- GPU 两秒轮询峰值：73,421 MiB；旧运行峰值为 94,529 MiB，下降 21,108 MiB
+- PyTorch actor 峰值 allocated/reserved：52.434/69.383 GiB
+
+| step | native reward | all-equal group ratio | actor/loss | grad norm | PPO KL | max response | step 秒 |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 0.031250 | 0.5 | 0.067198 | 0.177972 | 0.006036 | 20,134 | 151.6 |
+| 2 | 0 | 1.0 | 0 | 0 | 0.003764 | 20,480 | 191.1 |
+| 3 | 0.114583 | 0.5 | 0.162117 | 0.087606 | 0.006901 | 20,075 | 186.4 |
+| 4 | 0.053571 | 0.5 | 0.072168 | 0.115658 | 0.004207 | 19,312 | 167.5 |
+| 5 | 0 | 1.0 | 0 | 0 | 0.005668 | 20,396 | 209.3 |
+
+五步均记录 `training/optimizer_updated=1`，最终进入 `global_step=5`。第 5 步的
+8 条 response 都在 19,104–20,396 token 之间，仍能完成 actor backward，说明本次
+修复覆盖了此前失败的长序列场景。第 2、5 步的两组 native reward 全相同，因此
+GRPO advantage、loss 和 grad norm 为 0；这是 A0 不过滤常量组的预期行为，不是数值
+或执行错误。
+
+日志没有 CUDA OOM、HTTP 400、基础设施无效轨迹或 release error。进程退出后 GPU
+恢复为 3 MiB，Ray/vLLM 无残留；再次同时租用 8 个 ShopSimulator slot 得到
+`0..7`，并成功释放 8/8。退出阶段 W&B 在 Ray actor 的 `atexit` 回调中打印了一段
+closed Unix transport traceback，但顶层进程退出码仍为 0，五步指标已经同步，且不
+影响训练或环境回收。
+
+启动复测时还暴露出一项 veRL 配置约束：关闭 dynamic batch 后，
+`rollout.calculate_log_probs=true` 的路径也必须显式配置
+`rollout.log_prob_micro_batch_size_per_gpu=1`。首次尝试在系统 Python preflight
+停止，第二次在 veRL 配置校验停止，两次都没有加载模型；补齐并测试后才执行上述唯一
+一次 GPU 复测。失败启动日志分别保存在同名无后缀目录和 `_v2` 目录。
+
+## 结论与后续边界
+
+A0 五步稳定性门槛通过。当前没有证据需要再增加 post-rollout 长度过滤；先保留
+20K response、24K 总序列和固定 micro-batch=1 作为正式实验边界。A0 的 5 步中有
+2 步只产生常量 reward group，说明训练信号利用率仍是独立问题，应由已经实现的 A1
+有限动态采样验证，不能通过重新放宽长度预算来解决。
