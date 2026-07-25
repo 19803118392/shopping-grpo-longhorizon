@@ -65,8 +65,9 @@ data/verl/grpo_val_v1.parquet
 data/benchmarks/shop_benchmark_v2_50.jsonl
 ```
 
-当前已验证的 checkpoint 是 `qwen35-2b-shopping-sft-v2-merged`。只有新的 SFT
-checkpoint 通过同一 readiness audit 后，才能替换 `GRPO_MODEL_PATH`。
+当前优先使用已经完成训练、合并和 50 条 benchmark 的
+`qwen35-2b-shopping-sft-v3-merged`。后续只有新 checkpoint 通过同一 readiness
+audit 后，才能替换 `GRPO_MODEL_PATH`。
 
 若尚未冻结 GRPO train/validation，先指定当前 SFT policy 的 probe 原始轨迹：
 
@@ -476,7 +477,7 @@ bash scripts/run_vanilla_grpo.sh \
 ```bash
 source .venv-grpo-v080/bin/activate
 
-export GRPO_MODEL_PATH=/root/autodl-tmp/shopping-grpo-longhorizon/checkpoints/qwen35-2b-shopping-sft-v2-merged
+export GRPO_MODEL_PATH=/root/autodl-tmp/shopping-grpo-longhorizon/checkpoints/qwen35-2b-shopping-sft-v3-merged
 export GRPO_TRAIN_FILE=/root/autodl-tmp/shopping-grpo-longhorizon/data/verl/grpo_train_v1.parquet
 export GRPO_VAL_FILE=/root/autodl-tmp/shopping-grpo-longhorizon/data/verl/grpo_val_v1.parquet
 export GRPO_OUTPUT_DIR=/root/autodl-tmp/shopping-grpo-longhorizon/checkpoints/grpo
