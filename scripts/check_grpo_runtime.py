@@ -138,6 +138,10 @@ def validate_training_memory_budget(config):
     for name, value in (
         ("rollout.max_model_len", int(rollout.max_model_len)),
         ("rollout.max_num_batched_tokens", int(rollout.max_num_batched_tokens)),
+        (
+            "rollout.log_prob_max_token_len_per_gpu",
+            int(rollout.log_prob_max_token_len_per_gpu),
+        ),
         ("actor.ppo_max_token_len_per_gpu", int(actor.ppo_max_token_len_per_gpu)),
         ("ref.log_prob_max_token_len_per_gpu", int(reference.log_prob_max_token_len_per_gpu)),
     ):
@@ -152,6 +156,13 @@ def validate_training_memory_budget(config):
         )
     if int(actor.ppo_micro_batch_size_per_gpu) != 1:
         raise SystemExit("actor.ppo_micro_batch_size_per_gpu must equal 1")
+    if bool(rollout.log_prob_use_dynamic_bsz):
+        raise SystemExit(
+            "rollout.log_prob_use_dynamic_bsz must be false so "
+            "log_prob_micro_batch_size_per_gpu=1 is enforced"
+        )
+    if int(rollout.log_prob_micro_batch_size_per_gpu) != 1:
+        raise SystemExit("rollout.log_prob_micro_batch_size_per_gpu must equal 1")
     if bool(reference.log_prob_use_dynamic_bsz):
         raise SystemExit(
             "ref.log_prob_use_dynamic_bsz must be false so "
@@ -169,6 +180,8 @@ def validate_training_memory_budget(config):
                 "max_sequence_length": total_length,
                 "actor_micro_batch_size_per_gpu": 1,
                 "actor_dynamic_batch": False,
+                "rollout_log_prob_micro_batch_size_per_gpu": 1,
+                "rollout_log_prob_dynamic_batch": False,
                 "reference_micro_batch_size_per_gpu": 1,
                 "reference_dynamic_batch": False,
             },

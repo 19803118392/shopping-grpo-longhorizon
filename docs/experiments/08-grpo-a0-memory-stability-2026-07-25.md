@@ -59,6 +59,8 @@ actor.use_dynamic_bsz = false
 actor.ppo_micro_batch_size_per_gpu = 1
 ref.log_prob_use_dynamic_bsz = false
 ref.log_prob_micro_batch_size_per_gpu = 1
+rollout.log_prob_use_dynamic_bsz = false
+rollout.log_prob_micro_batch_size_per_gpu = 1
 ```
 
 Preflight 会拒绝恢复旧的 24K response 或重新打开 actor/reference dynamic batch。

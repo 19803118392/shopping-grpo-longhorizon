@@ -24,6 +24,12 @@ class DynamicSamplingConfigTest(unittest.TestCase):
         self.assertEqual(
             config.actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu, 1
         )
+        self.assertFalse(
+            config.actor_rollout_ref.rollout.log_prob_use_dynamic_bsz
+        )
+        self.assertEqual(
+            config.actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu, 1
+        )
         self.assertFalse(config.actor_rollout_ref.ref.log_prob_use_dynamic_bsz)
         self.assertEqual(
             config.actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu, 1
@@ -39,6 +45,14 @@ class DynamicSamplingConfigTest(unittest.TestCase):
         )
         with self.assertRaisesRegex(SystemExit, "actor.use_dynamic_bsz must be false"):
             validate_training_memory_budget(dynamic_actor)
+
+        dynamic_rollout_log_prob = compose_runtime_config(
+            ["actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=true"]
+        )
+        with self.assertRaisesRegex(
+            SystemExit, "rollout.log_prob_use_dynamic_bsz must be false"
+        ):
+            validate_training_memory_budget(dynamic_rollout_log_prob)
 
     def test_hydra_overrides_resolve_project_top_level_config(self):
         config = compose_runtime_config(
