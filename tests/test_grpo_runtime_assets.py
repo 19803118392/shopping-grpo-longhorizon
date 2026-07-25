@@ -31,6 +31,7 @@ class GrpoRuntimeAssetsTest(unittest.TestCase):
         self.assertIn("enable: false", config)
         self.assertIn("metric: seq_reward", config)
         self.assertIn("max_num_gen_batches: 3", config)
+        self.assertIn("max_consecutive_skipped_updates: 10", config)
         self.assertIn("reward_tolerance: 1.0e-8", config)
         self.assertIn("loss_agg_mode: token-mean", config)
         self.assertIn("clip_ratio_low: 0.20", config)
@@ -76,6 +77,10 @@ class GrpoRuntimeAssetsTest(unittest.TestCase):
         self.assertIn("SHOPPING_REWARD_MODE=constraint_aware", a1.stdout)
         self.assertIn("algorithm.norm_adv_by_std_in_grpo=false", a1.stdout)
         self.assertIn("shopping_dynamic_sampling.enable=true", a1.stdout)
+        self.assertIn(
+            "shopping_dynamic_sampling.max_consecutive_skipped_updates=10",
+            a1.stdout,
+        )
         for output in (a0.stdout, a1.stdout):
             self.assertIn("actor_rollout_ref.actor.use_kl_loss=false", output)
             self.assertIn("actor_rollout_ref.actor.loss_agg_mode=token-mean", output)
@@ -108,11 +113,17 @@ class GrpoRuntimeAssetsTest(unittest.TestCase):
             ROOT / "patches/verl-0.8.0-shopping-dynamic-sampling.patch"
         ).read_text(encoding="utf-8")
         for metric in (
+            "SHOPPING_GRPO_DYNAMIC_SAMPLING_SKIPPED",
+            "training/optimizer_updated",
+            "shopping_dynamic_sampling/skipped_update",
+            "shopping_dynamic_sampling/skipped_updates_total",
+            "shopping_dynamic_sampling/consecutive_skips",
             "group/generated",
             "group/trained",
             "group/effective_ratio",
             "group/all_equal_ratio",
             "group/all_zero_semantic_ratio",
+            "group/no_semantic_signal_ratio",
             "group/all_full_success_ratio",
             "group/infrastructure_invalid",
             "group/resample_batches",

@@ -20,7 +20,7 @@ EXPECTED_VERSIONS = {
     "tensordict": "0.10.0",
     "numpy": "2.2.6",
 }
-PATCH_MARKER = "SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V1"
+PATCH_MARKER = "SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V2"
 
 
 def compose_runtime_config(overrides):
@@ -83,6 +83,10 @@ def validate_dynamic_sampling(config, verl_source: Path, installed):
         raise SystemExit("shopping_dynamic_sampling.metric must be seq_reward")
     if int(dynamic_config.get("max_num_gen_batches", 0)) <= 0:
         raise SystemExit("shopping_dynamic_sampling.max_num_gen_batches must be positive")
+    if int(dynamic_config.get("max_consecutive_skipped_updates", 0)) <= 0:
+        raise SystemExit(
+            "shopping_dynamic_sampling.max_consecutive_skipped_updates must be positive"
+        )
     reward_tolerance = float(dynamic_config.get("reward_tolerance", -1))
     if reward_tolerance < 0 or not math.isfinite(reward_tolerance):
         raise SystemExit("shopping_dynamic_sampling.reward_tolerance must be finite and non-negative")
@@ -98,6 +102,9 @@ def validate_dynamic_sampling(config, verl_source: Path, installed):
                 "enable": True,
                 "metric": str(dynamic_config.metric),
                 "max_num_gen_batches": int(dynamic_config.max_num_gen_batches),
+                "max_consecutive_skipped_updates": int(
+                    dynamic_config.max_consecutive_skipped_updates
+                ),
                 "reward_tolerance": reward_tolerance,
                 "ray_trainer": str(ray_trainer),
                 "marker": PATCH_MARKER,

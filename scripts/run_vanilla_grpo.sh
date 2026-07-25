@@ -42,6 +42,7 @@ case "$EXPERIMENT" in
       algorithm.norm_adv_by_std_in_grpo=false
       shopping_dynamic_sampling.enable=true
       shopping_dynamic_sampling.max_num_gen_batches=3
+      shopping_dynamic_sampling.max_consecutive_skipped_updates=10
       shopping_dynamic_sampling.reward_tolerance=1.0e-8
       trainer.experiment_name=shopping-grpo-a1-constraint
     )

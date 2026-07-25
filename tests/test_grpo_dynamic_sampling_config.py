@@ -20,12 +20,16 @@ class DynamicSamplingConfigTest(unittest.TestCase):
                 "shopping_dynamic_sampling.enable=true",
                 "shopping_dynamic_sampling.metric=seq_reward",
                 "shopping_dynamic_sampling.max_num_gen_batches=3",
+                "shopping_dynamic_sampling.max_consecutive_skipped_updates=10",
                 "shopping_dynamic_sampling.reward_tolerance=1e-8",
             ]
         )
         self.assertTrue(config.shopping_dynamic_sampling.enable)
         self.assertEqual(config.shopping_dynamic_sampling.metric, "seq_reward")
         self.assertEqual(config.shopping_dynamic_sampling.max_num_gen_batches, 3)
+        self.assertEqual(
+            config.shopping_dynamic_sampling.max_consecutive_skipped_updates, 10
+        )
         self.assertEqual(config.shopping_dynamic_sampling.reward_tolerance, 1.0e-8)
         self.assertTrue(config.algorithm.rollout_correction.bypass_mode)
         self.assertTrue(config.actor_rollout_ref.rollout.calculate_log_probs)

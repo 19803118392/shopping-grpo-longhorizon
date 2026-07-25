@@ -1,22 +1,23 @@
 --- a/verl/trainer/ppo/ray_trainer.py
 +++ b/verl/trainer/ppo/ray_trainer.py
-@@ -19,0 +20,2 @@
+@@ -20,0 +21,2 @@
++# SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V2
 +
-+# SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V1
-@@ -1380,0 +1383,6 @@
-+        )
-+
+@@ -1382,0 +1385,68 @@
 +        from shopping_grpo.verl_dynamic_sampling import (
 +            aggregate_shopping_metrics,
 +            extract_shopping_group_signals,
 +            select_reward_varying_groups,
-@@ -1381,0 +1390,24 @@
++        )
 +
 +        dynamic_sampling_config = self.config.get("shopping_dynamic_sampling", {})
 +        dynamic_sampling_enabled = bool(dynamic_sampling_config.get("enable", False))
 +        if dynamic_sampling_enabled:
 +            dynamic_sampling_metric = dynamic_sampling_config.get("metric", "seq_reward")
 +            dynamic_max_gen_batches = int(dynamic_sampling_config.get("max_num_gen_batches", 0))
++            dynamic_max_consecutive_skips = int(
++                dynamic_sampling_config.get("max_consecutive_skipped_updates", 0)
++            )
 +            dynamic_reward_tolerance = float(dynamic_sampling_config.get("reward_tolerance", 1.0e-8))
 +            if dynamic_sampling_metric != "seq_reward":
 +                raise ValueError(
@@ -25,6 +26,10 @@
 +                )
 +            if dynamic_max_gen_batches <= 0:
 +                raise ValueError("shopping_dynamic_sampling.max_num_gen_batches must be positive")
++            if dynamic_max_consecutive_skips <= 0:
++                raise ValueError(
++                    "shopping_dynamic_sampling.max_consecutive_skipped_updates must be positive"
++                )
 +            if dynamic_reward_tolerance < 0 or not np.isfinite(dynamic_reward_tolerance):
 +                raise ValueError(
 +                    "shopping_dynamic_sampling.reward_tolerance must be finite and non-negative"
@@ -35,7 +40,7 @@
 +                raise ValueError("shopping_dynamic_sampling requires rollout-log-prob bypass mode")
 +            if not self.config.actor_rollout_ref.rollout.calculate_log_probs:
 +                raise ValueError("shopping_dynamic_sampling requires rollout.calculate_log_probs=true")
-@@ -1382,0 +1415,28 @@
++
 +            dynamic_target_prompts = int(self.config.data.train_batch_size)
 +            dynamic_rollout_n = int(self.config.actor_rollout_ref.rollout.n)
 +            dynamic_accepted_batches = []
@@ -49,6 +54,8 @@
 +            dynamic_no_semantic_groups = 0
 +            dynamic_infrastructure_invalid_groups = 0
 +            dynamic_generated_trajectories = 0
++            dynamic_skipped_updates = 0
++            dynamic_consecutive_skips = 0
 +            print(
 +                "SHOPPING_GRPO_DYNAMIC_SAMPLING_CONFIG "
 +                + json.dumps(
@@ -56,6 +63,7 @@
 +                        "enable": True,
 +                        "metric": dynamic_sampling_metric,
 +                        "max_num_gen_batches": dynamic_max_gen_batches,
++                        "max_consecutive_skipped_updates": dynamic_max_consecutive_skips,
 +                        "reward_tolerance": dynamic_reward_tolerance,
 +                        "train_batch_size": dynamic_target_prompts,
 +                        "rollout_n": dynamic_rollout_n,
@@ -64,32 +72,32 @@
 +                )
 +            )
 +
-@@ -1409,2 +1469,4 @@
+@@ -1409,2 +1479,4 @@
 -        # we start from step 1
 -        self.global_steps += 1
 +        # The unpatched trainer uses a one-based in-flight step. Dynamic sampling
 +        # keeps the committed counter unchanged until an optimizer update occurs.
 +        if not dynamic_sampling_enabled:
 +            self.global_steps += 1
-@@ -1414,0 +1477 @@
+@@ -1414,0 +1487 @@
 +        first_step = self.global_steps + 1 if dynamic_sampling_enabled else self.global_steps
-@@ -1416 +1479 @@
+@@ -1416 +1489 @@
 -            self.global_steps in self.config.global_profiler.steps
 +            first_step in self.config.global_profiler.steps
-@@ -1423,0 +1487,2 @@
+@@ -1423,0 +1497,2 @@
 +                current_step = self.global_steps + 1 if dynamic_sampling_enabled else self.global_steps
 +                optimizer_updated = False
-@@ -1446 +1511 @@
+@@ -1446 +1521 @@
 -                gen_batch.meta_info["global_steps"] = self.global_steps
 +                gen_batch.meta_info["global_steps"] = current_step
-@@ -1464 +1529 @@
+@@ -1464 +1539 @@
 -                is_last_step = self.global_steps >= self.total_training_steps
 +                is_last_step = current_step >= self.total_training_steps
-@@ -1471 +1536,2 @@
+@@ -1471 +1546,2 @@
 -                        self.checkpoint_manager.sleep_replicas()
 +                        if not dynamic_sampling_enabled:
 +                            self.checkpoint_manager.sleep_replicas()
-@@ -1526,0 +1593,221 @@
+@@ -1526,0 +1603,315 @@
 +                    if dynamic_sampling_enabled:
 +                        seq_rewards = reward_tensor.sum(dim=-1).detach().cpu().tolist()
 +                        batch_uids = batch.non_tensor_batch["uid"].tolist()
@@ -177,17 +185,103 @@
 +                            if curr_step_profile:
 +                                self._stop_profiling(True)
 +                            if dynamic_num_gen_batches >= dynamic_max_gen_batches:
-+                                raise RuntimeError(
-+                                    "shopping dynamic sampling exhausted "
-+                                    f"max_num_gen_batches={dynamic_max_gen_batches} with "
-+                                    f"accepted_prompts={dynamic_accepted_prompts}/"
-+                                    f"{dynamic_target_prompts}, "
-+                                    f"all_equal_groups={dynamic_all_equal_groups}, "
-+                                    f"no_semantic_groups={dynamic_no_semantic_groups}, "
-+                                    "infrastructure_invalid_groups="
-+                                    f"{dynamic_infrastructure_invalid_groups}; "
-+                                    "refusing a zero-signal update"
++                                dynamic_skipped_updates += 1
++                                dynamic_consecutive_skips += 1
++                                skipped_metrics = {
++                                    "training/global_step": self.global_steps,
++                                    "training/optimizer_updated": 0,
++                                    "shopping_dynamic_sampling/skipped_update": 1,
++                                    "shopping_dynamic_sampling/skipped_updates_total": (
++                                        dynamic_skipped_updates
++                                    ),
++                                    "shopping_dynamic_sampling/consecutive_skips": (
++                                        dynamic_consecutive_skips
++                                    ),
++                                    "group/generated": dynamic_generated_groups,
++                                    "group/trained": dynamic_accepted_prompts,
++                                    "group/effective_ratio": (
++                                        dynamic_accepted_prompts
++                                        / max(dynamic_generated_groups, 1)
++                                    ),
++                                    "group/all_equal_ratio": (
++                                        dynamic_all_equal_groups
++                                        / max(dynamic_generated_groups, 1)
++                                    ),
++                                    "group/all_zero_semantic_ratio": (
++                                        dynamic_all_zero_semantic_groups
++                                        / max(dynamic_generated_groups, 1)
++                                    ),
++                                    "group/no_semantic_signal_ratio": (
++                                        dynamic_no_semantic_groups
++                                        / max(dynamic_generated_groups, 1)
++                                    ),
++                                    "group/all_full_success_ratio": (
++                                        dynamic_all_full_success_groups
++                                        / max(dynamic_generated_groups, 1)
++                                    ),
++                                    "group/infrastructure_invalid": (
++                                        dynamic_infrastructure_invalid_groups
++                                    ),
++                                    "group/resample_batches": max(
++                                        dynamic_num_gen_batches - 1, 0
++                                    ),
++                                    "rollout/generated_total": (
++                                        dynamic_generated_trajectories
++                                    ),
++                                }
++                                print(
++                                    "SHOPPING_GRPO_DYNAMIC_SAMPLING_SKIPPED "
++                                    + json.dumps(
++                                        {
++                                            "accepted_prompts": dynamic_accepted_prompts,
++                                            "target_prompts": dynamic_target_prompts,
++                                            "generation_batches": dynamic_num_gen_batches,
++                                            "generated_groups": dynamic_generated_groups,
++                                            "generated_trajectories": (
++                                                dynamic_generated_trajectories
++                                            ),
++                                            "all_equal_groups": (
++                                                dynamic_all_equal_groups
++                                            ),
++                                            "no_semantic_groups": (
++                                                dynamic_no_semantic_groups
++                                            ),
++                                            "infrastructure_invalid_groups": (
++                                                dynamic_infrastructure_invalid_groups
++                                            ),
++                                            "skipped_updates_total": (
++                                                dynamic_skipped_updates
++                                            ),
++                                            "consecutive_skips": (
++                                                dynamic_consecutive_skips
++                                            ),
++                                        },
++                                        sort_keys=True,
++                                    )
 +                                )
++                                logger.log(data=skipped_metrics, step=self.global_steps)
++                                dynamic_accepted_batches = []
++                                dynamic_accepted_prompts = 0
++                                dynamic_num_gen_batches = 0
++                                dynamic_generated_groups = 0
++                                dynamic_filtered_groups = 0
++                                dynamic_all_equal_groups = 0
++                                dynamic_all_zero_semantic_groups = 0
++                                dynamic_all_full_success_groups = 0
++                                dynamic_no_semantic_groups = 0
++                                dynamic_infrastructure_invalid_groups = 0
++                                dynamic_generated_trajectories = 0
++                                if (
++                                    dynamic_consecutive_skips
++                                    >= dynamic_max_consecutive_skips
++                                ):
++                                    raise RuntimeError(
++                                        "shopping dynamic sampling reached "
++                                        "max_consecutive_skipped_updates="
++                                        f"{dynamic_max_consecutive_skips} without an "
++                                        "optimizer update; stopping a persistently "
++                                        "no-signal run"
++                                    )
 +                            continue
 +
 +                        batch = DataProto.concat(dynamic_accepted_batches)
@@ -215,6 +309,10 @@
 +                                ),
 +                                "group/all_zero_semantic_ratio": (
 +                                    dynamic_all_zero_semantic_groups
++                                    / max(dynamic_generated_groups, 1)
++                                ),
++                                "group/no_semantic_signal_ratio": (
++                                    dynamic_no_semantic_groups
 +                                    / max(dynamic_generated_groups, 1)
 +                                ),
 +                                "group/all_full_success_ratio": (
@@ -257,6 +355,7 @@
 +                            )
 +                        )
 +                        self.checkpoint_manager.sleep_replicas()
++                        dynamic_consecutive_skips = 0
 +                        dynamic_accepted_batches = []
 +                        dynamic_accepted_prompts = 0
 +                        dynamic_num_gen_batches = 0
@@ -300,6 +399,9 @@
 +                                "group/all_zero_semantic_ratio": (
 +                                    group_stats["all_zero_semantic_group_count"] / group_count
 +                                ),
++                                "group/no_semantic_signal_ratio": (
++                                    group_stats["no_semantic_signal_group_count"] / group_count
++                                ),
 +                                "group/all_full_success_ratio": (
 +                                    group_stats["all_full_success_group_count"] / group_count
 +                                ),
@@ -311,35 +413,50 @@
 +                            }
 +                        )
 +
-@@ -1643 +1930 @@
+@@ -1643 +2034 @@
 -                    if self.config.trainer.critic_warmup > self.global_steps:
 +                    if self.config.trainer.critic_warmup > current_step:
-@@ -1645 +1932 @@
+@@ -1645 +2036 @@
 -                        self.checkpoint_manager.update_weights(self.global_steps)
 +                        self.checkpoint_manager.update_weights(current_step)
-@@ -1649,0 +1937,3 @@
+@@ -1649,0 +2041,3 @@
 +                        optimizer_updated = True
 +                        if dynamic_sampling_enabled:
 +                            self.global_steps = current_step
-@@ -1665 +1955 @@
+@@ -1665 +2059 @@
 -                            or self.global_steps % self.config.trainer.save_freq == 0
 +                            or current_step % self.config.trainer.save_freq == 0
-@@ -1675 +1965 @@
+@@ -1675 +2069 @@
 -                            self.checkpoint_manager.update_weights(self.global_steps)
 +                            self.checkpoint_manager.update_weights(current_step)
-@@ -1687 +1977 @@
+@@ -1687 +2081 @@
 -                    is_last_step or self.global_steps % self.config.trainer.test_freq == 0
 +                    is_last_step or current_step % self.config.trainer.test_freq == 0
-@@ -1697 +1987 @@
+@@ -1697 +2091 @@
 -                        self.global_steps + 1 in self.config.global_profiler.steps
 +                        current_step + 1 in self.config.global_profiler.steps
-@@ -1715 +2005 @@
+@@ -1715 +2109 @@
 -                        "training/global_step": self.global_steps,
 +                        "training/global_step": current_step,
-@@ -1750 +2040 @@
+@@ -1716,0 +2111 @@
++                        "training/optimizer_updated": int(optimizer_updated),
+@@ -1718,0 +2114,12 @@
++                if dynamic_sampling_enabled:
++                    metrics.update(
++                        {
++                            "shopping_dynamic_sampling/skipped_update": 0,
++                            "shopping_dynamic_sampling/skipped_updates_total": (
++                                dynamic_skipped_updates
++                            ),
++                            "shopping_dynamic_sampling/consecutive_skips": (
++                                dynamic_consecutive_skips
++                            ),
++                        }
++                    )
+@@ -1750 +2157 @@
 -                logger.log(data=metrics, step=self.global_steps)
 +                logger.log(data=metrics, step=current_step)
-@@ -1753 +2043,6 @@
+@@ -1753 +2160,6 @@
 -                self.global_steps += 1
 +                if dynamic_sampling_enabled and not optimizer_updated:
 +                    raise RuntimeError(

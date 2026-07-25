@@ -90,13 +90,23 @@ shopping_dynamic_sampling:
   enable: false
   metric: seq_reward
   max_num_gen_batches: 3
+  max_consecutive_skipped_updates: 10
   reward_tolerance: 1.0e-8
 ```
 
-达到 3 批仍不足两个有效 prompt 时直接抛错，不计算 Reference、advantage 或 actor
-update，也不拿常量 reward group 做假更新。当前每批为
+达到 3 批仍不足两个有效 prompt 时，记录
+`SHOPPING_GRPO_DYNAMIC_SAMPLING_SKIPPED`，清空本次暂存 group，并从 dataloader
+读取下一批 task。该路径不计算 Reference、advantage 或 actor update，不递增
+`global_step`，也不拿常量 reward group 做假更新；rollout replicas 在补采和跳过时
+保持可生成状态。当前每批为
 `2 prompt × 4 rollout = 8 trajectory`，所以一次 signal smoke 最多生成
 `3 × 8 = 24` 条轨迹。
+
+为防止长期没有 semantic signal 时无限采样，连续 10 次 skipped update 后才抛出
+明确错误。累计与连续次数同时写入监控；下一次真实 optimizer update 会把连续计数
+清零。行为惩罚组仍被拒绝，只有日志中的 `group/no_semantic_signal_ratio` 证明其
+长期占主导后，才另立
+低权重且受比例约束的对照实验。
 
 ## 可复现补丁与门禁
 
@@ -165,3 +175,5 @@ bash scripts/run_vanilla_grpo.sh \
    `train_batch_size` 的 group；其余已生成轨迹不会进入该次更新。
 4. 动态模式仅支持 `metric=seq_reward`、Vanilla GRPO、rollout-log-prob bypass。它不是
    通用 veRL Dynamic Sampling 或 DAPO 实现。
+5. skipped event 使用已提交的 `global_step` 记录，因此不会伪造训练步数；每次即时
+   事件以结构化 console marker 为准，累计次数也会在下一次真实更新时写入在线监控。

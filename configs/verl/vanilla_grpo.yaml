@@ -108,6 +108,7 @@ shopping_dynamic_sampling:
   enable: false
   metric: seq_reward
   max_num_gen_batches: 3
+  max_consecutive_skipped_updates: 10
   reward_tolerance: 1.0e-8
 
 reward_model:

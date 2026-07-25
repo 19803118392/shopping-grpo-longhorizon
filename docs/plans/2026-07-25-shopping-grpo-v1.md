@@ -372,6 +372,7 @@ group size 固定为 `n = 4`。
 shopping_dynamic_sampling:
   enable: true
   max_num_gen_batches: 3
+  max_consecutive_skipped_updates: 10
   reward_tolerance: 1.0e-8
 ```
 
@@ -381,8 +382,18 @@ shopping_dynamic_sampling:
 
 - 不执行部分 batch 更新；
 - 不填充重复 group；
-- 立即停止当前训练；
-- 输出每种过滤原因和已消耗轨迹数量。
+- 记录一次 `SHOPPING_GRPO_DYNAMIC_SAMPLING_SKIPPED` 事件；
+- 不计算 Reference、advantage，不调用 actor update，不递增 `global_step`；
+- 清空本次暂存 group，保持 rollout replicas 可继续生成并从 dataloader 读取新 task；
+- 输出每种过滤原因、已消耗轨迹数量和累计/连续跳过次数。
+
+单次“采样不足”不再终止训练。为避免在长期无信号数据上无限消耗，连续
+`max_consecutive_skipped_updates=10` 次未产生任何真实参数更新时才清楚报错并停止。
+按每次最多 24 条轨迹计算，这一安全边界最多允许连续消耗 240 条无更新轨迹。
+
+行为惩罚造成的分差当前仍不能替代 semantic signal。只有后续日志证明
+`group/no_semantic_signal_ratio` 长期占主导，才单独设计低权重、受组比例上限约束的
+实验；本阶段不改变 reward 和有效组门槛。
 
 继续复用：
 
@@ -615,7 +626,7 @@ unique tool sequence 数
 1. 先为 5 条有效组规则补测试；
 2. 扩展现有选择函数，使其同时检查 shaped reward、semantic reward 和 invalid 标记；
 3. 修改现有 veRL 补丁传递这些字段；
-4. 保持最多 3 批、完整 batch、失败即停；
+4. 保持每次最多 3 批和完整 batch；不足时跳过本次更新，连续跳过达到安全上限才停；
 5. 更新补丁原始 hash 与目标 hash；
 6. 更新 preflight 以验证补丁确实生效。
 
@@ -627,7 +638,8 @@ unique tool sequence 数
 - shaped reward 有差异但 semantic reward 全为 0 时丢弃；
 - `[0,0.2,0,0]` 且含 semantic positive 时保留；
 - 包含 infrastructure invalid 成员时整组丢弃；
-- 第 3 批后仍不足完整 batch 时清楚报错，不进入 optimizer。
+- 第 3 批后仍不足完整 batch 时记录跳过事件且不进入 optimizer；
+- 连续跳过未达到上限时继续读取新 task，达到上限时清楚报错。
 
 ### Task 4：配置固定
 
@@ -749,7 +761,9 @@ trainer.test_freq=-1
 - 8 个环境全部释放；
 - 结束后 GPU、Ray、vLLM 无残留。
 
-若 3 批内找不到完整有效 batch，按任务可学性或 SFT readiness 问题停止，不绕过动态采样。
+若 3 批内找不到完整有效 batch，本次更新记为 skipped 并换新 task；不绕过动态采样，
+不把 behavior-only group 用作训练信号。连续 10 次 skipped 才按长期任务可学性或
+SFT readiness 问题停止。
 
 ### 10.3 3-step A1 smoke
 
