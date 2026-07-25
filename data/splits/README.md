@@ -3,6 +3,18 @@
 这里的清单不是离线 RL 轨迹数据。它们只保存 `task_id`，实际训练时由当前 policy 在线进入 ShopSimulator rollout。
 
 - `grpo_probe_pool_v1.jsonl`：2,000 个候选题。它与已发布的 Teacher raw rollout（757 个 task）及 `shop_benchmark_v2_50` 完全不重叠。
-- `grpo_train_v1.jsonl`：尚未生成。先用冻结 SFT policy 跑完候选池，再按实际执行工具步数精确抽取 1,000 个：short 300（≤10 步）、medium 450（11–20 步）、long 250（≥21 步）。基础设施错误不进桶；任何桶不足时脚本会失败，不会偷偷用其他长度补齐。
+- `grpo_train_v1.jsonl`：1,000 个训练 task。使用冻结的
+  `qwen35-2b-shopping-sft-v3-merged` policy，以 `temperature=0`、
+  `max_steps=35`、`max_tokens=512` probe 了 1,207 个不同候选 task。
+  其中 1,058 条状态有效，实际可用桶为 short 266、medium 53、long 739。
+  由于 SFT v3 的 medium 桶远少于最初预估，最终按固定种子 `20260721`
+  精确抽取 short 250、medium 50、long 700；149 条基础设施错误没有进入训练集。
+- `grpo_val_v1.jsonl`：从候选池剩余 task 中以固定种子 `20260722`
+  抽取的 50 个 validation task，与 train、SFT v3 和固定 benchmark 均不重叠。
+
+对应 metadata 记录候选池、probe raw 和 train split 的 SHA-256。veRL 输入位于
+`data/verl/grpo_train_v1.parquet` 与 `data/verl/grpo_val_v1.parquet`；
+parquet 只含用户可见 instruction 和 task_id，不含隐藏 goal、标准答案或
+`reward_detail`。
 
 如果在已发布 raw snapshot 之外又新增并**冻结**了一批 SFT 数据，生成候选池时额外传入 `--exclude-sft path/to/sft.jsonl`。不要把仍在采集中的本地输出写进正式 manifest。

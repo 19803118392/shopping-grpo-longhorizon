@@ -1,6 +1,6 @@
 # Vanilla GRPO v1：任务冻结与 veRL 接入准备
 
-> 状态：代码、Vanilla 配置和启动入口已完成，尚未在 GPU 上启动训练。默认 group size、并发、学习率与 KL 已固定；服务器 smoke 只验证可运行性，不事后改写本基线记录。
+> 状态：代码、运行时 smoke 和正式 train/validation task 冻结已完成。正式训练尚未启动。
 
 ## 目标
 
@@ -14,10 +14,27 @@ SFT v2 已将 `benchmark_v2_50` 的严格成功率从 Base 的 0% 提升到 12%�
 | RL 候选池 | `data/splits/grpo_probe_pool_v1.jsonl`，2,000 个未见 task |
 | 排除集 | 已发布 Teacher raw rollout 全部 757 个 task + benchmark v2_50 |
 | 最终训练集 | 1,000 个新 task，不是 1,000 条离线轨迹 |
-| 长度分层 | short/medium/long = 300/450/250，按 **SFT policy probe 实测工具步数** 划分 |
+| 长度分层 | SFT v3 实测后冻结为 short/medium/long = 250/50/700，详见下方记录 |
 | reward | 仅正常 `done && over` 时的 ShopSimulator `final_reward`；其他终止均为 0 |
 
-为什么不按 Teacher 轨迹长度分层：GRPO 面对的是 SFT policy 的真实困难度；Teacher 的探索方式与它不同。为什么先跑 2,000 个 probe：现有 SFT 约 68% 会走满步数，必须有足够余量才能保证三桶都能精确抽满；桶不足时宁可停止，不制造“表面均衡”的数据。
+为什么不按 Teacher 轨迹长度分层：GRPO 面对的是 SFT policy 的真实困难度；Teacher 的探索方式与它不同。最初计划 probe 2,000 个候选并按 300/450/250 抽取，但 SFT v3 的真实轨迹分布与旧预估不同，因此以服务器实测结果为准，不制造“表面均衡”的数据。
+
+### SFT v3 正式 probe 与冻结结果（2026-07-25）
+
+按成本停止条件，正式 probe 在 8 个并发 worker 收尾后停于 1,207 条：
+
+- 1,207 个 task_id 全部唯一，且全部来自 2,000 条候选池；
+- 1,058 条状态有效：short 266、medium 53、long 739；
+- 149 条 `error` 不进入任何训练桶；
+- 309 条执行购买，290 条 reward 大于 0，108 条 reward 等于 1；
+- probe 中共有 35 个不同 reward 值，证明不同任务存在非全零训练候选；
+- 无环境 release 失败。
+
+旧的 medium=450 配额在该 policy 下客观不可满足。最终不按 reward 选题，只通过
+现有分层选择器和固定种子 `20260721` 抽取 short 250、medium 50、long 700，
+合计 1,000 个训练 task。validation 使用种子 `20260722` 从剩余候选中抽取
+50 个 task。train、validation、SFT v3 的 480 个 task 以及固定 benchmark 之间
+均无 task_id 重叠。
 
 ## SFT → GRPO 的权重边界
 
@@ -46,12 +63,16 @@ veRL 的 prompt 必须在训练开始前准备成 parquet。`task_id` 本身不�
 
 ## 服务器执行顺序
 
-1. 用 merged SFT 模型跑 `grpo_probe_pool_v1.jsonl`，沿用 `evaluate_shop_benchmark.py`、`temperature=0`、`max_steps=35`，保存 raw probe；
+1. 用 merged SFT v3 模型 probe 候选池，沿用 `evaluate_shop_benchmark.py`、`temperature=0`、`max_steps=35`、`max_tokens=512`，保存 raw probe；
 2. 分层冻结 1,000 个 task：
 
 ```bash
 PYTHONPATH=src python3 scripts/prepare_grpo_tasks.py select \
-  --probes outputs/grpo_probe_sft_v2/raw.jsonl
+  --probes outputs/grpo_probe_sft_v3/raw.jsonl \
+  --short 250 \
+  --medium 50 \
+  --long 700 \
+  --seed 20260721
 ```
 
 3. 启动 ShopSimulator 后转 parquet：
@@ -75,5 +96,4 @@ PYTHONPATH=src python3 scripts/prepare_grpo_tasks.py validation
 
 - 固定的 veRL 0.8.0 / vLLM 0.25.1 / Transformers 5.11.0 能否在目标 GPU 上完成一次 Qwen3.5 policy update；项目预检会在加载权重前校验版本、导入来源、AgentLoop API 和 veRL 内置 `qwen3_coder` parser；
 - 组内 reward 方差、全 0 group 比例与单 GPU 可承受的 rollout 并发；
-- 1000-task train split 的最终 probe 分布；
 - 合并 checkpoint 后的固定 benchmark v2_50 复测，应与 adapter 推理一致。

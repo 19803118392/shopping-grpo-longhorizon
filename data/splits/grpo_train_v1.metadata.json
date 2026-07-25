@@ -1,0 +1,36 @@
+{
+  "split_version": "grpo_train_v1",
+  "purpose": "online Vanilla GRPO task ids; no teacher trajectory is used as training target",
+  "seed": 20260721,
+  "candidate_pool": "data/splits/grpo_probe_pool_v1.jsonl",
+  "candidate_pool_sha256": "5fed28b33b48c29c5f8f818cbfdaf2ef190869dadcbc0e080ca336718c5d477a",
+  "probe_rollouts": "outputs/grpo_probe_sft_v3/raw.jsonl",
+  "probe_rollouts_sha256": "758df5971a6545a29761755500288986f508aaaffed764bce617033e4382d3e2",
+  "length_definition": {
+    "short": "<=10 executed tool steps",
+    "medium": "11-20",
+    "long": ">=21"
+  },
+  "candidate_task_count": 2000,
+  "probed_candidate_count": 1207,
+  "eligible_probe_count": 1058,
+  "ignored_probe_status_counts": {
+    "error": 149
+  },
+  "bucket_targets": {
+    "short": 250,
+    "medium": 50,
+    "long": 700
+  },
+  "bucket_available": {
+    "short": 266,
+    "medium": 53,
+    "long": 739
+  },
+  "selected_count": 1000,
+  "selected_by_bucket": {
+    "short": 250,
+    "long": 700,
+    "medium": 50
+  }
+}
