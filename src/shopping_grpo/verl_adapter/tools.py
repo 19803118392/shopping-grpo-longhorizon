@@ -63,8 +63,15 @@ class ShopSimulatorTool(BaseTool):
             return ToolResponse(text="Reasoning recorded. Continue with one environment tool call."), 0.0, step
         observation = state.get("latest_observation", "")
         record_action_attempt(state, self.name, parameters, observation)
+        state["action_attempt_after_truncation_count"] += int(
+            bool(state.get("latest_observation_truncated"))
+        )
         reason = action_reject_reason(self.name, parameters, observation)
         if reason:
+            state["guard_rejection_count"] += 1
+            state["guard_rejection_after_truncation_count"] += int(
+                bool(state.get("latest_observation_truncated"))
+            )
             state["consecutive_guard_rejections"] += 1
             if state["consecutive_guard_rejections"] >= 3:
                 _terminate(state, "too_many_guard_rejections")
@@ -114,6 +121,8 @@ class ShopSimulatorTool(BaseTool):
                     )
             return ToolResponse(text="Environment terminated."), 0.0, step
         state["latest_observation"] = observation
+        state["latest_observation_raw"] = observation
+        state["_pending_raw_observation"] = observation
         if len(state["steps"]) >= state["max_steps"]:
             _terminate(state, "max_steps")
             return ToolResponse(text="Error: maximum executed tool steps reached."), 0.0, step

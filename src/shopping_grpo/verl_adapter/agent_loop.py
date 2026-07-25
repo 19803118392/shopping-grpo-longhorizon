@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import json
+
 from verl.experimental.agent_loop.tool_agent_loop import AgentState, ToolAgentLoop
 
 from shopping_grpo.context_window import ContextBudgetError, compact_token_trajectory
+from shopping_grpo.observation_projection import (
+    ObservationProjectionError,
+    project_observation,
+)
 from shopping_grpo.verl_adapter.runtime import (
     current_runtime_state,
+    record_observation_projection,
     reward_breakdown,
     task_id_from_kwargs,
     terminal_reward,
@@ -29,6 +36,11 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         context_safety_margin_tokens=512,
         context_input_budget_tokens=16384,
         context_preserve_recent_groups=1,
+        context_compaction_enable=False,
+        observation_token_budget=768,
+        observation_detail_token_budget=4096,
+        observation_generic_token_budget=768,
+        observation_search_top_k=10,
         env_factory=None,
         **kwargs,
     ):
@@ -42,6 +54,11 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         self.context_safety_margin_tokens = int(context_safety_margin_tokens)
         self.context_input_budget_tokens = int(context_input_budget_tokens)
         self.context_preserve_recent_groups = int(context_preserve_recent_groups)
+        self.context_compaction_enable = bool(context_compaction_enable)
+        self.observation_token_budget = int(observation_token_budget)
+        self.observation_detail_token_budget = int(observation_detail_token_budget)
+        self.observation_generic_token_budget = int(observation_generic_token_budget)
+        self.observation_search_top_k = int(observation_search_top_k)
         maximum_context_input = (
             self.context_window_tokens
             - self.context_generation_reserve_tokens
@@ -54,6 +71,14 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         self.context_input_budget = self.context_input_budget_tokens
         if self.context_preserve_recent_groups < 1:
             raise ValueError("context_preserve_recent_groups must be positive")
+        if min(
+            self.observation_token_budget,
+            self.observation_detail_token_budget,
+            self.observation_generic_token_budget,
+        ) < 64:
+            raise ValueError("all observation token budgets must be at least 64")
+        if self.observation_search_top_k < 1:
+            raise ValueError("observation_search_top_k must be positive")
         if self.reward_mode not in {"native", "constraint_aware"}:
             raise ValueError(f"unknown shopping reward mode: {self.reward_mode!r}")
         self.env_factory = env_factory
@@ -65,22 +90,47 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         ignore_termination=False,
     ):
         runtime_state = current_runtime_state.get()
-        try:
-            prompt_ids, response_mask, response_logprobs, stats = compact_token_trajectory(
-                agent_data.prompt_ids,
-                agent_data.response_mask,
-                agent_data.response_logprobs,
-                max_input_tokens=self.context_input_budget,
-                preserve_recent_groups=self.context_preserve_recent_groups,
+        current_input_tokens = len(agent_data.prompt_ids)
+        if runtime_state is not None:
+            runtime_state["context_max_input_tokens"] = max(
+                runtime_state["context_max_input_tokens"],
+                current_input_tokens,
             )
-        except ContextBudgetError as exc:
+        if self.context_compaction_enable:
+            try:
+                prompt_ids, response_mask, response_logprobs, stats = compact_token_trajectory(
+                    agent_data.prompt_ids,
+                    agent_data.response_mask,
+                    agent_data.response_logprobs,
+                    max_input_tokens=self.context_input_budget,
+                    preserve_recent_groups=self.context_preserve_recent_groups,
+                )
+            except ContextBudgetError as exc:
+                if runtime_state is not None:
+                    runtime_state["terminate"] = True
+                    runtime_state["termination_reason"] = "context_budget_exhausted"
+                    runtime_state["error"] = f"context_budget_exhausted:{exc}"
+                    runtime_state["infrastructure_invalid"] = True
+                return AgentState.TERMINATED
+        else:
+            prompt_ids = agent_data.prompt_ids
+            response_mask = agent_data.response_mask
+            response_logprobs = agent_data.response_logprobs
+            stats = None
+        if (
+            not self.context_compaction_enable
+            and current_input_tokens
+            > self.context_window_tokens
+            - self.context_generation_reserve_tokens
+            - self.context_safety_margin_tokens
+        ):
             if runtime_state is not None:
                 runtime_state["terminate"] = True
-                runtime_state["termination_reason"] = "context_budget_exhausted"
-                runtime_state["error"] = f"context_budget_exhausted:{exc}"
+                runtime_state["termination_reason"] = "context_hard_limit_exceeded"
+                runtime_state["error"] = runtime_state["termination_reason"]
                 runtime_state["infrastructure_invalid"] = True
             return AgentState.TERMINATED
-        if stats.removed_tokens:
+        if stats is not None and stats.removed_tokens:
             if agent_data.routed_experts is not None:
                 if runtime_state is not None:
                     runtime_state["terminate"] = True
@@ -105,6 +155,54 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
             bounded_sampling_params,
             ignore_termination=ignore_termination,
         )
+
+    async def _call_tool(self, tool_call, tools_kwargs, agent_data):
+        response, reward, step = await super()._call_tool(
+            tool_call,
+            tools_kwargs,
+            agent_data,
+        )
+        state = current_runtime_state.get()
+        if state is None:
+            return response, reward, step
+        raw_observation = state.pop("_pending_raw_observation", None)
+        if raw_observation is None:
+            return response, reward, step
+        try:
+            parameters = json.loads(tool_call.arguments or "{}")
+            visible_observation, projection = project_observation(
+                tool_name=tool_call.name,
+                observation=raw_observation,
+                parameters=parameters,
+                count_tokens=lambda text: len(
+                    self.tokenizer.encode(text, add_special_tokens=False)
+                ),
+                token_budget=self.observation_token_budget,
+                detail_token_budget=self.observation_detail_token_budget,
+                generic_token_budget=self.observation_generic_token_budget,
+                search_top_k=self.observation_search_top_k,
+            )
+            if len(visible_observation) > self.max_tool_response_length:
+                raise ObservationProjectionError(
+                    "projected observation exceeds veRL character fallback limit"
+                )
+        except Exception as exc:
+            state["terminate"] = True
+            state["termination_reason"] = "observation_projection_failed"
+            state["error"] = f"observation_projection_failed:{exc.__class__.__name__}:{exc}"
+            state["infrastructure_invalid"] = True
+            state["observation_footer_failures"] += 1
+            response.text = "Error: observation projection failed; trajectory is invalid."
+            return response, 0.0, step
+
+        projection_meta = projection.to_dict()
+        state["latest_observation_raw"] = raw_observation
+        state["latest_observation"] = visible_observation
+        record_observation_projection(state, projection_meta)
+        if isinstance(step, dict):
+            step["projection"] = projection_meta
+        response.text = visible_observation
+        return response, reward, step
 
     async def _handle_processing_tools_state(self, agent_data):
         runtime_state = current_runtime_state.get()
@@ -149,10 +247,72 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
                 "reward": breakdown,
                 "context_compactions": int(state["context_compactions"]),
                 "context_tokens_removed": int(state["context_tokens_removed"]),
+                "context_max_input_tokens": int(state["context_max_input_tokens"]),
+                "observation_projection_count": int(state["observation_projection_count"]),
+                "observation_truncated_count": int(state["observation_truncated_count"]),
+                "observation_raw_tokens": int(state["observation_raw_tokens"]),
+                "observation_visible_tokens": int(state["observation_visible_tokens"]),
+                "observation_max_raw_tokens": int(state["observation_max_raw_tokens"]),
+                "observation_max_visible_tokens": int(
+                    state["observation_max_visible_tokens"]
+                ),
+                "observation_visible_asin_count": int(
+                    state["observation_visible_asin_count"]
+                ),
+                "observation_visible_button_count": int(
+                    state["observation_visible_button_count"]
+                ),
+                "observation_any_truncated": bool(state["observation_any_truncated"]),
+                "observation_footer_failures": int(state["observation_footer_failures"]),
+                "guard_rejections": int(state["guard_rejection_count"]),
+                "guard_rejections_after_truncation": int(
+                    state["guard_rejection_after_truncation_count"]
+                ),
+                "action_attempts_after_truncation": int(
+                    state["action_attempt_after_truncation_count"]
+                ),
             }
             output.metrics["shopping_context/compactions"] = int(state["context_compactions"])
             output.metrics["shopping_context/tokens_removed"] = int(
                 state["context_tokens_removed"]
+            )
+            output.metrics["shopping_context/max_input_tokens"] = int(
+                state["context_max_input_tokens"]
+            )
+            output.metrics["shopping_projection/count"] = int(
+                state["observation_projection_count"]
+            )
+            output.metrics["shopping_projection/truncated_count"] = int(
+                state["observation_truncated_count"]
+            )
+            output.metrics["shopping_projection/raw_tokens"] = int(
+                state["observation_raw_tokens"]
+            )
+            output.metrics["shopping_projection/visible_tokens"] = int(
+                state["observation_visible_tokens"]
+            )
+            output.metrics["shopping_projection/truncation_ratio"] = (
+                state["observation_visible_tokens"] / state["observation_raw_tokens"]
+                if state["observation_raw_tokens"]
+                else 1.0
+            )
+            output.metrics["shopping_projection/visible_asin_count"] = int(
+                state["observation_visible_asin_count"]
+            )
+            output.metrics["shopping_projection/visible_button_count"] = int(
+                state["observation_visible_button_count"]
+            )
+            output.metrics["shopping_projection/footer_failures"] = int(
+                state["observation_footer_failures"]
+            )
+            output.metrics["shopping_projection/guard_rejection_rate"] = (
+                state["guard_rejection_after_truncation_count"]
+                / state["action_attempt_after_truncation_count"]
+                if state["action_attempt_after_truncation_count"]
+                else 0.0
+            )
+            output.metrics["shopping_context/overflow"] = int(
+                state["termination_reason"] == "context_hard_limit_exceeded"
             )
             return output
         finally:

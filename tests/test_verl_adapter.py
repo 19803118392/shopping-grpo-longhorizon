@@ -202,6 +202,7 @@ class VerlAdapterRuntimeTest(unittest.TestCase):
         async def run():
             state = make_runtime_state(task_id=2, max_steps=35)
             state["latest_observation"] = "可点击的按钮: []"
+            state["latest_observation_truncated"] = True
             env_token = current_environment.set(object())
             state_token = current_runtime_state.set(state)
             try:
@@ -216,6 +217,9 @@ class VerlAdapterRuntimeTest(unittest.TestCase):
             self.assertEqual(state["steps"], [])
             self.assertEqual(state["action_attempt_count"], 3)
             self.assertEqual(state["repeat_action_count"], 2)
+            self.assertEqual(state["guard_rejection_count"], 3)
+            self.assertEqual(state["guard_rejection_after_truncation_count"], 3)
+            self.assertEqual(state["action_attempt_after_truncation_count"], 3)
             self.assertIn("maximum", response.text)
 
         asyncio.run(run())

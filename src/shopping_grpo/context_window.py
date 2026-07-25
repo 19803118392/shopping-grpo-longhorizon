@@ -181,6 +181,43 @@ class VllmChatTokenCounter:
         return count
 
 
+class VllmTextTokenCounter:
+    """Count plain text with the tokenizer used by the serving vLLM model."""
+
+    def __init__(self, model, base_url, api_key, timeout=60, transport=None):
+        self.model = model
+        base_url = base_url.rstrip("/")
+        if base_url.endswith("/v1"):
+            base_url = base_url[:-3]
+        self.url = f"{base_url}/tokenize"
+        self.api_key = api_key
+        self.timeout = int(timeout)
+        self.transport = transport
+
+    def __call__(self, text):
+        payload = {"model": self.model, "prompt": str(text), "add_special_tokens": False}
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}",
+            "User-Agent": "shopping-grpo-longhorizon/0.1",
+        }
+        if self.transport is not None:
+            response = self.transport(self.url, payload, headers, self.timeout)
+        else:
+            request = Request(
+                self.url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers=headers,
+                method="POST",
+            )
+            with urlopen(request, timeout=self.timeout) as raw:
+                response = json.loads(raw.read().decode("utf-8"))
+        count = response.get("count")
+        if not isinstance(count, int) or count < 0:
+            raise ValueError("vLLM /tokenize response is missing a non-negative integer count")
+        return count
+
+
 def _split_chat_tool_groups(messages):
     first_assistant = next(
         (index for index, message in enumerate(messages) if message.get("role") == "assistant"),

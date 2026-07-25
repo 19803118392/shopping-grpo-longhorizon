@@ -658,6 +658,7 @@ class TeacherRolloutTest(unittest.TestCase):
             max_tokens=2,
             context_window=9,
             context_safety_margin=1,
+            context_compaction_enable=True,
             token_counter=lambda candidate, tools: len(candidate),
             transport=transport,
         )
@@ -669,6 +670,27 @@ class TeacherRolloutTest(unittest.TestCase):
         self.assertIn("latest page", str(captured["payload"]["messages"]))
         self.assertEqual(client.last_context_event["removed_groups"], 1)
         self.assertEqual(messages[3]["content"], "old page")
+
+    def test_openai_client_projects_tool_observation_with_serving_tokenizer(self):
+        client = OpenAIChatClient(
+            model="shopping",
+            base_url="http://127.0.0.1:8000/v1",
+            api_key="EMPTY",
+            observation_token_budget=128,
+            observation_generic_token_budget=128,
+            observation_token_counter=len,
+        )
+        raw = (
+            "Description " + "x" * 200
+            + "\n\n搜索功能是否可用: False"
+            + '\n\n可点击的按钮: ["back to search", "< prev"]'
+        )
+
+        visible, meta = client.project_observation("view_description", raw, {})
+
+        self.assertLessEqual(len(visible), 128)
+        self.assertTrue(meta["truncated"])
+        self.assertTrue(meta["critical_footer_preserved"])
 
     def test_openai_client_thinking_mode_keeps_reasoning_for_tool_follow_up(self):
         captured = {}

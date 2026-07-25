@@ -60,6 +60,37 @@ class BenchmarkTest(unittest.TestCase):
         self.assertAlmostEqual(summary["average_steps"], 5.0)
         self.assertEqual(summary["guard_reason_counts"]["schema_extra_arguments:asin"], 1)
 
+    def test_summary_separates_successes_by_projection_bucket(self):
+        projected = _trajectory(10, strict=True, steps=1)
+        projected["steps"][0]["projection"] = {
+            "truncated": True,
+            "raw_tokens": 1000,
+            "visible_tokens": 700,
+            "visible_asin_count": 10,
+            "visible_button_count": 12,
+            "critical_footer_preserved": True,
+        }
+        projected["context_turn_tokens"] = [{"input_tokens": 17000}]
+        projected["blocked_tool_calls"] = [
+            {"reason": "click", "latest_observation_truncated": True}
+        ]
+        plain = _trajectory(11, strict=False, steps=1)
+
+        summary = summarize_trajectories([10, 11], [projected, plain])
+        projection = summary["context_projection"]
+
+        self.assertEqual(projection["truncated_tool_observations"], 1)
+        self.assertEqual(projection["guard_rejections_after_truncation"], 1)
+        self.assertEqual(projection["max_context_input_tokens"], 17000)
+        self.assertEqual(
+            projection["success_by_truncation_bucket"]["any"],
+            {"tasks": 1, "strict_successes": 1},
+        )
+        self.assertEqual(
+            projection["success_by_truncation_bucket"]["none"],
+            {"tasks": 1, "strict_successes": 0},
+        )
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

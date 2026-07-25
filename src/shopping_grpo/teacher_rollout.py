@@ -13,9 +13,12 @@ from uuid import uuid4
 
 from shopping_grpo.action_validation import action_guard_tool_message, action_reject_reason
 from shopping_grpo.context_window import (
+    ContextBudgetError,
     VllmChatTokenCounter,
+    VllmTextTokenCounter,
     compact_chat_messages,
 )
+from shopping_grpo.observation_projection import project_observation
 from shopping_grpo.shop_http_env import ShopAgentEnv, ShopEnvironmentError, ShopHttpError
 from shopping_grpo.shop_tools import SHOP_TOOL_SCHEMAS, tool_call_to_action
 
@@ -59,7 +62,13 @@ class OpenAIChatClient:
         reasoning_effort="high",
         context_window=None,
         context_safety_margin=512,
+        context_compaction_enable=False,
+        observation_token_budget=None,
+        observation_detail_token_budget=4096,
+        observation_generic_token_budget=768,
+        observation_search_top_k=10,
         token_counter=None,
+        observation_token_counter=None,
         transport=None,
     ):
         self.model = model
@@ -75,6 +84,13 @@ class OpenAIChatClient:
         self.reasoning_effort = reasoning_effort
         self.context_window = int(context_window) if context_window else None
         self.context_safety_margin = int(context_safety_margin)
+        self.context_compaction_enable = bool(context_compaction_enable)
+        self.observation_token_budget = (
+            int(observation_token_budget) if observation_token_budget else None
+        )
+        self.observation_search_top_k = int(observation_search_top_k)
+        self.observation_detail_token_budget = int(observation_detail_token_budget)
+        self.observation_generic_token_budget = int(observation_generic_token_budget)
         if self.context_window is not None:
             if self.context_window <= self.max_tokens + self.context_safety_margin:
                 raise ValueError("context_window must exceed max_tokens plus context_safety_margin")
@@ -86,23 +102,45 @@ class OpenAIChatClient:
             )
         else:
             self.token_counter = token_counter
+        if self.observation_token_budget is not None:
+            if self.observation_token_budget < 64:
+                raise ValueError("observation_token_budget must be at least 64")
+            self.observation_token_counter = (
+                observation_token_counter
+                or VllmTextTokenCounter(
+                    model=self.model,
+                    base_url=self.base_url,
+                    api_key=self.api_key,
+                    timeout=self.timeout,
+                )
+            )
+        else:
+            self.observation_token_counter = observation_token_counter
         self.last_context_event = None
+        self.last_context_tokens = None
         self.transport = transport
 
     def complete(self, messages, tools):
         self.last_context_event = None
+        self.last_context_tokens = None
         request_messages = messages
         if self.context_window is not None:
-            request_messages, stats = compact_chat_messages(
-                messages,
-                tools,
-                count_tokens=self.token_counter,
-                max_input_tokens=(
-                    self.context_window - self.max_tokens - self.context_safety_margin
-                ),
-            )
-            if stats.removed_groups:
-                self.last_context_event = stats.to_dict()
+            input_budget = self.context_window - self.max_tokens - self.context_safety_margin
+            original_tokens = int(self.token_counter(messages, tools))
+            self.last_context_tokens = original_tokens
+            if original_tokens > input_budget:
+                if not self.context_compaction_enable:
+                    raise ContextBudgetError(
+                        f"prompt uses {original_tokens} tokens, above input budget {input_budget}"
+                    )
+                request_messages, stats = compact_chat_messages(
+                    messages,
+                    tools,
+                    count_tokens=self.token_counter,
+                    max_input_tokens=input_budget,
+                )
+                if stats.removed_groups:
+                    self.last_context_event = stats.to_dict()
         payload = {
             "model": self.model,
             "messages": request_messages,
@@ -147,6 +185,21 @@ class OpenAIChatClient:
                 if attempt >= MODEL_COMPLETION_RETRIES:
                     raise
                 time.sleep(MODEL_RETRY_DELAY_SECONDS * (attempt + 1))
+
+    def project_observation(self, tool_name, observation, parameters=None):
+        if self.observation_token_budget is None:
+            return str(observation), None
+        visible, meta = project_observation(
+            tool_name=tool_name,
+            observation=observation,
+            parameters=parameters,
+            count_tokens=self.observation_token_counter,
+            token_budget=self.observation_token_budget,
+            detail_token_budget=self.observation_detail_token_budget,
+            generic_token_budget=self.observation_generic_token_budget,
+            search_top_k=self.observation_search_top_k,
+        )
+        return visible, meta.to_dict()
 
 
 class ToolExecutionError(RuntimeError):
@@ -214,6 +267,7 @@ def collect_for_task(
         "blocked_tool_calls": [],
         "tool_call_truncations": [],
         "context_compactions": [],
+        "context_turn_tokens": [],
         "initial_result": {},
         "terminal_result": {},
         "final_reward": 0.0,
@@ -230,9 +284,18 @@ def collect_for_task(
         trajectory["messages"] = messages
         tool_schemas = tools or SHOP_TOOL_SCHEMAS
         consecutive_blocked_calls = 0
+        latest_observation_truncated = False
 
         while len(trajectory["steps"]) < int(max_steps):
             assistant = client.complete(messages, tool_schemas)
+            context_tokens = getattr(client, "last_context_tokens", None)
+            if context_tokens is not None:
+                trajectory["context_turn_tokens"].append(
+                    {
+                        "step_index": len(trajectory["steps"]),
+                        "input_tokens": int(context_tokens),
+                    }
+                )
             context_event = getattr(client, "last_context_event", None)
             if context_event:
                 trajectory["context_compactions"].append(
@@ -273,6 +336,7 @@ def collect_for_task(
                         "tool_call": tool_call,
                         "reason": reason,
                         "consecutive_count": consecutive_blocked_calls,
+                        "latest_observation_truncated": latest_observation_truncated,
                     }
                 )
                 messages.append(assistant)
@@ -286,9 +350,24 @@ def collect_for_task(
                 return trajectory
             messages.append(assistant)
             step = _execute_tool_call(env, tool_call, len(trajectory["steps"]))
+            raw_observation = step["observation"]
+            projector = getattr(client, "project_observation", None)
+            if projector is not None:
+                visible_observation, projection = projector(
+                    step["tool_name"],
+                    raw_observation,
+                    step["parameters"],
+                )
+                if projection is not None:
+                    step["raw_observation"] = raw_observation
+                    step["observation"] = visible_observation
+                    step["projection"] = projection
             trajectory["steps"].append(step)
             consecutive_blocked_calls = 0
             latest_observation = step["observation"]
+            latest_observation_truncated = bool(
+                (step.get("projection") or {}).get("truncated")
+            )
             messages.append(_tool_message(tool_call, step))
             if step["done"]:
                 trajectory["status"] = "done"
@@ -499,6 +578,11 @@ def client_from_env(
     reasoning_effort="high",
     context_window=None,
     context_safety_margin=512,
+    context_compaction_enable=False,
+    observation_token_budget=None,
+    observation_detail_token_budget=4096,
+    observation_generic_token_budget=768,
+    observation_search_top_k=10,
 ):
     api_key = api_key or os.environ.get("OPENAI_API_KEY")
     if not api_key:
@@ -515,4 +599,9 @@ def client_from_env(
         reasoning_effort=reasoning_effort,
         context_window=context_window,
         context_safety_margin=context_safety_margin,
+        context_compaction_enable=context_compaction_enable,
+        observation_token_budget=observation_token_budget,
+        observation_detail_token_budget=observation_detail_token_budget,
+        observation_generic_token_budget=observation_generic_token_budget,
+        observation_search_top_k=observation_search_top_k,
     )

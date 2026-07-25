@@ -1,0 +1,290 @@
+"""Deterministic, tool-aware projection of ShopSimulator observations."""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass
+import json
+import re
+
+from shopping_grpo.action_validation import clickable_buttons, product_ids
+
+
+FOOTER_MARKER = "\n\n搜索功能是否可用:"
+TRUNCATION_MARKER = "[TRUNCATED_BY_SHOPPING_PROJECTOR]"
+PROJECTION_CONTRACT_VERSION = "shopping-observation-v1"
+ASIN_PATTERN = re.compile(r"^\d{12}$")
+NAVIGATION_BUTTONS = {
+    "back to search",
+    "next >",
+    "< prev",
+    "description",
+    "features",
+    "reviews",
+    "attributes",
+    "buy now",
+}
+
+
+class ObservationProjectionError(RuntimeError):
+    """A safe model-visible observation cannot be produced."""
+
+
+@dataclass(frozen=True)
+class ObservationProjectionMeta:
+    tool_name: str
+    page_type: str
+    token_budget: int
+    raw_tokens: int
+    visible_tokens: int
+    truncation_ratio: float
+    truncated: bool
+    raw_asin_count: int
+    visible_asin_count: int
+    raw_button_count: int
+    visible_button_count: int
+    critical_footer_preserved: bool
+
+    def to_dict(self):
+        return asdict(self)
+
+
+def project_observation(
+    tool_name,
+    observation,
+    *,
+    count_tokens,
+    token_budget=768,
+    detail_token_budget=4096,
+    generic_token_budget=768,
+    parameters=None,
+    search_top_k=10,
+):
+    """Return a bounded observation whose visible targets are also the guard targets."""
+    observation = str(observation)
+    token_budget = int(token_budget)
+    detail_token_budget = int(detail_token_budget)
+    generic_token_budget = int(generic_token_budget)
+    search_top_k = int(search_top_k)
+    if min(token_budget, detail_token_budget, generic_token_budget) < 64:
+        raise ValueError("all observation token budgets must be at least 64")
+    if search_top_k < 1:
+        raise ValueError("search_top_k must be positive")
+
+    raw_tokens = int(count_tokens(observation))
+    raw_buttons = clickable_buttons(observation)
+    raw_asins = product_ids(observation)
+    page_type = _page_type(observation)
+    effective_budget = {
+        "search_results": token_budget,
+        "product_detail": detail_token_budget,
+    }.get(page_type, generic_token_budget)
+    if raw_tokens <= effective_budget:
+        visible = observation
+    else:
+        _require_action_footer(observation)
+        if page_type == "search_results":
+            visible = _project_search_results(
+                observation,
+                parameters=parameters or {},
+                count_tokens=count_tokens,
+                token_budget=effective_budget,
+                search_top_k=search_top_k,
+            )
+        else:
+            visible = _project_generic_page(
+                observation,
+                count_tokens=count_tokens,
+                token_budget=effective_budget,
+            )
+
+    visible_tokens = int(count_tokens(visible))
+    if visible_tokens > effective_budget:
+        raise ObservationProjectionError(
+            f"visible observation uses {visible_tokens} tokens, above budget {effective_budget}"
+        )
+    visible_buttons = clickable_buttons(visible)
+    visible_asins = product_ids(visible)
+    footer_preserved = _critical_footer_preserved(
+        observation,
+        visible,
+        raw_buttons=raw_buttons,
+        visible_buttons=visible_buttons,
+    )
+    if not footer_preserved:
+        raise ObservationProjectionError("critical search/button footer was not preserved")
+    if page_type != "search_results" and set(visible_buttons) != set(raw_buttons):
+        raise ObservationProjectionError("non-search projection changed actionable buttons")
+    if page_type == "search_results":
+        visible_product_targets = {
+            button for button in visible_buttons if ASIN_PATTERN.fullmatch(button)
+        }
+        if set(visible_asins) != visible_product_targets:
+            raise ObservationProjectionError(
+                "visible search products and actionable ASIN buttons do not match"
+            )
+
+    meta = ObservationProjectionMeta(
+        tool_name=str(tool_name),
+        page_type=page_type,
+        token_budget=effective_budget,
+        raw_tokens=raw_tokens,
+        visible_tokens=visible_tokens,
+        truncation_ratio=(visible_tokens / raw_tokens if raw_tokens else 1.0),
+        truncated=visible != observation,
+        raw_asin_count=len(raw_asins),
+        visible_asin_count=len(visible_asins),
+        raw_button_count=len(raw_buttons),
+        visible_button_count=len(visible_buttons),
+        critical_footer_preserved=footer_preserved,
+    )
+    return visible, meta
+
+
+def _page_type(observation):
+    if re.search(r"(?:^|\[SEP\]\s*)Page \d+", observation) and product_ids(observation):
+        return "search_results"
+    buttons = {button.casefold() for button in clickable_buttons(observation)}
+    if "buy now" in buttons or "价格:" in observation:
+        return "product_detail"
+    if "搜索功能是否可用: True" in observation:
+        return "search_home"
+    if buttons and buttons <= {"back to search", "< prev"}:
+        return "information_subpage"
+    return "generic"
+
+
+def _project_search_results(
+    observation,
+    *,
+    parameters,
+    count_tokens,
+    token_budget,
+    search_top_k,
+):
+    body, footer = _split_footer(observation)
+    segments = [segment.strip() for segment in body.split("[SEP]")]
+    page = next((segment for segment in segments if re.fullmatch(r"Page \d+.*", segment)), "Page unknown")
+    products = []
+    for index, segment in enumerate(segments):
+        if not ASIN_PATTERN.fullmatch(segment):
+            continue
+        title = segments[index + 1] if index + 1 < len(segments) else ""
+        price = segments[index + 2] if index + 2 < len(segments) else ""
+        products.append((segment, title, price))
+    if not products:
+        return _project_generic_page(
+            observation,
+            count_tokens=count_tokens,
+            token_budget=token_budget,
+        )
+
+    query = str(parameters.get("query", "")).strip()
+    raw_buttons = clickable_buttons(observation)
+    maximum = min(search_top_k, len(products))
+    for shown in range(maximum, 0, -1):
+        selected = products[:shown]
+        selected_asins = {asin for asin, _, _ in selected}
+        visible_buttons = [
+            button
+            for button in raw_buttons
+            if button.casefold() in NAVIGATION_BUTTONS or button in selected_asins
+        ]
+        lines = [
+            "[SHOPPING_OBSERVATION_PROJECTION]",
+            "page_type: search_results",
+            f"query: {query or '(not recorded)'}",
+            f"page: {page}",
+            f"products_shown: {shown}/{len(products)}",
+        ]
+        lines.extend(
+            f"- ASIN={asin} | title={title} | price={price}"
+            for asin, title, price in selected
+        )
+        if shown < len(products):
+            lines.append(f"{TRUNCATION_MARKER} omitted_products={len(products) - shown}")
+        lines.extend(_footer_lines(footer, visible_buttons))
+        candidate = "\n".join(lines)
+        if int(count_tokens(candidate)) <= token_budget:
+            return candidate
+    raise ObservationProjectionError(
+        "search result footer plus one visible product exceeds the observation token budget"
+    )
+
+
+def _project_generic_page(observation, *, count_tokens, token_budget):
+    body, footer = _split_footer(observation)
+    footer_lines = _footer_lines(footer, clickable_buttons(observation))
+    suffix = "\n".join([TRUNCATION_MARKER, *footer_lines])
+    if int(count_tokens(suffix)) > token_budget:
+        raise ObservationProjectionError("critical footer exceeds the observation token budget")
+
+    # Keep both ends of the page body: titles/key attributes are usually near the
+    # front, while selected options and navigation context may be appended near
+    # the end. The complete actionable footer is always preserved separately.
+    low, high, best = 0, len(body), ""
+    while low <= high:
+        middle = (low + high) // 2
+        tail_length = min(middle // 5, len(body))
+        head_length = middle - tail_length
+        if tail_length:
+            projected_body = (
+                body[:head_length].rstrip()
+                + "\n"
+                + TRUNCATION_MARKER
+                + "\n"
+                + body[-tail_length:].lstrip()
+            )
+            candidate = projected_body + "\n" + "\n".join(footer_lines)
+        else:
+            candidate = suffix
+        if int(count_tokens(candidate)) <= token_budget:
+            best = candidate
+            low = middle + 1
+        else:
+            high = middle - 1
+    if not best:
+        raise ObservationProjectionError("unable to fit generic observation into token budget")
+    return best
+
+
+def _split_footer(observation):
+    index = observation.rfind(FOOTER_MARKER)
+    if index < 0:
+        return observation, ""
+    return observation[:index], observation[index + 2 :]
+
+
+def _require_action_footer(observation):
+    if FOOTER_MARKER not in observation or "可点击的按钮:" not in observation:
+        raise ObservationProjectionError(
+            "long observation has no complete action footer and cannot be projected safely"
+        )
+
+
+def _footer_lines(footer, buttons):
+    search_state = next(
+        (
+            line.strip()
+            for line in footer.splitlines()
+            if line.strip().startswith("搜索功能是否可用:")
+        ),
+        "搜索功能是否可用: False",
+    )
+    return [
+        search_state,
+        "可点击的按钮: " + json.dumps(buttons, ensure_ascii=False),
+    ]
+
+
+def _critical_footer_preserved(raw, visible, *, raw_buttons, visible_buttons):
+    if "搜索功能是否可用:" in raw and "搜索功能是否可用:" not in visible:
+        return False
+    if "可点击的按钮:" in raw and "可点击的按钮:" not in visible:
+        return False
+    raw_navigation = {
+        button.casefold() for button in raw_buttons if button.casefold() in NAVIGATION_BUTTONS
+    }
+    visible_navigation = {
+        button.casefold() for button in visible_buttons if button.casefold() in NAVIGATION_BUTTONS
+    }
+    return raw_navigation == visible_navigation

@@ -34,7 +34,45 @@ def make_runtime_state(task_id: int, max_steps: int) -> dict:
         "error": None,
         "context_compactions": 0,
         "context_tokens_removed": 0,
+        "context_max_input_tokens": 0,
+        "observation_projection_count": 0,
+        "observation_truncated_count": 0,
+        "observation_raw_tokens": 0,
+        "observation_visible_tokens": 0,
+        "observation_max_raw_tokens": 0,
+        "observation_max_visible_tokens": 0,
+        "observation_visible_asin_count": 0,
+        "observation_visible_button_count": 0,
+        "observation_any_truncated": False,
+        "latest_observation_truncated": False,
+        "observation_footer_failures": 0,
+        "guard_rejection_count": 0,
+        "guard_rejection_after_truncation_count": 0,
+        "action_attempt_after_truncation_count": 0,
     }
+
+
+def record_observation_projection(state: dict, meta: dict) -> None:
+    """Aggregate public projection diagnostics without retaining hidden environment state."""
+    raw_tokens = int(meta["raw_tokens"])
+    visible_tokens = int(meta["visible_tokens"])
+    state["observation_projection_count"] += 1
+    state["observation_truncated_count"] += int(bool(meta["truncated"]))
+    state["observation_raw_tokens"] += raw_tokens
+    state["observation_visible_tokens"] += visible_tokens
+    state["observation_max_raw_tokens"] = max(state["observation_max_raw_tokens"], raw_tokens)
+    state["observation_max_visible_tokens"] = max(
+        state["observation_max_visible_tokens"], visible_tokens
+    )
+    state["observation_visible_asin_count"] += int(meta["visible_asin_count"])
+    state["observation_visible_button_count"] += int(meta["visible_button_count"])
+    state["observation_any_truncated"] = (
+        state["observation_any_truncated"] or bool(meta["truncated"])
+    )
+    state["latest_observation_truncated"] = bool(meta["truncated"])
+    state["observation_footer_failures"] += int(
+        not bool(meta["critical_footer_preserved"])
+    )
 
 
 def record_action_attempt(state: dict, tool_name: str, parameters: dict, observation: str) -> None:

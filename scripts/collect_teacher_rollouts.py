@@ -31,6 +31,11 @@ def parse_args():
         help="可选的 vLLM 上下文窗口；0 表示不调用本地 /tokenize 做滑窗。",
     )
     parser.add_argument("--context-safety-margin", type=int, default=512)
+    parser.add_argument("--context-compaction", action="store_true")
+    parser.add_argument("--observation-token-budget", type=int, default=0)
+    parser.add_argument("--observation-detail-token-budget", type=int, default=4096)
+    parser.add_argument("--observation-generic-token-budget", type=int, default=768)
+    parser.add_argument("--observation-search-top-k", type=int, default=10)
     parser.add_argument(
         "--max-steps",
         type=int,
@@ -71,6 +76,11 @@ def main():
         reasoning_effort=args.reasoning_effort,
         context_window=args.context_window or None,
         context_safety_margin=args.context_safety_margin,
+        context_compaction_enable=args.context_compaction,
+        observation_token_budget=args.observation_token_budget or None,
+        observation_detail_token_budget=args.observation_detail_token_budget,
+        observation_generic_token_budget=args.observation_generic_token_budget,
+        observation_search_top_k=args.observation_search_top_k,
     )
     written = collect_tasks(
         tasks,

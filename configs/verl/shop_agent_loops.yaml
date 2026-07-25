@@ -7,6 +7,12 @@
   context_window_tokens: 24576
   context_generation_reserve_tokens: 512
   context_safety_margin_tokens: 512
-  # 给下一次 tool observation 和 20K PPO response 上限留出空间；超出时删最旧完整交互。
+  # 旧历史删除仅在下面的显式应急开关开启时生效。
   context_input_budget_tokens: 16384
   context_preserve_recent_groups: 1
+  # 正式 Vanilla 基线保持连续轨迹；旧 token 删除只保留为显式应急开关。
+  context_compaction_enable: false
+  observation_token_budget: 768
+  observation_detail_token_budget: 4096
+  observation_generic_token_budget: 768
+  observation_search_top_k: 10

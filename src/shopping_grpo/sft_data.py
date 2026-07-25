@@ -1,6 +1,7 @@
 """Deterministic trajectory acceptance and SFT message construction."""
 
 import json
+from copy import deepcopy
 from collections import Counter
 from pathlib import Path
 
@@ -74,6 +75,46 @@ def build_sft_row(trajectory, retain_reasoning=False):
         ),
         "tools": SHOP_TOOL_SCHEMAS,
     }
+
+
+def project_sft_messages(messages, projector):
+    """Project tool observations with the same visible-state contract used online."""
+    projected = deepcopy(messages)
+    projection_rows = []
+    calls_by_id = {}
+    for index, message in enumerate(projected):
+        if message.get("role") == "assistant":
+            for call in message.get("tool_calls") or []:
+                function = call.get("function") or {}
+                raw_arguments = function.get("arguments") or "{}"
+                try:
+                    parameters = (
+                        json.loads(raw_arguments)
+                        if isinstance(raw_arguments, str)
+                        else dict(raw_arguments)
+                    )
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    parameters = {}
+                calls_by_id[call.get("id")] = (
+                    function.get("name") or "unknown",
+                    parameters,
+                )
+            continue
+        if message.get("role") != "tool" or not isinstance(message.get("content"), str):
+            continue
+        tool_name, parameters = calls_by_id.get(
+            message.get("tool_call_id"),
+            (message.get("name") or "unknown", {}),
+        )
+        visible, meta = projector(
+            tool_name,
+            message["content"],
+            parameters,
+        )
+        message["content"] = visible
+        if meta is not None:
+            projection_rows.append({"message_index": index, **meta})
+    return projected, projection_rows
 
 
 def _training_messages(messages, blocked_call_ids, terminal_tool_call_id, retain_reasoning=False):

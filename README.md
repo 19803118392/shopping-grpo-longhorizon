@@ -6,7 +6,7 @@ ShopSimulator 单轮购物任务的 SFT 数据准备链路：
 ShopSimulator -> Teacher rollout -> 规则验收 -> OpenAI tool-calling SFT JSONL
 ```
 
-当前仓库已包含 LoRA SFT 与一套可启动的 **Vanilla GRPO** 配置；正式 GPU 训练尚未发生。GRPO 只使用 ShopSimulator 终局奖励，不包含 Reward Model、LLM Grader、PRM 或额外 Agent 框架。
+当前仓库已包含 LoRA SFT、Vanilla GRPO 运行时和可复现的 A0/A1 实验记录。GRPO 只使用 ShopSimulator 终局奖励，不包含 Reward Model、LLM Grader、PRM 或额外 Agent 框架。
 
 ## 目录
 
@@ -223,6 +223,14 @@ PYTHONPATH=src python3 scripts/prepare_verl_grpo_dataset.py \
 ```
 
 GRPO 使用独立的干净 Python 3.12 环境，固定版本和安装步骤见 [Vanilla GRPO 服务器执行手册](docs/grpo-runtime-setup.md)。不要安装或把相邻 `agentic-grpo-longhorizon/verl` reference fork 放进 `PYTHONPATH`。默认 `train_batch_size=2`、`rollout.n=4`，因此 ShopSimulator 至少启动 8 个环境槽。
+
+AgentLoop 默认使用与 benchmark 共用的确定性工具级状态投影：搜索页保留
+Top-10 商品和完整操作区，商品详情页保留完整规格与购买入口；模型和动作守卫只使用
+同一份可见 observation。旧历史 token 删除默认关闭，仅保留为显式应急开关。投影会
+改变模型输入分布，因此正式 GRPO 前必须先使用
+`scripts/project_sft_observations.py` 重渲染 Action-only SFT，并对模型做短 SFT
+refresh。设计、对比结果和数据 SHA-256 见
+[实验 10](docs/experiments/10-agent-context-window-2026-07-25.md)。
 
 ```bash
 export GRPO_MODEL_PATH=/absolute/path/qwen35-2b-shopping-sft-v3-merged

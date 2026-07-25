@@ -44,6 +44,38 @@ def summarize_trajectories(expected_task_ids, trajectories):
         for blocked in item.get("blocked_tool_calls") or []
     )
     statuses = Counter(item.get("status", "unknown") for item in by_task.values())
+    projections = [
+        step["projection"]
+        for item in by_task.values()
+        for step in item.get("steps") or []
+        if isinstance(step.get("projection"), dict)
+    ]
+    truncated_task_ids = {
+        task_id
+        for task_id, item in by_task.items()
+        if any(
+            bool((step.get("projection") or {}).get("truncated"))
+            for step in item.get("steps") or []
+        )
+    }
+    guard_rejections = [
+        blocked
+        for item in by_task.values()
+        for blocked in item.get("blocked_tool_calls") or []
+    ]
+    executed_after_truncation = sum(
+        bool(((steps[index - 1].get("projection") or {}).get("truncated")))
+        for item in by_task.values()
+        for steps in [item.get("steps") or []]
+        for index in range(1, len(steps))
+    )
+    guard_rejections_after_truncation = sum(
+        bool(item.get("latest_observation_truncated")) for item in guard_rejections
+    )
+    context_overflows = sum(
+        (item.get("error") or {}).get("type") == "ContextBudgetError"
+        for item in by_task.values()
+    )
     denominator = len(expected_ids)
     return {
         "expected_tasks": denominator,
@@ -66,6 +98,64 @@ def summarize_trajectories(expected_task_ids, trajectories):
         "average_steps": sum(steps) / len(steps) if steps else 0.0,
         "status_counts": dict(sorted(statuses.items())),
         "guard_reason_counts": dict(sorted(guard_reasons.items())),
+        "context_projection": {
+            "projected_tool_observations": len(projections),
+            "truncated_tool_observations": sum(
+                bool(item.get("truncated")) for item in projections
+            ),
+            "raw_tokens": sum(int(item.get("raw_tokens", 0)) for item in projections),
+            "visible_tokens": sum(
+                int(item.get("visible_tokens", 0)) for item in projections
+            ),
+            "critical_footer_failures": sum(
+                not bool(item.get("critical_footer_preserved", False))
+                for item in projections
+            ),
+            "visible_asin_count": sum(
+                int(item.get("visible_asin_count", 0)) for item in projections
+            ),
+            "visible_button_count": sum(
+                int(item.get("visible_button_count", 0)) for item in projections
+            ),
+            "guard_rejections": len(guard_rejections),
+            "guard_rejections_after_truncation": guard_rejections_after_truncation,
+            "action_attempts_after_truncation": (
+                executed_after_truncation + guard_rejections_after_truncation
+            ),
+            "guard_rejection_rate_after_truncation": (
+                guard_rejections_after_truncation
+                / (executed_after_truncation + guard_rejections_after_truncation)
+                if executed_after_truncation + guard_rejections_after_truncation
+                else 0.0
+            ),
+            "context_overflow_tasks": context_overflows,
+            "max_context_input_tokens": max(
+                (
+                    int(turn.get("input_tokens", 0))
+                    for item in by_task.values()
+                    for turn in item.get("context_turn_tokens") or []
+                ),
+                default=0,
+            ),
+            "success_by_truncation_bucket": {
+                "none": {
+                    "tasks": len(set(by_task) - truncated_task_ids),
+                    "strict_successes": sum(
+                        _is_strict_success(item)
+                        for task_id, item in by_task.items()
+                        if task_id not in truncated_task_ids
+                    ),
+                },
+                "any": {
+                    "tasks": len(truncated_task_ids),
+                    "strict_successes": sum(
+                        _is_strict_success(item)
+                        for task_id, item in by_task.items()
+                        if task_id in truncated_task_ids
+                    ),
+                },
+            },
+        },
     }
 
 

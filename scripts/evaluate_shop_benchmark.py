@@ -30,6 +30,15 @@ def parse_args():
     )
     parser.add_argument("--context-window", type=int, default=24576)
     parser.add_argument("--context-safety-margin", type=int, default=512)
+    parser.add_argument(
+        "--context-compaction",
+        action="store_true",
+        help="应急启用旧历史删除；正式 Vanilla 评测默认关闭。",
+    )
+    parser.add_argument("--observation-token-budget", type=int, default=768)
+    parser.add_argument("--observation-detail-token-budget", type=int, default=4096)
+    parser.add_argument("--observation-generic-token-budget", type=int, default=768)
+    parser.add_argument("--observation-search-top-k", type=int, default=10)
     return parser.parse_args()
 
 
@@ -60,6 +69,11 @@ def main():
         max_tokens=args.max_tokens,
         context_window=args.context_window,
         context_safety_margin=args.context_safety_margin,
+        context_compaction_enable=args.context_compaction,
+        observation_token_budget=args.observation_token_budget,
+        observation_detail_token_budget=args.observation_detail_token_budget,
+        observation_generic_token_budget=args.observation_generic_token_budget,
+        observation_search_top_k=args.observation_search_top_k,
     )
     collect_tasks(
         tasks,
@@ -80,6 +94,11 @@ def main():
         "top_p": args.top_p,
         "context_window": args.context_window,
         "context_safety_margin": args.context_safety_margin,
+        "context_compaction": args.context_compaction,
+        "observation_token_budget": args.observation_token_budget,
+        "observation_detail_token_budget": args.observation_detail_token_budget,
+        "observation_generic_token_budget": args.observation_generic_token_budget,
+        "observation_search_top_k": args.observation_search_top_k,
     }
     args.summary.parent.mkdir(parents=True, exist_ok=True)
     args.summary.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
