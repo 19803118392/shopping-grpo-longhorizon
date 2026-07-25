@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from scripts.train_lora_sft import (
     DEFAULT_TARGET_MODULES,
+    _loss_only_eval_trainer_class,
     _model_load_kwargs,
     _prepare_model_for_training,
     _load_preprocessing_components,
@@ -69,6 +70,17 @@ class _FakeModel:
 
     def enable_input_require_grads(self):
         self.input_grads_enabled = True
+
+
+class _FakeTrainer:
+    def prediction_step(
+        self,
+        model,
+        inputs,
+        prediction_loss_only,
+        ignore_keys=None,
+    ):
+        return model, inputs, prediction_loss_only, ignore_keys
 
 
 class TrainLoraSftCliTest(unittest.TestCase):
@@ -216,6 +228,56 @@ class TrainLoraSftCliTest(unittest.TestCase):
         self.assertIs(result, prepared)
         prepare.assert_called_once_with(model, use_gradient_checkpointing=True)
         self.assertFalse(result.config.use_cache)
+
+    def test_liger_qwen_loss_only_eval_skips_full_vocabulary_logits(self):
+        """纯 eval_loss 必须显式走 Liger fused loss，避免 20K×248K logits。"""
+        trainer_class = _loss_only_eval_trainer_class(
+            _FakeTrainer,
+            enable_skip_logits=True,
+        )
+        original_inputs = {"input_ids": [1, 2], "labels": [1, 2]}
+
+        _, forwarded_inputs, prediction_loss_only, ignore_keys = trainer_class().prediction_step(
+            model="model",
+            inputs=original_inputs,
+            prediction_loss_only=True,
+            ignore_keys=["past_key_values"],
+        )
+
+        self.assertTrue(forwarded_inputs["skip_logits"])
+        self.assertNotIn("skip_logits", original_inputs)
+        self.assertTrue(prediction_loss_only)
+        self.assertEqual(ignore_keys, ["past_key_values"])
+
+    def test_eval_that_needs_predictions_does_not_skip_logits(self):
+        """若调用方需要 predictions/metrics，则仍必须返回真实 logits。"""
+        trainer_class = _loss_only_eval_trainer_class(
+            _FakeTrainer,
+            enable_skip_logits=True,
+        )
+
+        _, forwarded_inputs, _, _ = trainer_class().prediction_step(
+            model="model",
+            inputs={"input_ids": [1, 2], "labels": [1, 2]},
+            prediction_loss_only=False,
+        )
+
+        self.assertNotIn("skip_logits", forwarded_inputs)
+
+    def test_non_liger_training_keeps_standard_eval_forward(self):
+        """未启用兼容的 Liger Qwen forward 时不能传入专用参数。"""
+        trainer_class = _loss_only_eval_trainer_class(
+            _FakeTrainer,
+            enable_skip_logits=False,
+        )
+
+        _, forwarded_inputs, _, _ = trainer_class().prediction_step(
+            model="model",
+            inputs={"input_ids": [1, 2], "labels": [1, 2]},
+            prediction_loss_only=True,
+        )
+
+        self.assertNotIn("skip_logits", forwarded_inputs)
 
 
 if __name__ == "__main__":  # pragma: no cover

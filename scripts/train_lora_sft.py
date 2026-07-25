@@ -166,6 +166,40 @@ def _swanlab_config(args):
     return "swanlab", run_name
 
 
+def _loss_only_eval_trainer_class(trainer_base, enable_skip_logits):
+    """构造只在 loss-only 验证时显式跳过完整词表 logits 的 Trainer。
+
+    Qwen3.5 的 Liger forward 默认只在 ``model.training`` 时启用融合
+    LM-head + cross-entropy；Trainer 验证会先调用 ``model.eval()``，即使最终
+    只需要 eval_loss，也会物化 ``[batch, sequence, vocab]`` logits。20K 上下文
+    和 248K 词表会因此产生约 20 GiB 的瞬时 FP32 张量。
+
+    ``skip_logits`` 是 Liger Qwen3.5 forward 的公开参数。这里只在 Trainer 已经
+    明确 ``prediction_loss_only=True`` 且输入含 labels 时传入，不改变训练前向，
+    也不影响需要 predictions/metrics 的评估。
+    """
+
+    class LossOnlyEvalTrainer(trainer_base):
+        def prediction_step(
+            self,
+            model,
+            inputs,
+            prediction_loss_only,
+            ignore_keys=None,
+        ):
+            if enable_skip_logits and prediction_loss_only and inputs.get("labels") is not None:
+                inputs = dict(inputs)
+                inputs["skip_logits"] = True
+            return super().prediction_step(
+                model,
+                inputs,
+                prediction_loss_only,
+                ignore_keys=ignore_keys,
+            )
+
+    return LossOnlyEvalTrainer
+
+
 def _load_preprocessing_components(model_name, auto_config, auto_tokenizer, auto_processor):
     """按模型配置选择 chat template 的持有者。
 
@@ -367,7 +401,11 @@ def main():
         remove_unused_columns=False,
         seed=args.seed,
     )
-    trainer = Trainer(
+    trainer_class = _loss_only_eval_trainer_class(
+        Trainer,
+        enable_skip_logits=args.liger_kernel and is_multimodal,
+    )
+    trainer = trainer_class(
         model=model,
         args=training_args,
         train_dataset=_torch_dataset(train_examples, torch),
