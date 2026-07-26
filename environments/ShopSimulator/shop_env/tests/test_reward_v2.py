@@ -1,5 +1,6 @@
 import unittest
 
+from web_agent_site.engine.goal_v2 import compile_task_constraint_contract
 from web_agent_site.engine.reward_v2 import (
     evaluate_abstain,
     evaluate_purchase,
@@ -81,6 +82,41 @@ class RewardV2Test(unittest.TestCase):
         self.assertEqual(result.reward_type, "reward_unverifiable")
         self.assertFalse(result.reward_valid)
         self.assertEqual(result.reward, 0.0)
+
+    def test_compiled_task_contract_makes_valid_alternative_reachable(self):
+        goal = {
+            "asin": "111111111111",
+            "category": "家电›洗地机",
+            "price_upper": 2200,
+            "goal_options": ["白色"],
+        }
+        goal.update(
+            compile_task_constraint_contract(
+                {
+                    "instruction": "购买支持热洗的白色洗地机",
+                    "attributes": ["洗地", "热洗"],
+                    "instruction_options": ["白色"],
+                }
+            )
+        )
+        candidate = {
+            "asin": "222222222222",
+            "title": "云鲸智能热洗洗地机",
+            "category": "家电›洗地机",
+            "attribute": ["智能洗地", "热洗"],
+            "customization_options": {
+                "颜色": [{"value": "白色", "price": 1999}]
+            },
+        }
+        result = evaluate_purchase(
+            candidate,
+            goal,
+            price=1999,
+            selected_options={"颜色": "白色"},
+        )
+        self.assertEqual(result.reward_type, "valid_alternative_purchase")
+        self.assertTrue(result.reward_valid)
+        self.assertEqual(result.reward, 0.4)
 
     def test_abstain_gate(self):
         early = evaluate_abstain(distinct_normalized_queries=1, opened_asins=0)

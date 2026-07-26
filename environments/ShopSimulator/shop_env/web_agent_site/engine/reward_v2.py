@@ -171,10 +171,13 @@ def _declared_constraint_gates(product: dict, goal: dict) -> tuple[dict, bool]:
                     product.get("category"),
                     product.get("attribute"),
                     product.get("Attributes"),
+                    product.get("BulletPoints"),
                     product.get("customization_options"),
                     product.get("options"),
                     product.get("small_description"),
                     product.get("sub_title"),
+                    product.get("full_description"),
+                    product.get("Description"),
                 ]
             )
         )

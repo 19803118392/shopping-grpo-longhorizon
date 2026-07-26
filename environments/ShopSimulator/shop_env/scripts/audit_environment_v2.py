@@ -13,7 +13,10 @@ SHOP_ENV = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SHOP_ENV))
 
 from scripts.build_environment_v2_index import iter_json_array  # noqa: E402
-from web_agent_site.engine.goal_v2 import deterministic_price_upper  # noqa: E402
+from web_agent_site.engine.goal_v2 import (  # noqa: E402
+    compile_task_constraint_contract,
+    deterministic_price_upper,
+)
 from web_agent_site.engine.reward_v2 import evaluate_purchase  # noqa: E402
 from web_agent_site.engine.search_v2 import MultiFieldBM25Searcher  # noqa: E402
 
@@ -81,6 +84,7 @@ def audit_task(task_id, product, instruction, searcher):
         ),
         "goal_options": required_options,
     }
+    goal.update(compile_task_constraint_contract(instruction))
     reward = evaluate_purchase(
         product,
         goal,
@@ -100,6 +104,9 @@ def audit_task(task_id, product, instruction, searcher):
         "required_options_exist": not missing_options,
         "price_valid": isinstance(selected_price, (int, float))
         and selected_price >= 0,
+        "constraint_contract_complete": (
+            goal["hard_constraints"]["complete"] is True
+        ),
         "buy_path_reward_is_gold": reward.reward_type == "gold_purchase",
     }
     return {

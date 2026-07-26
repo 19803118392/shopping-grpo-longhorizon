@@ -1,6 +1,6 @@
 # Shopping Agent Environment v2 技术方案
 
-**状态：** 第一轮 CPU 实现已完成；待冻结任务约束元数据和执行 GPU 模型门禁
+**状态：** 第一轮 CPU 实现及任务约束契约已完成；待处理数据质量审计并执行 GPU 模型门禁
 
 **目标仓库：** `shopping-grpo-longhorizon`，环境源码内嵌于
 `environments/ShopSimulator/`
@@ -29,6 +29,7 @@ Teacher Rollout → SFT → GRPO → Offline Evaluation
 - ShopSimulator 结构化公开状态与本仓库 canonical renderer；
 - v1/v2 工具配置分离及 `finish_without_purchase`；
 - Reward v2、主动放弃、循环/最大步数终止；
+- 从当前 instruction 的结构化 attributes/options 编译确定性约束契约；
 - Environment v2 JSON 配置由运行时实际加载并严格校验，搜索、Reward、分页
   和终止阈值发生漂移时拒绝启动；
 - `reward_unverifiable` 与 `infrastructure_invalid` 的独立诊断；
@@ -41,11 +42,13 @@ Reward 检查。真实 HTTP 集成测试验证了 rank 1–20/21–40 无重叠�
 购买为 1.0、合格/过早主动结束分别为 -0.1/-0.25，以及不可核验购买不会
 伪装成基础设施异常。
 
-尚未进入 Teacher Rollout、SFT 或 GRPO。原始任务当前没有完整的
-`hard_constraints`/`weighted_preferences` 分类；实现选择保守失败：
-目标 ASIN 正常评分，非目标商品在缺少完整约束证据时标记
-`reward_unverifiable`。正式生成 v2 Teacher 数据前必须先冻结任务约束元数据，
-不能在 Reward 内根据模型轨迹或目标商品临时猜测。
+尚未进入 Teacher Rollout、SFT 或 GRPO。当前任务没有现成的
+`hard_constraints`/`weighted_preferences` 字段，因此 v2 使用一个受限的
+确定性编译契约：类目、预算仍由独立门禁检查，当前 instruction 的
+`attributes` 映射为 `core_functions`，`instruction_options` 仍由规格门禁
+检查。编译器不读取目标商品额外字段，也不猜测品牌、型号和软偏好。缺失
+annotation schema 或候选商品证据不足时仍标记 `reward_unverifiable`。
+23,421 条有效任务的契约完整率为 100%。
 
 ---
 
@@ -447,6 +450,12 @@ Reward 的判定顺序固定为：
 
 各子属性的具体权重在 Reward 实现阶段放入一个配置文件统一确定并冻结，不再使用所有属性简单平均或“四个属性完全同级”的逻辑。无法由商品元数据确定性验证的约束不得由 LLM Judge 临时猜测。
 
+首版数据没有可靠的硬/软属性标签。实现不通过关键词自行划分，而是把当前
+instruction 已标注的 `attributes` 保守作为核心功能门禁，把
+`instruction_options` 交给规格门禁；品牌、型号和 `weighted_preferences`
+暂不从目标商品反推。该契约版本为 `shopping-task-constraints-v1`，后续若
+人工补充结构化任务元数据，必须升级版本并重新审计。
+
 金额上限优先从任务文本的明确预算表达中确定性解析，支持“1万2以内”等
 常见中文写法。对于“1万元左右”这类近似预算，首版固定使用 10% 上浮容差；
 它仍然是硬门禁，只是先把自然语言中的近似范围确定化。无明确预算时才使用
@@ -463,12 +472,17 @@ Reward 的判定顺序固定为：
 | `graceful_stop` | `-0.1` | 达到最低探索资格后主动结束，未找到合适商品 |
 | `early_abstain` | `-0.25` | 未满足最低探索要求便退出 |
 | `wrong_purchase` | `-0.4` | 购买违反硬约束或关键规格错误 |
-| `repeat_loop` | `-0.6` | 完全重复或连续 4 步没有新 ASIN |
+| `repeat_loop` | `-0.6` | 完全重复或连续 4 次候选探索没有新 ASIN |
 | `max_steps` | `-0.7` | 未完成且耗尽最大步数 |
 
 这些终局值作为 v2 首版固定候选，不写死在散落代码中。实现时放入单一版本化 Reward 配置，并在 Teacher 数据生成前完成一次离线分布审计；一旦开始正式数据生成便冻结。
 
 不使用统一的大额逐步惩罚。正常搜索、翻页、比较候选和查看规格是必要探索，不能与无进展重复同等处罚。
+
+“没有新 ASIN”只统计搜索、翻页和候选打开：搜索/翻页没有新候选时累计，
+首次打开一个候选时清零，重复打开旧候选时累计。查看 Description、Features、
+Attributes、选择规格和返回搜索页不改变该计数。完全相同动作的连续重复仍由
+独立计数器处理。这避免正常详情浏览在第 4–5 步被误杀。
 
 ### 8.4 有效替代商品与属性不可核验
 
@@ -808,6 +822,7 @@ Go 条件：
 - 实现两 Query 或一 Query 加一商品的资格门槛；
 - 实现连续完全相同动作检测；
 - 实现连续 4 步没有新 ASIN 检测；
+- 将“无新 ASIN”限定为搜索、翻页和候选打开，详情浏览不累计；
 - 统一正常行为的 termination reason。
 
 Go 条件：

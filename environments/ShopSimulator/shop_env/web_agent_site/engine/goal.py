@@ -7,6 +7,7 @@ from collections import defaultdict
 from rich import print
 from web_agent_site.engine.normalize import normalize_color
 from web_agent_site.engine.goal_v2 import (
+    compile_task_constraint_contract,
     deterministic_price_upper,
     explicit_budget_from_instruction,
 )
@@ -71,20 +72,27 @@ def get_existed_goals(all_products, product_prices, if_persona=False):
             continue
         asin = item['asin']
         for product in item['instructions']:
+            environment_v2 = (
+                os.environ.get("SHOP_ENVIRONMENT_VERSION", "v1").strip().casefold()
+                in {"v2", "shopsimulator-environment-v2"}
+            )
             if product['instruction'] in goal_instructions:
                 cnt_2 += 1
                 #continue
             else:
                 goal_instructions.append(product['instruction'])
-            attributes = item['instruction_attributes']
+            # Legacy v1 historically used the first instruction's attributes
+            # for every instruction belonging to a product. Environment v2
+            # must use annotations from the current task.
+            attributes = (
+                product.get('attributes', [])
+                if environment_v2
+                else item['instruction_attributes']
+            )
             if len(attributes) == 0:
                 cnt_3 += 1
                 continue
 
-            environment_v2 = (
-                os.environ.get("SHOP_ENVIRONMENT_VERSION", "v1").strip().casefold()
-                in {"v2", "shopsimulator-environment-v2"}
-            )
             if product_prices is not None and environment_v2:
                 price_upper = deterministic_price_upper(
                     asin,
@@ -117,7 +125,7 @@ def get_existed_goals(all_products, product_prices, if_persona=False):
                 instruction_text = product['instruction_sample']
             else:
                 instruction_text = product['instruction']
-            goals.append({
+            goal = {
                 'asin': asin,
                 'category': item['category'],
                 'query': item['query'],
@@ -129,7 +137,10 @@ def get_existed_goals(all_products, product_prices, if_persona=False):
                 'goal_options': product['instruction_options'],
                 'user_persona': user_persona,
                 'reason_key': reason_key,
-            })
+            }
+            if environment_v2:
+                goal.update(compile_task_constraint_contract(product))
+            goals.append(goal)
             for att in attributes:
                 cnt_atts[att] += 1
             # goals += product_goals
