@@ -1,7 +1,11 @@
 import unittest
+import json
+from pathlib import Path
+import tempfile
 
 from shopping_grpo.environment_manifest import (
     MANIFEST_VERSION,
+    shopsimulator_source_commit,
     validate_manifest,
 )
 
@@ -49,6 +53,15 @@ class EnvironmentManifestTest(unittest.TestCase):
         }
         with self.assertRaisesRegex(ValueError, "Tool v2"):
             validate_manifest(manifest)
+
+    def test_embedded_shopsimulator_commit_is_read_without_nested_git(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "EMBEDDED_SOURCE.json").write_text(
+                json.dumps({"environment_v2_commit": "e" * 40}),
+                encoding="utf-8",
+            )
+            self.assertEqual(shopsimulator_source_commit(root), "e" * 40)
 
 
 if __name__ == "__main__":

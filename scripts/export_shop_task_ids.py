@@ -53,7 +53,10 @@ def parse_args() -> argparse.Namespace:
         "--shopsim-root",
         type=Path,
         required=True,
-        help="ShopSimulator 的 shop_env 目录，例如 ../ShopSimulator/shop_env",
+        help=(
+            "ShopSimulator 的 shop_env 目录，例如 "
+            "environments/ShopSimulator/shop_env"
+        ),
     )
     parser.add_argument("--output", type=Path, default=Path("data/shop_tasks.jsonl"))
     parser.add_argument("--force", action="store_true", help="允许覆盖已有输出文件")

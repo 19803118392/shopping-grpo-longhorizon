@@ -1,0 +1,34 @@
+{
+  "environment_version": "shopsimulator-environment-v2",
+  "search": {
+    "version": "shopsimulator-multifield-bm25-v2",
+    "top_k": 150,
+    "page_size": 20,
+    "field_weights": {
+      "title": 3.0,
+      "brand": 2.0,
+      "category": 2.0,
+      "model": 2.5,
+      "attributes": 1.5,
+      "options": 1.2,
+      "bullets": 0.8
+    }
+  },
+  "reward": {
+    "version": "shopsimulator-reward-v2",
+    "gold_purchase": 1.0,
+    "valid_alternative_purchase": 0.4,
+    "graceful_stop": -0.1,
+    "early_abstain": -0.25,
+    "wrong_purchase": -0.4,
+    "repeat_loop": -0.6,
+    "max_steps": -0.7
+  },
+  "termination": {
+    "exact_repeat_limit": 2,
+    "no_new_asin_limit": 4,
+    "max_steps": 35
+  },
+  "observation_version": "shopping-observation-v2",
+  "tool_version": "shopping-tools-v2"
+}

@@ -17,19 +17,20 @@ def parse_args():
     parser.add_argument(
         "--shopsimulator-repository",
         type=Path,
-        default=ROOT.parent / "ShopSimulator",
+        default=ROOT / "environments/ShopSimulator",
     )
     parser.add_argument(
         "--product-data",
         type=Path,
-        default=ROOT.parent / "ShopSimulator/shop_env/data/items_eval_train.json",
+        default=ROOT
+        / "environments/ShopSimulator/shop_env/data/items_eval_train.json",
     )
     parser.add_argument("--task-data", type=Path, required=True)
     parser.add_argument(
         "--environment-config",
         type=Path,
-        default=ROOT.parent
-        / "ShopSimulator/shop_env/configs/environment_v2.json",
+        default=ROOT
+        / "environments/ShopSimulator/shop_env/configs/environment_v2.json",
     )
     parser.add_argument("--seed", type=int, default=20260726)
     parser.add_argument("--output", type=Path, required=True)

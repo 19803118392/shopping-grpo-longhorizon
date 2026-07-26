@@ -92,14 +92,20 @@ veRL 0.8 在 old-log-prob 前处理阶段仍会无条件导入 `flash_attn.bert_
 
 ## 4. 启动并验证 ShopSimulator
 
-ShopSimulator 继续使用它自己的 Python 3.10 环境。GRPO 的默认批次是 `2 prompt × 4 rollout`，所以必须初始化至少 8 个环境槽：
+内嵌 ShopSimulator 继续使用独立 Python 3.10 环境。GRPO 的默认批次是
+`2 prompt × 4 rollout`，所以必须初始化至少8个环境槽。首次使用先按
+README 执行 `scripts/setup_embedded_shopsimulator_v2.sh`，然后通过 `screen`
+启动：
 
 ```bash
-cd /root/autodl-tmp/ShopSimulator/shop_env/shop_env
-
-# 先激活服务器上已经验证通过的 ShopSimulator venv，再执行：
-python -c \
-  'import pack_api; pack_api.env_max_num=8; pack_api.initialize_environments(); pack_api.app.run(host="127.0.0.1", port=5700)'
+screen -dmS shopsim-v2 bash -lc '
+  set -euo pipefail
+  source /root/autodl-tmp/shopping-grpo-longhorizon/environments/ShopSimulator/.venv-shopsim-v2/bin/activate
+  cd /root/autodl-tmp/shopping-grpo-longhorizon/environments/ShopSimulator/shop_env
+  mkdir -p shop_env/logs
+  SHOPSIM_ENV_SLOTS=8 SHOPSIM_PORT=5700 ./run_environment_v2.sh \
+    > shop_env/logs/shopsim_v2_5700.log 2>&1
+'
 ```
 
 回到训练仓库，用一次 reset/release 验证结构化接口和租约回收：

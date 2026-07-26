@@ -9,6 +9,7 @@ import subprocess
 
 
 MANIFEST_VERSION = "shopping-environment-manifest-v1"
+EMBEDDED_SOURCE_FILE = "EMBEDDED_SOURCE.json"
 REQUIRED_KEYS = {
     "manifest_version",
     "shopsimulator_commit",
@@ -42,6 +43,25 @@ def git_commit(repository):
     ).stdout.strip()
 
 
+def shopsimulator_source_commit(repository):
+    repository = Path(repository)
+    embedded_source = repository / EMBEDDED_SOURCE_FILE
+    if not embedded_source.is_file():
+        return git_commit(repository)
+    try:
+        metadata = json.loads(embedded_source.read_text(encoding="utf-8"))
+        commit = metadata["environment_v2_commit"]
+    except (OSError, KeyError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid embedded ShopSimulator source metadata: {exc}") from exc
+    if (
+        not isinstance(commit, str)
+        or len(commit) != 40
+        or any(character not in "0123456789abcdef" for character in commit)
+    ):
+        raise ValueError("embedded ShopSimulator commit is not a lowercase Git SHA")
+    return commit
+
+
 def build_manifest(
     *,
     shopsimulator_repository,
@@ -54,7 +74,9 @@ def build_manifest(
     config = json.loads(Path(environment_config).read_text(encoding="utf-8"))
     return {
         "manifest_version": MANIFEST_VERSION,
-        "shopsimulator_commit": git_commit(shopsimulator_repository),
+        "shopsimulator_commit": shopsimulator_source_commit(
+            shopsimulator_repository
+        ),
         "shopping_grpo_commit": git_commit(shopping_grpo_repository),
         "product_data_sha256": sha256_file(product_data),
         "task_data_sha256": sha256_file(task_data),

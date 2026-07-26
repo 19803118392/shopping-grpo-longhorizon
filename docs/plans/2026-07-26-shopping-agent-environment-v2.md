@@ -2,7 +2,8 @@
 
 **状态：** 第一轮 CPU 实现已完成；待冻结任务约束元数据和执行 GPU 模型门禁
 
-**目标仓库：** `ShopSimulator` 当前 `main` 分支 + `shopping-grpo-longhorizon`
+**目标仓库：** `shopping-grpo-longhorizon`，环境源码内嵌于
+`environments/ShopSimulator/`
 
 **分析起点：** ShopSimulator `51bb26012cee31aea7ac26177c5ffe807026ac07`；本仓库 `61126275fb41cf5c75c3ce32665ee8ad8fa4fe8b`
 
@@ -653,7 +654,7 @@ tools-v2
 
 第一阶段保存轻量 manifest，只要求：
 
-- ShopSimulator Git commit；
+- 内嵌 ShopSimulator 来源 commit；
 - `shopping-grpo-longhorizon` Git commit；
 - 商品数据版本或 SHA-256；
 - 任务数据版本或 SHA-256；

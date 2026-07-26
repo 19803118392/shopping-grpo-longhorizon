@@ -14,6 +14,8 @@ ShopSimulator -> Teacher rollout -> 规则验收 -> OpenAI tool-calling SFT JSON
 - `src/shopping_grpo/shop_tools.py`：Teacher rollout 与未来训练共用的 OpenAI tool schema。
 - `src/shopping_grpo/teacher_rollout.py`：OpenAI-compatible Teacher rollout 和断点续跑。
 - `src/shopping_grpo/sft_data.py`：确定性验收和 SFT JSONL 构造。
+- `environments/ShopSimulator/`：随训练代码版本化的 Environment v2 环境源码、
+  测试、模板和压缩商品数据。
 - `scripts/`：环境 smoke、task_id 导出、采集、benchmark 与训练入口。
 - `data/tasks.example.jsonl`：无隐藏信息的最小任务清单示例。
 - `data/benchmarks/`：固定 held-out ShopSimulator benchmark，禁止用于训练采集。
@@ -22,7 +24,8 @@ ShopSimulator -> Teacher rollout -> 规则验收 -> OpenAI tool-calling SFT JSON
 
 ## 配置
 
-项目仅额外使用 `tqdm` 显示采集进度条；ShopSimulator 需要作为相邻仓库单独启动。
+项目仅额外使用 `tqdm` 显示采集进度条。正式 Environment v2 已内嵌在
+`environments/ShopSimulator/`，不再依赖服务器上恰好存在的相邻仓库。
 
 ```bash
 cp .env.example .env
@@ -39,16 +42,36 @@ python3 -m pip install -r requirements.txt
 
 `.env` 不会被 Python 自动读取；上述命令将它导出到当前 shell。不要提交 `.env`。
 
-在另一终端，从本仓库根目录启动一个单环境 ShopSimulator 服务：
+首次准备内嵌 Environment v2 时使用独立 Python 3.10 环境。该过程会在数据盘
+解压约 140MB 商品 JSON 并构建约 55MB 搜索索引，这些生成物均被 Git 忽略。
+长命令使用 `screen`：
 
 ```bash
-cd ../ShopSimulator/shop_env/shop_env
-PYTHONPATH=.. SHOPSIM_ALLOW_LINEAR_SEARCH=1 \
-  ../.venv-clean/bin/python -u -c \
-  'import pack_api; pack_api.env_max_num=1; pack_api.initialize_environments(); pack_api.app.run(host="127.0.0.1", port=5000)'
+screen -dmS shopsim-v2-setup bash -lc '
+  set -euo pipefail
+  cd /root/autodl-tmp/shopping-grpo-longhorizon &&
+  bash scripts/setup_embedded_shopsimulator_v2.sh \
+    > outputs/shopsim_v2_setup.log 2>&1
+'
 ```
 
-若 ShopSimulator 尚未有可用环境，先在其 `shop_env/` 下新建干净环境再安装依赖；不要修补旧的损坏环境。
+准备完成后启动8槽服务：
+
+```bash
+screen -dmS shopsim-v2 bash -lc '
+  set -euo pipefail
+  source /root/autodl-tmp/shopping-grpo-longhorizon/environments/ShopSimulator/.venv-shopsim-v2/bin/activate
+  cd /root/autodl-tmp/shopping-grpo-longhorizon/environments/ShopSimulator/shop_env
+  mkdir -p shop_env/logs
+  SHOPSIM_ENV_SLOTS=8 SHOPSIM_PORT=5700 ./run_environment_v2.sh \
+    > shop_env/logs/shopsim_v2_5700.log 2>&1
+'
+```
+
+源码快照来源、排除项和 Environment v2 的完整说明见
+[内嵌环境说明](environments/ShopSimulator/README.embedding.md) 与
+[Environment v2 文档](environments/ShopSimulator/shop_env/ENVIRONMENT_V2.md)。
+不要修补旧的 ShopSimulator 虚拟环境。
 
 回到本仓库，先验证环境接口：
 
@@ -63,8 +86,8 @@ PYTHONPATH=src python3 scripts/smoke_shop_env.py \
 先导出完整 task_id 清单。脚本直接调用 ShopSimulator 当前的数据清洗和 goal 生成代码，保证 id 的顺序与环境一致；必须使用 ShopSimulator 的干净虚拟环境运行。每行只含公开任务 id；环境在 `reset` 后提供用户需求，因此不需要把 goal、标准答案或 reward 写入任务文件。
 
 ```bash
-../ShopSimulator/shop_env/.venv-clean/bin/python scripts/export_shop_task_ids.py \
-  --shopsim-root ../ShopSimulator/shop_env \
+environments/ShopSimulator/.venv-shopsim-v2/bin/python scripts/export_shop_task_ids.py \
+  --shopsim-root environments/ShopSimulator/shop_env \
   --output data/shop_tasks.jsonl
 ```
 
@@ -224,13 +247,11 @@ PYTHONPATH=src python3 scripts/prepare_verl_grpo_dataset.py \
 
 GRPO 使用独立的干净 Python 3.12 环境，固定版本和安装步骤见 [Vanilla GRPO 服务器执行手册](docs/grpo-runtime-setup.md)。不要安装或把相邻 `agentic-grpo-longhorizon/verl` reference fork 放进 `PYTHONPATH`。默认 `train_batch_size=2`、`rollout.n=4`，因此 ShopSimulator 至少启动 8 个环境槽。
 
-AgentLoop 默认使用与 benchmark 共用的确定性工具级状态投影：搜索页保留
-Top-10 商品和完整操作区，商品详情页保留完整规格与购买入口；模型和动作守卫只使用
-同一份可见 observation。旧历史 token 删除默认关闭，仅保留为显式应急开关。投影会
-改变模型输入分布，因此正式 GRPO 前必须先使用
-`scripts/project_sft_observations.py` 重渲染 Action-only SFT，并对模型做短 SFT
-refresh。设计、对比结果和数据 SHA-256 见
-[实验 10](docs/experiments/10-agent-context-window-2026-07-25.md)。
+Environment v2 使用结构化 Observation：搜索页完整保留环境当前页的20个商品，
+并强制模型可见 ASIN/button 与动作守卫允许集合一致；商品详情页保留规格与购买入口。
+旧 Top-10 projector 和历史 token 删除仅保留用于旧实验复现，不是 v2 正式链路。
+由于 Observation、搜索、Reward 和终止规则已经改变，Environment v2 必须重新生成
+Teacher Rollout，并从 Base 重新建立 SFT Baseline 后再做 GRPO。
 
 ```bash
 export GRPO_MODEL_PATH=/absolute/path/qwen35-2b-shopping-sft-v3-merged
@@ -238,6 +259,9 @@ export GRPO_TRAIN_FILE=/absolute/path/data/verl/grpo_train_v1.parquet
 export GRPO_VAL_FILE=/absolute/path/data/verl/grpo_val_v1.parquet
 export GRPO_OUTPUT_DIR=/absolute/path/checkpoints/qwen35-2b-shopping-grpo-v1
 export SHOPSIM_BASE_URL=http://127.0.0.1:5700
+export SHOPPING_ENVIRONMENT_VERSION=shopsimulator-environment-v2
+export SHOPPING_TOOL_CONFIG="$PWD/configs/verl/shop_tools_v2.json"
+export SHOPPING_ENV_MANIFEST=/absolute/path/environment_v2_manifest.json
 
 # 查看两组实际参数，不启动模型：
 bash scripts/run_vanilla_grpo.sh a0 --dry-run

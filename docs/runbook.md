@@ -7,8 +7,8 @@
 完整任务清单不要手写。用下列命令从 ShopSimulator 实际使用的商品数据和 goal 构造逻辑导出，生成的 id 从 0 连续递增，顺序与环境一致：
 
 ```bash
-../ShopSimulator/shop_env/.venv-clean/bin/python scripts/export_shop_task_ids.py \
-  --shopsim-root ../ShopSimulator/shop_env \
+environments/ShopSimulator/.venv-shopsim-v2/bin/python scripts/export_shop_task_ids.py \
+  --shopsim-root environments/ShopSimulator/shop_env \
   --output data/shop_tasks.jsonl
 ```
 
