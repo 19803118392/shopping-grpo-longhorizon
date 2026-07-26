@@ -125,12 +125,13 @@ class VerlPatchScriptTest(unittest.TestCase):
             )
             self.assertIn("extract_shopping_group_signals", fit_source)
             self.assertIn("aggregate_shopping_metrics", fit_source)
-            self.assertIn("semantic_rewards=semantic_rewards", fit_source)
-            self.assertIn("infrastructure_invalid=infrastructure_invalid", fit_source)
+            self.assertIn("terminal_utilities=terminal_utilities", fit_source)
+            self.assertIn("sampling_invalid=sampling_invalid", fit_source)
             self.assertIn('"drop_reason": group["drop_reason"]', fit_source)
-            self.assertIn('"group/all_zero_semantic_ratio"', fit_source)
-            self.assertIn('"group/no_semantic_signal_ratio"', fit_source)
-            self.assertIn('"group/all_full_success_ratio"', fit_source)
+            self.assertIn('"group/all_zero_utility_ratio"', fit_source)
+            self.assertIn('"group/no_purchase_success_ratio"', fit_source)
+            self.assertIn('"group/all_purchase_success_ratio"', fit_source)
+            self.assertIn('"group/sampling_invalid"', fit_source)
             self.assertIn('"training/optimizer_updated": 0', fit_source)
             self.assertIn(
                 "logger.log(data=skipped_metrics, step=self.global_steps)",
@@ -176,8 +177,9 @@ class VerlPatchScriptTest(unittest.TestCase):
                             {
                                 "infrastructure_invalid": False,
                                 "reward": {
-                                    "semantic": float(reward),
-                                    "native": float(reward),
+                                    "terminal_utility": float(reward),
+                                    "purchase_success": bool(reward > 0),
+                                    "sampling_invalid": False,
                                 },
                             }
                             for reward in rewards
@@ -191,14 +193,16 @@ class VerlPatchScriptTest(unittest.TestCase):
         selected_batches = []
         for batch in (make_batch(0, "a"), make_batch(8, "b")):
             rewards = batch.batch["rm_scores"].sum(dim=-1).tolist()
-            semantic, invalid = extract_shopping_group_signals(
+            utility, success, invalid, reasons = extract_shopping_group_signals(
                 batch.non_tensor_batch["shopping"].tolist()
             )
             indices, _ = select_reward_varying_groups(
                 batch.non_tensor_batch["uid"].tolist(),
                 rewards,
-                semantic_rewards=semantic,
-                infrastructure_invalid=invalid,
+                terminal_utilities=utility,
+                purchase_success=success,
+                sampling_invalid=invalid,
+                sampling_invalid_reasons=reasons,
             )
             selected_batches.append(batch.select_idxs(indices))
 

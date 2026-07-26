@@ -12,7 +12,9 @@ from shopping_grpo.shop_tools import SHOP_TOOL_SCHEMAS, SHOP_TOOL_SCHEMAS_V2
 
 def build_tool_config(environment_version="v1"):
     schemas = (
-        SHOP_TOOL_SCHEMAS_V2 if environment_version == "v2" else SHOP_TOOL_SCHEMAS
+        SHOP_TOOL_SCHEMAS_V2
+        if environment_version in {"v2", "v2.1"}
+        else SHOP_TOOL_SCHEMAS
     )
     return {
         "tools": [
@@ -31,7 +33,7 @@ def parse_args():
     parser.add_argument("--tool-output", type=Path, default=Path("configs/verl/shop_tools.json"))
     parser.add_argument(
         "--environment-version",
-        choices=("v1", "v2"),
+        choices=("v1", "v2", "v2.1"),
         default="v1",
     )
     return parser.parse_args()

@@ -16,6 +16,7 @@ from shopping_grpo.verl_adapter.runtime import (
     record_action_attempt,
     validate_reward_components,
     validate_reward_v2,
+    validate_reward_v3,
 )
 
 try:  # 本地单测不安装 veRL；部署时由 veRL 注入真实类型。
@@ -125,10 +126,25 @@ class ShopSimulatorTool(BaseTool):
                 if (
                     isinstance(reward_detail, dict)
                     and reward_detail.get("reward_version")
-                    == "shopsimulator-reward-v2"
+                    in {
+                        "shopsimulator-reward-v2",
+                        "shopsimulator-reward-v3",
+                    }
                 ):
                     try:
-                        public_detail = validate_reward_v2(reward_detail)
+                        public_detail = (
+                            validate_reward_v3(reward_detail)
+                            if reward_detail["reward_version"]
+                            == "shopsimulator-reward-v3"
+                            else validate_reward_v2(reward_detail)
+                        )
+                        if (
+                            public_detail.get("terminal_utility", step["reward"])
+                            != step["reward"]
+                        ):
+                            raise ValueError(
+                                "terminal_utility differs from terminal reward"
+                            )
                     except ValueError as exc:
                         _mark_infrastructure_invalid(
                             state,
@@ -139,7 +155,13 @@ class ShopSimulatorTool(BaseTool):
                         state["reward_type"] = public_detail["reward_type"]
                         state["reward_valid"] = public_detail["reward_valid"]
                         state["reward_unverifiable"] = not public_detail["reward_valid"]
-                        state["reward_v2_detail"] = public_detail
+                        detail_key = (
+                            "reward_v3_detail"
+                            if public_detail["reward_version"]
+                            == "shopsimulator-reward-v3"
+                            else "reward_v2_detail"
+                        )
+                        state[detail_key] = public_detail
                         state["termination_reason"] = public_detail[
                             "termination_reason"
                         ]

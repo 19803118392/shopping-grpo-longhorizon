@@ -34,6 +34,29 @@ class EnvironmentManifestTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing"):
             validate_manifest({})
 
+    def test_environment_v2_1_requires_reward_v3(self):
+        manifest = {
+            "manifest_version": MANIFEST_VERSION,
+            "environment_version": "shopsimulator-environment-v2.1",
+            "shopsimulator_commit": "a" * 40,
+            "shopping_grpo_commit": "b" * 40,
+            "product_data_sha256": "c" * 64,
+            "task_data_sha256": "d" * 64,
+            "search": {
+                "version": "shopsimulator-multifield-bm25-v2",
+                "page_size": 20,
+            },
+            "reward": {"version": "shopsimulator-reward-v3"},
+            "observation_version": "shopping-observation-v2",
+            "tool_version": "shopping-tools-v2",
+            "max_steps": 35,
+            "seed": 20260726,
+        }
+        self.assertIs(validate_manifest(manifest), manifest)
+        manifest["reward"] = {"version": "shopsimulator-reward-v2"}
+        with self.assertRaisesRegex(ValueError, "requires shopsimulator-reward-v3"):
+            validate_manifest(manifest)
+
     def test_wrong_tool_contract_is_rejected(self):
         manifest = {
             "manifest_version": MANIFEST_VERSION,

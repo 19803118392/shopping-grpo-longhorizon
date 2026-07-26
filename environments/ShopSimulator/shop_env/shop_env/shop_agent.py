@@ -41,10 +41,10 @@ def _handle_reset_action(env: Any, env_idx: int, task_idx: Optional[int]) -> Dic
         'message': message,
         'env_idx': env_idx,
         'idx': task_idx,
-        'environment_version': (
-            "shopsimulator-environment-v2"
-            if getattr(env.server, "environment_v2", False)
-            else "shopsimulator-environment-v1"
+        'environment_version': getattr(
+            env.server,
+            "environment_version",
+            "shopsimulator-environment-v1",
         ),
     }
     if getattr(env, "environment_v2", False):

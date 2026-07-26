@@ -8,6 +8,7 @@ from shopping_grpo.verl_adapter.runtime import (
     current_environment,
     current_runtime_state,
     make_runtime_state,
+    reward_breakdown,
     task_id_from_kwargs,
     terminal_reward,
 )
@@ -195,6 +196,73 @@ class VerlAdapterRuntimeTest(unittest.TestCase):
             self.assertTrue(state["reward_unverifiable"])
             self.assertEqual(state["reward_type"], "reward_unverifiable")
             self.assertEqual(state["termination_reason"], "reward_unverifiable")
+
+        asyncio.run(run())
+
+    def test_reward_v3_exposes_utility_success_and_sampling_validity_separately(self):
+        class FakeEnv:
+            def step(self, action):
+                return {
+                    "instruction": "terminal",
+                    "done": True,
+                    "over": True,
+                    "reward": 0.55,
+                    "termination_reason": "valid_alternative_purchase",
+                    "reward_valid": True,
+                    "reward_detail": {
+                        "reward_version": "shopsimulator-reward-v3",
+                        "reward_type": "valid_alternative_purchase",
+                        "reward_valid": True,
+                        "termination_reason": "valid_alternative_purchase",
+                        "target_asin_match": False,
+                        "terminal_utility": 0.55,
+                        "purchase_success": True,
+                        "sampling_invalid": False,
+                        "weighted_score": 1.0,
+                        "evidence_coverage": 1.0,
+                        "dimension_scores": {
+                            "brand": 0.0,
+                            "model": 0.0,
+                            "core_functions": 1.0,
+                            "key_options": 1.0,
+                        },
+                        "hard_gates": {
+                            "category": {
+                                "status": "pass",
+                                "passed": True,
+                                "verifiable": True,
+                                "comparator": "category_leaf_ancestor_chain",
+                                "source_field": "category",
+                            }
+                        },
+                    },
+                }
+
+        async def run():
+            state = make_runtime_state(task_id=2, max_steps=35)
+            state["latest_observation"] = "搜索功能是否可用: True"
+            env_token = current_environment.set(FakeEnv())
+            state_token = current_runtime_state.set(state)
+            try:
+                await make_tool("search_products").execute(
+                    "tool-v3",
+                    {"query": "mug"},
+                )
+            finally:
+                current_runtime_state.reset(state_token)
+                current_environment.reset(env_token)
+            self.assertFalse(state["infrastructure_invalid"])
+            self.assertFalse(state["reward_unverifiable"])
+            self.assertEqual(
+                state["reward_type"],
+                "valid_alternative_purchase",
+            )
+            breakdown = reward_breakdown(state)
+            self.assertEqual(breakdown["terminal_utility"], 0.55)
+            self.assertEqual(breakdown["purchase_success"], 1.0)
+            self.assertEqual(breakdown["r_att"], 1.0)
+            self.assertEqual(breakdown["r_option"], 1.0)
+            self.assertFalse(breakdown["sampling_invalid"])
 
         asyncio.run(run())
 

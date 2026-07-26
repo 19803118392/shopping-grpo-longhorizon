@@ -20,7 +20,7 @@ EXPECTED_VERSIONS = {
     "tensordict": "0.10.0",
     "numpy": "2.2.6",
 }
-PATCH_MARKER = "SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V2"
+PATCH_MARKER = "SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V3"
 MAX_SAFE_RESPONSE_LENGTH = 20480
 MAX_SAFE_SEQUENCE_LENGTH = 24576
 
@@ -30,12 +30,15 @@ def validate_environment_contract():
         "SHOPPING_ENVIRONMENT_VERSION",
         "shopsimulator-environment-v1",
     )
-    if required_version != "shopsimulator-environment-v2":
+    if required_version not in {
+        "shopsimulator-environment-v2",
+        "shopsimulator-environment-v2.1",
+    }:
         return
     manifest_path = os.environ.get("SHOPPING_ENV_MANIFEST")
     if not manifest_path or not Path(manifest_path).is_file():
         raise SystemExit(
-            "Environment v2 requires SHOPPING_ENV_MANIFEST pointing to a frozen manifest"
+            f"{required_version} requires SHOPPING_ENV_MANIFEST pointing to a frozen manifest"
         )
     try:
         from shopping_grpo.environment_manifest import validate_manifest
@@ -44,7 +47,16 @@ def validate_environment_contract():
             json.loads(Path(manifest_path).read_text(encoding="utf-8"))
         )
     except (ImportError, OSError, ValueError, json.JSONDecodeError) as exc:
-        raise SystemExit(f"invalid Environment v2 manifest: {exc}") from exc
+        raise SystemExit(f"invalid {required_version} manifest: {exc}") from exc
+    actual_environment_version = manifest.get(
+        "environment_version",
+        "shopsimulator-environment-v2",
+    )
+    if actual_environment_version != required_version:
+        raise SystemExit(
+            "environment manifest version mismatch: "
+            f"expected {required_version}, got {actual_environment_version}"
+        )
     tools_path = Path(
         os.environ.get(
             "SHOPPING_TOOL_CONFIG",
@@ -62,7 +74,7 @@ def validate_environment_contract():
     if int(manifest["max_steps"]) != 35:
         raise SystemExit("Environment v2 GRPO contract requires max_steps=35")
     print(
-        "Environment v2 manifest preflight passed: "
+        f"{required_version} manifest preflight passed: "
         + json.dumps(
             {
                 "manifest": str(Path(manifest_path).resolve()),
@@ -115,11 +127,15 @@ def validate_dynamic_sampling(config, verl_source: Path, installed):
         )
     except ImportError as exc:
         raise SystemExit(f"shopping dynamic sampling helper is unavailable: {exc}") from exc
-    semantic, invalid = extract_shopping_group_signals(
+    utility, success, invalid, reasons = extract_shopping_group_signals(
         [
             {
                 "infrastructure_invalid": False,
-                "reward": {"semantic": reward},
+                "reward": {
+                    "terminal_utility": reward,
+                    "purchase_success": reward > 0,
+                    "sampling_invalid": False,
+                },
             }
             for reward in (0.0, 1.0, 0.0, 0.0)
         ]
@@ -127,8 +143,10 @@ def validate_dynamic_sampling(config, verl_source: Path, installed):
     indices, _ = select_reward_varying_groups(
         ["preflight"] * 4,
         [0.0, 1.0, 0.0, 0.0],
-        semantic_rewards=semantic,
-        infrastructure_invalid=invalid,
+        terminal_utilities=utility,
+        purchase_success=success,
+        sampling_invalid=invalid,
+        sampling_invalid_reasons=reasons,
     )
     if indices != [0, 1, 2, 3]:
         raise SystemExit("shopping dynamic sampling helper failed its import-time sanity check")

@@ -1,7 +1,7 @@
 --- a/verl/trainer/ppo/ray_trainer.py
 +++ b/verl/trainer/ppo/ray_trainer.py
 @@ -20,0 +21,2 @@
-+# SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V2
++# SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V3
 +
 @@ -1382,0 +1385,68 @@
 +        from shopping_grpo.verl_dynamic_sampling import (
@@ -49,10 +49,10 @@
 +            dynamic_generated_groups = 0
 +            dynamic_filtered_groups = 0
 +            dynamic_all_equal_groups = 0
-+            dynamic_all_zero_semantic_groups = 0
-+            dynamic_all_full_success_groups = 0
-+            dynamic_no_semantic_groups = 0
-+            dynamic_infrastructure_invalid_groups = 0
++            dynamic_all_zero_utility_groups = 0
++            dynamic_all_purchase_success_groups = 0
++            dynamic_no_purchase_success_groups = 0
++            dynamic_sampling_invalid_groups = 0
 +            dynamic_generated_trajectories = 0
 +            dynamic_skipped_updates = 0
 +            dynamic_consecutive_skips = 0
@@ -105,14 +105,14 @@
 +                            raise RuntimeError(
 +                                "shopping dynamic sampling requires AgentLoop shopping diagnostics"
 +                            )
-+                        semantic_rewards, infrastructure_invalid = extract_shopping_group_signals(
++                        terminal_utilities, purchase_success, sampling_invalid, sampling_invalid_reasons = extract_shopping_group_signals(
 +                            batch.non_tensor_batch["shopping"].tolist()
 +                        )
 +                        _, group_stats = select_reward_varying_groups(
 +                            batch_uids,
 +                            seq_rewards,
-+                            semantic_rewards=semantic_rewards,
-+                            infrastructure_invalid=infrastructure_invalid,
++                            terminal_utilities=terminal_utilities, purchase_success=purchase_success,
++                            sampling_invalid=sampling_invalid, sampling_invalid_reasons=sampling_invalid_reasons,
 +                            tolerance=dynamic_reward_tolerance,
 +                        )
 +                        invalid_group_sizes = [
@@ -130,15 +130,15 @@
 +                        dynamic_generated_groups += group_stats["num_groups"]
 +                        dynamic_filtered_groups += group_stats["dropped_group_count"]
 +                        dynamic_all_equal_groups += group_stats["all_equal_group_count"]
-+                        dynamic_all_zero_semantic_groups += group_stats[
-+                            "all_zero_semantic_group_count"
++                        dynamic_all_zero_utility_groups += group_stats[
++                            "all_zero_utility_group_count"
 +                        ]
-+                        dynamic_all_full_success_groups += group_stats[
-+                            "all_full_success_group_count"
++                        dynamic_all_purchase_success_groups += group_stats[
++                            "all_purchase_success_group_count"
 +                        ]
-+                        dynamic_no_semantic_groups += group_stats["no_semantic_signal_group_count"]
-+                        dynamic_infrastructure_invalid_groups += group_stats[
-+                            "infrastructure_invalid_group_count"
++                        dynamic_no_purchase_success_groups += group_stats["no_purchase_success_group_count"]
++                        dynamic_sampling_invalid_groups += group_stats[
++                            "sampling_invalid_group_count"
 +                        ]
 +                        dynamic_generated_trajectories += group_stats["num_trajectories"]
 +                        remaining_prompts = dynamic_target_prompts - dynamic_accepted_prompts
@@ -156,10 +156,10 @@
 +                                        {
 +                                            "uid": group["uid"],
 +                                            "rewards": group["rewards"],
-+                                            "semantic_rewards": group["semantic_rewards"],
-+                                            "infrastructure_invalid": group[
-+                                                "infrastructure_invalid"
-+                                            ],
++                                            "terminal_utilities": group["terminal_utilities"],
++                                            "purchase_success": group["purchase_success"],
++                                            "sampling_invalid": group["sampling_invalid"],
++                                            "sampling_invalid_reasons": group["sampling_invalid_reasons"],
 +                                            "drop_reason": group["drop_reason"],
 +                                            "kept": group["kept"],
 +                                            "accepted": group["uid"] in accepted_uid_set,
@@ -207,20 +207,20 @@
 +                                        dynamic_all_equal_groups
 +                                        / max(dynamic_generated_groups, 1)
 +                                    ),
-+                                    "group/all_zero_semantic_ratio": (
-+                                        dynamic_all_zero_semantic_groups
++                                    "group/all_zero_utility_ratio": (
++                                        dynamic_all_zero_utility_groups
 +                                        / max(dynamic_generated_groups, 1)
 +                                    ),
-+                                    "group/no_semantic_signal_ratio": (
-+                                        dynamic_no_semantic_groups
++                                    "group/no_purchase_success_ratio": (
++                                        dynamic_no_purchase_success_groups
 +                                        / max(dynamic_generated_groups, 1)
 +                                    ),
-+                                    "group/all_full_success_ratio": (
-+                                        dynamic_all_full_success_groups
++                                    "group/all_purchase_success_ratio": (
++                                        dynamic_all_purchase_success_groups
 +                                        / max(dynamic_generated_groups, 1)
 +                                    ),
-+                                    "group/infrastructure_invalid": (
-+                                        dynamic_infrastructure_invalid_groups
++                                    "group/sampling_invalid": (
++                                        dynamic_sampling_invalid_groups
 +                                    ),
 +                                    "group/resample_batches": max(
 +                                        dynamic_num_gen_batches - 1, 0
@@ -243,11 +243,11 @@
 +                                            "all_equal_groups": (
 +                                                dynamic_all_equal_groups
 +                                            ),
-+                                            "no_semantic_groups": (
-+                                                dynamic_no_semantic_groups
++                                            "no_purchase_success_groups": (
++                                                dynamic_no_purchase_success_groups
 +                                            ),
-+                                            "infrastructure_invalid_groups": (
-+                                                dynamic_infrastructure_invalid_groups
++                                            "sampling_invalid_groups": (
++                                                dynamic_sampling_invalid_groups
 +                                            ),
 +                                            "skipped_updates_total": (
 +                                                dynamic_skipped_updates
@@ -266,10 +266,10 @@
 +                                dynamic_generated_groups = 0
 +                                dynamic_filtered_groups = 0
 +                                dynamic_all_equal_groups = 0
-+                                dynamic_all_zero_semantic_groups = 0
-+                                dynamic_all_full_success_groups = 0
-+                                dynamic_no_semantic_groups = 0
-+                                dynamic_infrastructure_invalid_groups = 0
++                                dynamic_all_zero_utility_groups = 0
++                                dynamic_all_purchase_success_groups = 0
++                                dynamic_no_purchase_success_groups = 0
++                                dynamic_sampling_invalid_groups = 0
 +                                dynamic_generated_trajectories = 0
 +                                if (
 +                                    dynamic_consecutive_skips
@@ -307,26 +307,26 @@
 +                                "group/all_equal_ratio": (
 +                                    dynamic_all_equal_groups / max(dynamic_generated_groups, 1)
 +                                ),
-+                                "group/all_zero_semantic_ratio": (
-+                                    dynamic_all_zero_semantic_groups
++                                "group/all_zero_utility_ratio": (
++                                    dynamic_all_zero_utility_groups
 +                                    / max(dynamic_generated_groups, 1)
 +                                ),
-+                                "group/no_semantic_signal_ratio": (
-+                                    dynamic_no_semantic_groups
++                                "group/no_purchase_success_ratio": (
++                                    dynamic_no_purchase_success_groups
 +                                    / max(dynamic_generated_groups, 1)
 +                                ),
-+                                "group/all_full_success_ratio": (
-+                                    dynamic_all_full_success_groups
++                                "group/all_purchase_success_ratio": (
++                                    dynamic_all_purchase_success_groups
 +                                    / max(dynamic_generated_groups, 1)
 +                                ),
-+                                "group/infrastructure_invalid": (
-+                                    dynamic_infrastructure_invalid_groups
++                                "group/sampling_invalid": (
++                                    dynamic_sampling_invalid_groups
 +                                ),
 +                                "group/resample_batches": max(dynamic_num_gen_batches - 1, 0),
 +                                "rollout/generated_total": dynamic_generated_trajectories,
 +                            }
 +                        )
-+                        ready_semantic_rewards, ready_infrastructure_invalid = (
++                        ready_terminal_utilities, ready_purchase_success, ready_sampling_invalid, ready_invalid_reasons = (
 +                            extract_shopping_group_signals(
 +                                batch.non_tensor_batch["shopping"].tolist()
 +                            )
@@ -334,8 +334,8 @@
 +                        _, ready_group_stats = select_reward_varying_groups(
 +                            batch.non_tensor_batch["uid"].tolist(),
 +                            reward_tensor.sum(dim=-1).detach().cpu().tolist(),
-+                            semantic_rewards=ready_semantic_rewards,
-+                            infrastructure_invalid=ready_infrastructure_invalid,
++                            terminal_utilities=ready_terminal_utilities, purchase_success=ready_purchase_success,
++                            sampling_invalid=ready_sampling_invalid, sampling_invalid_reasons=ready_invalid_reasons,
 +                            tolerance=dynamic_reward_tolerance,
 +                        )
 +                        print(
@@ -362,10 +362,10 @@
 +                        dynamic_generated_groups = 0
 +                        dynamic_filtered_groups = 0
 +                        dynamic_all_equal_groups = 0
-+                        dynamic_all_zero_semantic_groups = 0
-+                        dynamic_all_full_success_groups = 0
-+                        dynamic_no_semantic_groups = 0
-+                        dynamic_infrastructure_invalid_groups = 0
++                        dynamic_all_zero_utility_groups = 0
++                        dynamic_all_purchase_success_groups = 0
++                        dynamic_no_purchase_success_groups = 0
++                        dynamic_sampling_invalid_groups = 0
 +                        dynamic_generated_trajectories = 0
 +
 +                    if "shopping" not in batch.non_tensor_batch:
@@ -378,14 +378,14 @@
 +                        )
 +                    )
 +                    if not dynamic_sampling_enabled:
-+                        semantic_rewards, infrastructure_invalid = extract_shopping_group_signals(
++                        terminal_utilities, purchase_success, sampling_invalid, sampling_invalid_reasons = extract_shopping_group_signals(
 +                            batch.non_tensor_batch["shopping"].tolist()
 +                        )
 +                        _, group_stats = select_reward_varying_groups(
 +                            batch.non_tensor_batch["uid"].tolist(),
 +                            reward_tensor.sum(dim=-1).detach().cpu().tolist(),
-+                            semantic_rewards=semantic_rewards,
-+                            infrastructure_invalid=infrastructure_invalid,
++                            terminal_utilities=terminal_utilities, purchase_success=purchase_success,
++                            sampling_invalid=sampling_invalid, sampling_invalid_reasons=sampling_invalid_reasons,
 +                        )
 +                        group_count = max(group_stats["num_groups"], 1)
 +                        metrics.update(
@@ -396,17 +396,17 @@
 +                                "group/all_equal_ratio": (
 +                                    group_stats["all_equal_group_count"] / group_count
 +                                ),
-+                                "group/all_zero_semantic_ratio": (
-+                                    group_stats["all_zero_semantic_group_count"] / group_count
++                                "group/all_zero_utility_ratio": (
++                                    group_stats["all_zero_utility_group_count"] / group_count
 +                                ),
-+                                "group/no_semantic_signal_ratio": (
-+                                    group_stats["no_semantic_signal_group_count"] / group_count
++                                "group/no_purchase_success_ratio": (
++                                    group_stats["no_purchase_success_group_count"] / group_count
 +                                ),
-+                                "group/all_full_success_ratio": (
-+                                    group_stats["all_full_success_group_count"] / group_count
++                                "group/all_purchase_success_ratio": (
++                                    group_stats["all_purchase_success_group_count"] / group_count
 +                                ),
-+                                "group/infrastructure_invalid": group_stats[
-+                                    "infrastructure_invalid_group_count"
++                                "group/sampling_invalid": group_stats[
++                                    "sampling_invalid_group_count"
 +                                ],
 +                                "group/resample_batches": 0,
 +                                "rollout/generated_total": group_stats["num_trajectories"],

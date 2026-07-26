@@ -14,18 +14,19 @@ class RewardGroupSelectionTest(unittest.TestCase):
         indices, stats = select_reward_varying_groups(["a"] * 4, [0, 0, 0, 0])
         self.assertEqual(indices, [])
         self.assertEqual(stats["dropped_uids"], ("a",))
-        self.assertEqual(stats["all_zero_semantic_group_count"], 1)
-        self.assertEqual(stats["all_full_success_group_count"], 0)
+        self.assertEqual(stats["all_zero_utility_group_count"], 1)
+        self.assertEqual(stats["all_purchase_success_group_count"], 0)
 
     def test_all_one_group_is_dropped(self):
         indices, stats = select_reward_varying_groups(
             ["a"] * 4,
             [1, 1, 1, 1],
-            semantic_rewards=[1.7, 1.7, 1.7, 1.7],
+            terminal_utilities=[1.0, 1.0, 1.0, 1.0],
+            purchase_success=[True] * 4,
         )
         self.assertEqual(indices, [])
         self.assertEqual(stats["kept_group_count"], 0)
-        self.assertEqual(stats["all_full_success_group_count"], 1)
+        self.assertEqual(stats["all_purchase_success_group_count"], 1)
 
     def test_fractional_reward_variance_is_kept(self):
         rewards = [2 / 7, 4 / 7, 2 / 7, 2 / 7]
@@ -57,69 +58,94 @@ class RewardGroupSelectionTest(unittest.TestCase):
         )
         self.assertEqual(indices, [])
 
-    def test_varying_behavior_penalties_without_semantic_progress_are_dropped(self):
+    def test_varying_terminal_utility_is_kept_without_purchase_success(self):
         indices, stats = select_reward_varying_groups(
             ["a"] * 4,
-            [-0.05, -0.02, -0.01, 0.0],
-            semantic_rewards=[0.0, 0.0, 0.0, 0.0],
-            infrastructure_invalid=[False] * 4,
+            [-0.85, -0.65, -0.50, -0.35],
+            terminal_utilities=[-0.85, -0.65, -0.50, -0.35],
+            purchase_success=[False] * 4,
+            sampling_invalid=[False] * 4,
         )
 
-        self.assertEqual(indices, [])
-        self.assertEqual(stats["groups"][0]["drop_reason"], "no_semantic_signal")
+        self.assertEqual(indices, [0, 1, 2, 3])
+        self.assertIsNone(stats["groups"][0]["drop_reason"])
+        self.assertEqual(stats["no_purchase_success_group_count"], 1)
 
-    def test_varying_group_with_semantic_progress_is_kept(self):
+    def test_varying_group_with_purchase_success_is_kept(self):
         indices, stats = select_reward_varying_groups(
             ["a"] * 4,
-            [0.0, 0.2, 0.0, 0.0],
-            semantic_rewards=[0.0, 0.2, 0.0, 0.0],
-            infrastructure_invalid=[False] * 4,
+            [-0.5, 0.55, -0.5, -0.5],
+            terminal_utilities=[-0.5, 0.55, -0.5, -0.5],
+            purchase_success=[False, True, False, False],
+            sampling_invalid=[False] * 4,
         )
 
         self.assertEqual(indices, [0, 1, 2, 3])
         self.assertIsNone(stats["groups"][0]["drop_reason"])
 
-    def test_infrastructure_invalid_member_drops_the_whole_group(self):
+    def test_sampling_invalid_member_drops_the_whole_group_with_reason(self):
         indices, stats = select_reward_varying_groups(
             ["a"] * 4,
             [0.0, 0.2, 0.0, 0.0],
-            semantic_rewards=[0.0, 0.2, 0.0, 0.0],
-            infrastructure_invalid=[False, True, False, False],
+            terminal_utilities=[0.0, 0.2, 0.0, 0.0],
+            purchase_success=[False, True, False, False],
+            sampling_invalid=[False, True, False, False],
+            sampling_invalid_reasons=[(), ("infrastructure_invalid",), (), ()],
         )
 
         self.assertEqual(indices, [])
-        self.assertEqual(stats["groups"][0]["drop_reason"], "infrastructure_invalid")
-        self.assertEqual(stats["infrastructure_invalid_group_count"], 1)
+        self.assertEqual(stats["groups"][0]["drop_reason"], "sampling_invalid")
+        self.assertEqual(stats["sampling_invalid_group_count"], 1)
+        self.assertEqual(
+            stats["sampling_invalid_reason_counts"]["infrastructure_invalid"],
+            1,
+        )
 
     def test_shopping_extra_fields_are_reduced_to_filter_signals(self):
-        semantic, invalid = extract_shopping_group_signals(
+        utility, success, invalid, reasons = extract_shopping_group_signals(
             [
                 {
                     "infrastructure_invalid": False,
-                    "reward": {"semantic": 0.2, "native": 0.5},
+                    "reward": {
+                        "terminal_utility": 0.55,
+                        "purchase_success": True,
+                        "sampling_invalid": False,
+                    },
                 },
                 {
                     "infrastructure_invalid": True,
-                    "reward": {"semantic": 0.0, "native": 0.0},
+                    "reward": {
+                        "terminal_utility": 0.0,
+                        "purchase_success": False,
+                        "sampling_invalid": True,
+                    },
                 },
             ]
         )
 
-        self.assertEqual(semantic, [0.2, 0.0])
+        self.assertEqual(utility, [0.55, 0.0])
+        self.assertEqual(success, [True, False])
         self.assertEqual(invalid, [False, True])
+        self.assertEqual(reasons, [(), ("infrastructure_invalid",)])
 
     def test_unverifiable_reward_is_sampling_invalid_but_not_infrastructure(self):
-        semantic, invalid = extract_shopping_group_signals(
+        utility, success, invalid, reasons = extract_shopping_group_signals(
             [
                 {
                     "infrastructure_invalid": False,
                     "reward_unverifiable": True,
-                    "reward": {"semantic": 0.0},
+                    "reward": {
+                        "terminal_utility": 0.0,
+                        "purchase_success": False,
+                        "sampling_invalid": True,
+                    },
                 }
             ]
         )
-        self.assertEqual(semantic, [0.0])
+        self.assertEqual(utility, [0.0])
+        self.assertEqual(success, [False])
         self.assertEqual(invalid, [True])
+        self.assertEqual(reasons, [("reward_unverifiable",)])
 
     def test_missing_shopping_filter_signal_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "shopping"):
@@ -143,6 +169,9 @@ class RewardGroupSelectionTest(unittest.TestCase):
                     "penalty_unfinished": 0.0,
                     "penalty_repeat": 0.0,
                     "repeat_action_rate": 0.0,
+                    "terminal_utility": 1.73,
+                    "purchase_success": 1.0,
+                    "sampling_invalid": False,
                     "r_type": 1.0,
                     "r_att": 1.0,
                     "r_option": 1.0,
@@ -165,6 +194,9 @@ class RewardGroupSelectionTest(unittest.TestCase):
                     "penalty_unfinished": 0.0,
                     "penalty_repeat": 0.0,
                     "repeat_action_rate": 0.0,
+                    "terminal_utility": -0.05,
+                    "purchase_success": 0.0,
+                    "sampling_invalid": False,
                     "r_type": 0.0,
                     "r_att": 0.0,
                     "r_option": 0.0,
@@ -178,6 +210,7 @@ class RewardGroupSelectionTest(unittest.TestCase):
         self.assertEqual(metrics["reward/full_mean"], 0.5)
         self.assertEqual(metrics["reward/shaped_min"], -0.05)
         self.assertEqual(metrics["reward/shaped_max"], 1.73)
+        self.assertEqual(metrics["reward/purchase_success_rate"], 0.5)
         self.assertEqual(metrics["component/r_type_mean"], 0.5)
         self.assertEqual(metrics["trajectory/average_steps"], 22.5)
         self.assertEqual(metrics["trajectory/done_rate"], 0.5)

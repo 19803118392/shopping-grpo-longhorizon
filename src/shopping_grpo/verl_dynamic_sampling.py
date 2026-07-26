@@ -34,6 +34,12 @@ def aggregate_shopping_metrics(shopping_infos: Sequence[object]) -> dict[str, fl
     max_steps = []
     infrastructure_invalid = []
     reward_unverifiable = []
+    terminal_utilities = []
+    purchase_success = []
+    sampling_invalid = []
+    match_scores = []
+    evidence_coverage = []
+    partial_purchase = []
     for index, info in enumerate(shopping_infos):
         if not isinstance(info, Mapping) or not isinstance(info.get("reward"), Mapping):
             raise ValueError(f"shopping extra field at index {index} is missing reward diagnostics")
@@ -53,6 +59,30 @@ def aggregate_shopping_metrics(shopping_infos: Sequence[object]) -> dict[str, fl
         max_steps.append(float(info.get("termination_reason") == "max_steps"))
         infrastructure_invalid.append(float(bool(info.get("infrastructure_invalid"))))
         reward_unverifiable.append(float(bool(info.get("reward_unverifiable"))))
+        terminal_utilities.append(
+            float(reward.get("terminal_utility", reward["total"]))
+        )
+        purchase_success.append(
+            float(bool(reward.get("purchase_success", reward["full"])))
+        )
+        sampling_invalid.append(
+            float(
+                bool(
+                    reward.get(
+                        "sampling_invalid",
+                        info.get("infrastructure_invalid")
+                        or info.get("reward_unverifiable"),
+                    )
+                )
+            )
+        )
+        match_scores.append(float(reward.get("match_score", reward["r_att"])))
+        evidence_coverage.append(
+            float(reward.get("evidence_coverage", 0.0))
+        )
+        partial_purchase.append(
+            float(info.get("reward_type") == "partial_alternative_purchase")
+        )
 
     def mean(values):
         return sum(values) / len(values)
@@ -65,6 +95,13 @@ def aggregate_shopping_metrics(shopping_infos: Sequence[object]) -> dict[str, fl
         "reward/shaped_min": min(rewards["total"]),
         "reward/shaped_mean": mean(rewards["total"]),
         "reward/shaped_max": max(rewards["total"]),
+        "reward/terminal_utility_min": min(terminal_utilities),
+        "reward/terminal_utility_mean": mean(terminal_utilities),
+        "reward/terminal_utility_max": max(terminal_utilities),
+        "reward/purchase_success_rate": mean(purchase_success),
+        "reward/partial_purchase_rate": mean(partial_purchase),
+        "reward/match_score_mean": mean(match_scores),
+        "reward/evidence_coverage_mean": mean(evidence_coverage),
         "reward/efficiency_mean": mean(rewards["efficiency"]),
         "penalty/overlong_mean": mean(rewards["penalty_overlong"]),
         "penalty/unfinished_mean": mean(rewards["penalty_unfinished"]),
@@ -79,47 +116,70 @@ def aggregate_shopping_metrics(shopping_infos: Sequence[object]) -> dict[str, fl
         "trajectory/repeat_action_rate": mean(rewards["repeat_action_rate"]),
         "trajectory/infrastructure_invalid_rate": mean(infrastructure_invalid),
         "trajectory/reward_unverifiable_rate": mean(reward_unverifiable),
+        "trajectory/sampling_invalid_rate": mean(sampling_invalid),
     }
 
 
-def extract_shopping_group_signals(shopping_infos: Sequence[object]) -> tuple[list[float], list[bool]]:
-    """Return semantic reward and combined sampling-invalid flags.
-
-    Infrastructure failures and unverifiable rewards remain separate in
-    trajectory metrics, but either one makes a complete rollout group unsafe
-    for an optimizer update.
-    """
-    semantic_rewards = []
-    infrastructure_invalid = []
+def extract_shopping_group_signals(
+    shopping_infos: Sequence[object],
+) -> tuple[list[float], list[bool], list[bool], list[tuple[str, ...]]]:
+    """Return terminal utility, success metrics, and explicit invalid reasons."""
+    terminal_utilities = []
+    purchase_success = []
+    sampling_invalid = []
+    invalid_reasons = []
     for index, info in enumerate(shopping_infos):
         if not isinstance(info, Mapping) or not isinstance(info.get("reward"), Mapping):
             raise ValueError(f"shopping extra field at index {index} is missing reward diagnostics")
         try:
-            semantic = float(info["reward"]["semantic"])
+            terminal_utility = float(info["reward"]["terminal_utility"])
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError(
-                f"shopping extra field at index {index} is missing semantic reward"
+                f"shopping extra field at index {index} is missing terminal_utility"
             ) from exc
-        if not math.isfinite(semantic):
-            raise ValueError(f"shopping semantic reward at index {index} is not finite")
+        if not math.isfinite(terminal_utility):
+            raise ValueError(
+                f"shopping terminal_utility at index {index} is not finite"
+            )
+        raw_purchase_success = info["reward"].get("purchase_success")
+        if not isinstance(raw_purchase_success, (bool, int, float)):
+            raise ValueError(
+                f"shopping extra field at index {index} is missing purchase_success"
+            )
         if "infrastructure_invalid" not in info:
             raise ValueError(
                 f"shopping extra field at index {index} is missing infrastructure_invalid"
             )
-        semantic_rewards.append(semantic)
-        infrastructure_invalid.append(
-            bool(info["infrastructure_invalid"])
-            or bool(info.get("reward_unverifiable"))
+        reasons = []
+        if bool(info["infrastructure_invalid"]):
+            reasons.append("infrastructure_invalid")
+        if bool(info.get("reward_unverifiable")):
+            reasons.append("reward_unverifiable")
+        reward_sampling_invalid = bool(
+            info["reward"].get("sampling_invalid", False)
         )
-    return semantic_rewards, infrastructure_invalid
+        if reward_sampling_invalid and not reasons:
+            reasons.append("reward_sampling_invalid")
+        terminal_utilities.append(terminal_utility)
+        purchase_success.append(bool(raw_purchase_success))
+        sampling_invalid.append(bool(reasons))
+        invalid_reasons.append(tuple(reasons))
+    return (
+        terminal_utilities,
+        purchase_success,
+        sampling_invalid,
+        invalid_reasons,
+    )
 
 
 def select_reward_varying_groups(
     uids: Sequence[Hashable],
     seq_rewards: Sequence[float],
     *,
-    semantic_rewards: Sequence[float] | None = None,
-    infrastructure_invalid: Sequence[bool] | None = None,
+    terminal_utilities: Sequence[float] | None = None,
+    purchase_success: Sequence[bool] | None = None,
+    sampling_invalid: Sequence[bool] | None = None,
+    sampling_invalid_reasons: Sequence[Sequence[str]] | None = None,
     tolerance: float = 1.0e-8,
 ) -> tuple[list[int], dict[str, Any]]:
     """Return trajectory indices belonging to groups with non-constant reward.
@@ -133,18 +193,50 @@ def select_reward_varying_groups(
         raise ValueError(
             f"uids and seq_rewards must have equal length, got {len(uids)} and {len(seq_rewards)}"
         )
-    if semantic_rewards is not None and len(semantic_rewards) != len(uids):
-        raise ValueError("semantic_rewards must have the same length as uids")
-    if infrastructure_invalid is not None and len(infrastructure_invalid) != len(uids):
-        raise ValueError("infrastructure_invalid must have the same length as uids")
+    optional_sequences = {
+        "terminal_utilities": terminal_utilities,
+        "purchase_success": purchase_success,
+        "sampling_invalid": sampling_invalid,
+        "sampling_invalid_reasons": sampling_invalid_reasons,
+    }
+    for name, values in optional_sequences.items():
+        if values is not None and len(values) != len(uids):
+            raise ValueError(f"{name} must have the same length as uids")
     if tolerance < 0 or not math.isfinite(tolerance):
         raise ValueError(f"tolerance must be a finite non-negative number, got {tolerance!r}")
 
-    semantic_values = semantic_rewards if semantic_rewards is not None else seq_rewards
-    invalid_values = infrastructure_invalid if infrastructure_invalid is not None else [False] * len(uids)
+    utility_values = (
+        terminal_utilities if terminal_utilities is not None else seq_rewards
+    )
+    success_values = (
+        purchase_success if purchase_success is not None else [False] * len(uids)
+    )
+    invalid_values = (
+        sampling_invalid if sampling_invalid is not None else [False] * len(uids)
+    )
+    reason_values = (
+        sampling_invalid_reasons
+        if sampling_invalid_reasons is not None
+        else [()] * len(uids)
+    )
     grouped: dict[Hashable, dict[str, Any]] = {}
-    for index, (uid, raw_reward, raw_semantic, raw_invalid) in enumerate(
-        zip(uids, seq_rewards, semantic_values, invalid_values, strict=True)
+    for index, (
+        uid,
+        raw_reward,
+        raw_utility,
+        raw_success,
+        raw_invalid,
+        raw_reasons,
+    ) in enumerate(
+        zip(
+            uids,
+            seq_rewards,
+            utility_values,
+            success_values,
+            invalid_values,
+            reason_values,
+            strict=True,
+        )
     ):
         try:
             hash(uid)
@@ -154,9 +246,11 @@ def select_reward_varying_groups(
         reward = float(raw_reward)
         if not math.isfinite(reward):
             raise ValueError(f"seq_reward at index {index} is not finite: {raw_reward!r}")
-        semantic = float(raw_semantic)
-        if not math.isfinite(semantic):
-            raise ValueError(f"semantic_reward at index {index} is not finite: {raw_semantic!r}")
+        utility = float(raw_utility)
+        if not math.isfinite(utility):
+            raise ValueError(
+                f"terminal_utility at index {index} is not finite: {raw_utility!r}"
+            )
 
         group = grouped.setdefault(
             uid,
@@ -164,31 +258,33 @@ def select_reward_varying_groups(
                 "uid": uid,
                 "indices": [],
                 "rewards": [],
-                "semantic_rewards": [],
-                "infrastructure_invalid": [],
+                "terminal_utilities": [],
+                "purchase_success": [],
+                "sampling_invalid": [],
+                "sampling_invalid_reasons": [],
             },
         )
         group["indices"].append(index)
         group["rewards"].append(reward)
-        group["semantic_rewards"].append(semantic)
-        group["infrastructure_invalid"].append(bool(raw_invalid))
+        group["terminal_utilities"].append(utility)
+        group["purchase_success"].append(bool(raw_success))
+        group["sampling_invalid"].append(bool(raw_invalid))
+        group["sampling_invalid_reasons"].extend(str(reason) for reason in raw_reasons)
 
     kept_uids: list[Hashable] = []
     dropped_uids: list[Hashable] = []
     groups: list[dict[str, Any]] = []
     for uid, group in grouped.items():
-        rewards = group["rewards"]
-        reward_min = min(rewards)
-        reward_max = max(rewards)
-        reward_varying = reward_max - reward_min > tolerance
-        semantic_positive = max(group["semantic_rewards"]) > 0.0
-        has_infrastructure_invalid = any(group["infrastructure_invalid"])
-        if has_infrastructure_invalid:
-            drop_reason = "infrastructure_invalid"
-        elif not reward_varying:
+        utilities = group["terminal_utilities"]
+        utility_min = min(utilities)
+        utility_max = max(utilities)
+        utility_varying = utility_max - utility_min > tolerance
+        has_sampling_invalid = any(group["sampling_invalid"])
+        reasons = tuple(sorted(set(group["sampling_invalid_reasons"])))
+        if has_sampling_invalid:
+            drop_reason = "sampling_invalid"
+        elif not utility_varying:
             drop_reason = "constant_reward"
-        elif semantic_rewards is not None and not semantic_positive:
-            drop_reason = "no_semantic_signal"
         else:
             drop_reason = None
         keep = drop_reason is None
@@ -200,13 +296,14 @@ def select_reward_varying_groups(
             {
                 "uid": uid,
                 "indices": tuple(group["indices"]),
-                "rewards": tuple(rewards),
-                "semantic_rewards": tuple(group["semantic_rewards"]),
-                "reward_min": reward_min,
-                "reward_max": reward_max,
-                "reward_varying": reward_varying,
-                "semantic_positive": semantic_positive,
-                "infrastructure_invalid": has_infrastructure_invalid,
+                "rewards": tuple(group["rewards"]),
+                "terminal_utilities": tuple(utilities),
+                "purchase_success": tuple(group["purchase_success"]),
+                "utility_min": utility_min,
+                "utility_max": utility_max,
+                "reward_varying": utility_varying,
+                "sampling_invalid": has_sampling_invalid,
+                "sampling_invalid_reasons": reasons,
                 "drop_reason": drop_reason,
                 "kept": keep,
             }
@@ -221,20 +318,38 @@ def select_reward_varying_groups(
         "dropped_group_count": len(dropped_uids),
         "kept_uids": tuple(kept_uids),
         "dropped_uids": tuple(dropped_uids),
-        "all_equal_group_count": sum(not group["reward_varying"] for group in groups),
-        "all_zero_semantic_group_count": sum(
-            max(abs(value) for value in group["semantic_rewards"]) <= tolerance
+        "all_equal_group_count": sum(
+            not group["reward_varying"] for group in groups
+        ),
+        "all_zero_utility_group_count": sum(
+            max(abs(value) for value in group["terminal_utilities"]) <= tolerance
             for group in groups
         ),
-        "all_full_success_group_count": sum(
-            all(value >= 1.0 - tolerance for value in group["semantic_rewards"])
+        "all_purchase_success_group_count": sum(
+            all(group["purchase_success"])
             for group in groups
         ),
-        "no_semantic_signal_group_count": sum(
-            not group["semantic_positive"] for group in groups
+        "no_purchase_success_group_count": sum(
+            not any(group["purchase_success"]) for group in groups
         ),
+        "sampling_invalid_group_count": sum(
+            group["sampling_invalid"] for group in groups
+        ),
+        "sampling_invalid_reason_counts": {
+            reason: sum(
+                reason in group["sampling_invalid_reasons"] for group in groups
+            )
+            for reason in sorted(
+                {
+                    reason
+                    for group in groups
+                    for reason in group["sampling_invalid_reasons"]
+                }
+            )
+        },
+        # Compatibility aliases for existing monitoring code.
         "infrastructure_invalid_group_count": sum(
-            group["infrastructure_invalid"] for group in groups
+            group["sampling_invalid"] for group in groups
         ),
         "groups": tuple(groups),
     }

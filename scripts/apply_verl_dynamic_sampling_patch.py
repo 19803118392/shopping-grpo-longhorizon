@@ -16,8 +16,9 @@ from pathlib import Path
 EXPECTED_VERL_VERSION = "0.8.0"
 EXPECTED_ORIGINAL_SHA256 = "de58d295cf86656a28196b0718168d4a11666f3e30957b7e166914496c2a6d66"
 LEGACY_PATCHED_SHA256 = "0df3d063eb4404ee9ad97b00706b22a15bbc933ecdf6f65f15a2a2e033bd84d8"
-EXPECTED_PATCHED_SHA256 = "c46d6ef87127c35750ad25352d8162edbf2442874d15de1cfe5ced6a59130c7d"
-PATCH_MARKER = "SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V2"
+V2_PATCHED_SHA256 = "c46d6ef87127c35750ad25352d8162edbf2442874d15de1cfe5ced6a59130c7d"
+EXPECTED_PATCHED_SHA256 = "5e09b68adb1084b5cb621ef895fc3ba8e2bd463258a3333a45c9bdbb177a1d90"
+PATCH_MARKER = "SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V3"
 BACKUP_SUFFIX = ".shopping-grpo-dynamic-sampling.orig"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PATCH_FILE = PROJECT_ROOT / "patches/verl-0.8.0-shopping-dynamic-sampling.patch"
@@ -81,8 +82,11 @@ def apply_patch(target: Path) -> None:
         verify_patched(target)
         print(f"veRL dynamic-sampling patch already applied: {target}")
         return
-    upgrading_legacy_patch = target_hash == LEGACY_PATCHED_SHA256
-    if target_hash != EXPECTED_ORIGINAL_SHA256 and not upgrading_legacy_patch:
+    upgrading_existing_patch = target_hash in {
+        LEGACY_PATCHED_SHA256,
+        V2_PATCHED_SHA256,
+    }
+    if target_hash != EXPECTED_ORIGINAL_SHA256 and not upgrading_existing_patch:
         raise RuntimeError(
             "refusing to patch unknown ray_trainer.py: "
             f"expected original SHA256 {EXPECTED_ORIGINAL_SHA256}, got {target_hash}"
@@ -98,16 +102,16 @@ def apply_patch(target: Path) -> None:
     if backup.exists() and sha256(backup) != EXPECTED_ORIGINAL_SHA256:
         raise RuntimeError(f"refusing to overwrite invalid backup: {backup}")
     if not backup.exists():
-        if upgrading_legacy_patch:
+        if upgrading_existing_patch:
             raise RuntimeError(
-                "cannot upgrade the legacy dynamic-sampling patch without its "
+                "cannot upgrade an older dynamic-sampling patch without its "
                 f"verified original backup: {backup}"
             )
         shutil.copy2(target, backup)
 
     rollback_source = backup
     legacy_temp = target.with_name(target.name + ".shopping-grpo-legacy.tmp")
-    if upgrading_legacy_patch:
+    if upgrading_existing_patch:
         shutil.copy2(target, legacy_temp)
         shutil.copy2(backup, target)
         rollback_source = legacy_temp

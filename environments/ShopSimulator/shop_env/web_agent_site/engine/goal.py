@@ -11,6 +11,9 @@ from web_agent_site.engine.goal_v2 import (
     deterministic_price_upper,
     explicit_budget_from_instruction,
 )
+from web_agent_site.engine.reward_features_v1 import (
+    compile_reward_features,
+)
 import math
 import pdb
 
@@ -72,10 +75,17 @@ def get_existed_goals(all_products, product_prices, if_persona=False):
             continue
         asin = item['asin']
         for product in item['instructions']:
-            environment_v2 = (
+            environment_version = (
                 os.environ.get("SHOP_ENVIRONMENT_VERSION", "v1").strip().casefold()
-                in {"v2", "shopsimulator-environment-v2"}
             )
+            environment_v2_1 = (
+                environment_version == "shopsimulator-environment-v2.1"
+            )
+            environment_v2 = environment_version in {
+                "v2",
+                "shopsimulator-environment-v2",
+                "shopsimulator-environment-v2.1",
+            }
             if product['instruction'] in goal_instructions:
                 cnt_2 += 1
                 #continue
@@ -93,7 +103,15 @@ def get_existed_goals(all_products, product_prices, if_persona=False):
                 cnt_3 += 1
                 continue
 
-            if product_prices is not None and environment_v2:
+            if product_prices is not None and environment_v2_1:
+                # Reward v3 must not invent an unstated budget from the Gold
+                # product. Price availability remains a hard verifiability
+                # requirement, but an upper bound exists only when the user
+                # instruction states one.
+                price_upper = explicit_budget_from_instruction(
+                    product["instruction"]
+                )
+            elif product_prices is not None and environment_v2:
                 price_upper = deterministic_price_upper(
                     asin,
                     product["instruction"],
@@ -138,7 +156,9 @@ def get_existed_goals(all_products, product_prices, if_persona=False):
                 'user_persona': user_persona,
                 'reason_key': reason_key,
             }
-            if environment_v2:
+            if environment_v2_1:
+                goal.update(compile_reward_features(product, item))
+            elif environment_v2:
                 goal.update(compile_task_constraint_contract(product))
             goals.append(goal)
             for att in attributes:

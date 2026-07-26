@@ -1,6 +1,7 @@
 # Shopping Agent Environment v2 技术方案
 
-**状态：** 第一轮 CPU 实现及任务约束契约已完成；待处理数据质量审计并执行 GPU 模型门禁
+**状态：** Environment v2 保留；Environment v2.1 已采用轻量 Reward v3，
+不再要求逐任务结构化硬约束契约
 
 **目标仓库：** `shopping-grpo-longhorizon`，环境源码内嵌于
 `environments/ShopSimulator/`
@@ -16,6 +17,59 @@ Teacher Rollout → SFT → GRPO → Offline Evaluation
 ```
 
 本文定义的是一个稳定、可信、可训练的最小购物 Agent 环境，不是工业级电商平台，也不以构建最先进的搜索系统为目标。第一版只解决已经实质影响训练闭环的问题：商品召回不可靠、分页/Observation 信息缺失、Reward 方向错误、无效循环、基础设施错误混入训练，以及训练和评测契约不一致。
+
+## 0. Reward v3 最新决策（覆盖本文 Reward v2 的替代品规则）
+
+Environment v2.1 不要求为每个任务人工构造完整
+`hard_constraints`。Reward 只保留两个否决性门禁：
+
+- 候选商品必须与任务目标属于兼容类目；
+- 用户明确声明预算时，所选规格的价格不得超过预算。
+
+用户没有声明预算时不从 Gold 商品价格反向生成上限。类目错误或明确超预算
+统一为 `wrong_purchase=-0.85`。普通属性缺失或不匹配不再让整条轨迹成为
+`reward_unverifiable`，而是进入连续部分评分。
+
+轻量评分从现有任务字段确定性生成：
+
+- instruction 中明确出现且能识别的品牌，权重 `0.35`；
+- instruction 与目标商品文本共同出现的型号 token，权重 `0.25`；
+- 现有 `attributes`，权重 `0.25`；
+- 现有 `instruction_options`，按 option key/value 核验，权重 `0.15`。
+
+没有被任务提出的维度不进入分母；任务提出但候选缺少证据的维度记零分。
+部分匹配公式为：
+
+```text
+match_score = 匹配权重 / 任务实际启用的总权重
+partial_reward = min(0.25, -0.30 + 0.55 × match_score)
+```
+
+终局层次冻结为：
+
+```text
+Gold 且全部启用维度满足       1.00
+非 Gold 且全部启用维度满足    0.55
+类目/预算通过的部分购买       -0.30 ～ 0.25
+有证据主动结束               -0.15
+过早主动结束                 -0.35
+最大步数                     -0.50
+重复循环                     -0.65
+类目错误或明确超预算          -0.85
+```
+
+低质量部分购买的下限低于 `graceful_stop`，避免策略学习“同类商品随便买一个
+也比合理放弃更划算”。完整替代品相对部分购买仍保留至少 `0.30` 的跳跃，
+Gold 相对完整替代品保留 `0.45` 的跳跃。
+
+主动放弃不再依赖完整硬约束契约。已打开候选同时满足类目/预算、
+`match_score >= 0.70` 且证据覆盖率不低于 `0.75` 时，视为已知可接受候选，
+存在此类候选便不能获得 graceful stop。
+
+`reward_unverifiable` 仅保留给真正无法判断两个硬门禁的情况，例如用户有明确
+预算但多规格组合价格无法确定。基础设施异常仍独立标记为
+`sampling_invalid`。本轮不执行全量硬约束契约审计，也不启动 Teacher、
+SFT、GRPO 或 GPU 测试。
 
 本文已合并 Environment v2 方案评审后的最终收缩决策：首版搜索只做多字段 BM25，不把 Dense Retrieval 和 RRF 作为必经阶段；主动放弃与循环检测采用简单、可解释的计数规则；初期只维护轻量 Manifest。Dense/RRF 仅在实际轨迹证明新 BM25 仍是主要瓶颈时重新立项。
 

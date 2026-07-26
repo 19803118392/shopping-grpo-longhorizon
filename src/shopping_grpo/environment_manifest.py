@@ -74,6 +74,7 @@ def build_manifest(
     config = json.loads(Path(environment_config).read_text(encoding="utf-8"))
     return {
         "manifest_version": MANIFEST_VERSION,
+        "environment_version": config["environment_version"],
         "shopsimulator_commit": shopsimulator_source_commit(
             shopsimulator_repository
         ),
@@ -103,8 +104,19 @@ def validate_manifest(manifest):
         raise ValueError("manifest does not select Observation v2")
     if manifest["tool_version"] != "shopping-tools-v2":
         raise ValueError("manifest does not select Tool v2")
-    if manifest["reward"].get("version") != "shopsimulator-reward-v2":
-        raise ValueError("manifest does not select Reward v2")
+    environment_version = manifest.get(
+        "environment_version",
+        "shopsimulator-environment-v2",
+    )
+    expected_reward_versions = {
+        "shopsimulator-environment-v2": "shopsimulator-reward-v2",
+        "shopsimulator-environment-v2.1": "shopsimulator-reward-v3",
+    }
+    expected_reward = expected_reward_versions.get(environment_version)
+    if expected_reward is None:
+        raise ValueError("manifest has an unsupported environment_version")
+    if manifest["reward"].get("version") != expected_reward:
+        raise ValueError(f"{environment_version} requires {expected_reward}")
     if manifest["search"].get("version") != "shopsimulator-multifield-bm25-v2":
         raise ValueError("manifest does not select multi-field BM25 v2")
     if int(manifest["search"].get("page_size", 0)) != 20:

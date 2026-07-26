@@ -181,10 +181,14 @@ def get_product_per_page(top_n_products, page):
 
 
 def generate_product_prices(all_products):
-    environment_v2 = (
+    environment_version = (
         os.environ.get("SHOP_ENVIRONMENT_VERSION", "v1").strip().casefold()
-        in {"v2", "shopsimulator-environment-v2"}
     )
+    environment_v2 = environment_version in {
+        "v2",
+        "shopsimulator-environment-v2",
+        "shopsimulator-environment-v2.1",
+    }
     product_prices = dict()
     for product in all_products:
         asin = product['asin']

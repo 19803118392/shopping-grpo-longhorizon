@@ -28,7 +28,15 @@ from web_agent_site.engine.reward_v2 import (
     evaluate_purchase,
     fixed_termination,
 )
+from web_agent_site.engine.reward_v3 import (
+    evaluate_abstain as evaluate_abstain_v3,
+    evaluate_candidate_eligibility,
+    evaluate_purchase as evaluate_purchase_v3,
+    fixed_termination as fixed_termination_v3,
+)
 from web_agent_site.engine.termination_v2 import ProgressTracker
+from web_agent_site.engine.termination_v3 import EvidenceProgressTracker
+from web_agent_site.engine.variant_price_v1 import resolve_variant_price
 from web_agent_site.engine.observation_v2 import (
     build_observation_state,
     page_type_from_name,
@@ -36,6 +44,10 @@ from web_agent_site.engine.observation_v2 import (
 from web_agent_site.engine.environment_v2_config import (
     ENVIRONMENT_VERSION,
     load_environment_v2_config,
+)
+from web_agent_site.engine.environment_v2_1_config import (
+    ENVIRONMENT_VERSION as ENVIRONMENT_V2_1_VERSION,
+    load_environment_v2_1_config,
 )
 from web_agent_site.utils import (BASE_DIR, DEFAULT_FILE_PATH, random_idx)
 
@@ -203,6 +215,7 @@ class WebAgentTextEnv(gym.Env):
                 action_name,
                 action_arg,
                 self.server.visible_asins(self.session, self.browser.current_url),
+                current_url=self.browser.current_url,
             )
             status["progress"] = progress
             if progress["termination_reason"]:
@@ -425,17 +438,39 @@ class SimServer:
         num_products (`int`) -- Number of products to search across
         human_goals (`bool`) -- If true, load human goals; otherwise, load synthetic goals
         """
-        self.environment_v2 = (
+        requested_environment_version = (
             os.environ.get("SHOP_ENVIRONMENT_VERSION", "v1").strip().casefold()
-            in {"v2", ENVIRONMENT_VERSION}
+        )
+        self.environment_v2_1 = (
+            requested_environment_version == ENVIRONMENT_V2_1_VERSION
+        )
+        self.environment_v2 = (
+            requested_environment_version
+            in {"v2", ENVIRONMENT_VERSION, ENVIRONMENT_V2_1_VERSION}
+        )
+        self.environment_version = (
+            ENVIRONMENT_V2_1_VERSION
+            if self.environment_v2_1
+            else ENVIRONMENT_VERSION
+            if self.environment_v2
+            else "shopsimulator-environment-v1"
         )
         self.environment_v2_config = None
         if self.environment_v2:
             config_path = os.environ.get(
                 "SHOP_ENV_CONFIG",
-                os.path.join(BASE_DIR, "../configs/environment_v2.json"),
+                os.path.join(
+                    BASE_DIR,
+                    "../configs/environment_v2_1.json"
+                    if self.environment_v2_1
+                    else "../configs/environment_v2.json",
+                ),
             )
-            self.environment_v2_config = load_environment_v2_config(config_path)
+            self.environment_v2_config = (
+                load_environment_v2_1_config(config_path)
+                if self.environment_v2_1
+                else load_environment_v2_config(config_path)
+            )
 
         # Load all products, goals, and search engine
         self.base_url = base_url
@@ -636,14 +671,41 @@ class SimServer:
 
         # 新增：获取当前选中的option和价格
         selected_option = None
-        selected_price = product_info.get('Price', 0)
-        option_to_price = product_info.get('option_to_price', {})
         if session["options"]:
-            # 假设只有一个option
             selected_option = list(session["options"].values())[-1]
-            selected_price = option_to_price.get(selected_option, selected_price)
+        if self.environment_v2_1:
+            price_resolution = resolve_variant_price(
+                product_info,
+                session["options"],
+            )
+            selected_price = (
+                price_resolution["price"]
+                if price_resolution["status"] == "pass"
+                else None
+            )
+            session["price_resolution"] = price_resolution
+        else:
+            selected_price = product_info.get('Price', 0)
+            option_to_price = product_info.get('option_to_price', {})
+            if selected_option is not None:
+                selected_price = option_to_price.get(
+                    selected_option,
+                    selected_price,
+                )
         session["selected_price"] = selected_price
         session["subpage"] = None
+        if self.environment_v2_1 and session.get("asin"):
+            eligibility = evaluate_candidate_eligibility(
+                product_info,
+                session["goal"],
+            )
+            session.setdefault("candidate_eligibility", {})[
+                session["asin"]
+            ] = eligibility
+            if eligibility["known_valid"]:
+                session.setdefault("known_valid_asins", set()).add(
+                    session["asin"]
+                )
 
         url = (
             f'{self.base_url}/item_page/{session_id}/'
@@ -710,7 +772,16 @@ class SimServer:
             price = self.product_prices.get(session["asin"])
 
         # Calculate reward for selected product and set variables for page details
-        if self.environment_v2:
+        if self.environment_v2_1:
+            result = evaluate_purchase_v3(
+                purchased_product,
+                goal,
+                selected_options=session["options"],
+                price_resolution=session.get("price_resolution"),
+                rewards=self.environment_v2_config["reward"],
+            )
+            reward, info = result.reward, result.to_dict()
+        elif self.environment_v2:
             result = evaluate_purchase(
                 purchased_product,
                 goal,
@@ -757,30 +828,76 @@ class SimServer:
             return (session["asin"],)
         return ()
 
-    def record_progress(self, session_id, action_name, action_arg, visible_asins):
-        return self.user_sessions[session_id]["progress_tracker"].record(
+    def record_progress(
+        self,
+        session_id,
+        action_name,
+        action_arg,
+        visible_asins,
+        *,
+        current_url=None,
+    ):
+        session = self.user_sessions[session_id]
+        tracker = session["progress_tracker"]
+        if not self.environment_v2_1:
+            return tracker.record(action_name, action_arg, visible_asins)
+        constraint_evidence = []
+        asin = session.get("asin")
+        eligibility = (
+            session.get("candidate_eligibility", {}).get(asin)
+            if asin
+            else None
+        )
+        for gate_name, gate in (
+            (eligibility or {}).get("hard_gates") or {}
+        ).items():
+            constraint_evidence.append(
+                f"{asin}:{gate_name}:{gate.get('status', 'unknown')}"
+            )
+        return tracker.record(
             action_name,
             action_arg,
             visible_asins,
+            page_type=page_type_from_name(self.get_page_name(current_url or "")),
+            selected_options=session.get("options"),
+            constraint_evidence=constraint_evidence,
         )
 
     def finish_without_purchase(self, session_id):
         session = self.user_sessions[session_id]
-        result = evaluate_abstain(
-            distinct_normalized_queries=len(
-                session.get("distinct_normalized_queries") or ()
-            ),
-            opened_asins=len(session.get("asins") or ()),
-            rewards=self.environment_v2_config["reward"],
-        )
+        if self.environment_v2_1:
+            tracker = session["progress_tracker"]
+            result = evaluate_abstain_v3(
+                effective_result_sets=tracker.effective_result_sets,
+                opened_candidates=len(session.get("asins") or ()),
+                known_acceptable_candidates=len(
+                    session.get("known_valid_asins") or ()
+                ),
+                rewards=self.environment_v2_config["reward"],
+            )
+        else:
+            result = evaluate_abstain(
+                distinct_normalized_queries=len(
+                    session.get("distinct_normalized_queries") or ()
+                ),
+                opened_asins=len(session.get("asins") or ()),
+                rewards=self.environment_v2_config["reward"],
+            )
         return self._terminal_status(session_id, result)
 
     def terminate_session(self, session_id, reason, *, progress=None):
         status = self._terminal_status(
             session_id,
-            fixed_termination(
-                reason,
-                rewards=self.environment_v2_config["reward"],
+            (
+                fixed_termination_v3(
+                    reason,
+                    rewards=self.environment_v2_config["reward"],
+                )
+                if self.environment_v2_1
+                else fixed_termination(
+                    reason,
+                    rewards=self.environment_v2_config["reward"],
+                )
             ),
         )
         if progress is not None:
@@ -841,22 +958,61 @@ class SimServer:
                         'options': dict(),
                         'selected_price': None,
                         'subpage': None,
-                        'progress_tracker': ProgressTracker(
-                            max_steps=self.max_steps,
-                            exact_repeat_limit=int(
-                                self.environment_v2_config["termination"][
-                                    "exact_repeat_limit"
-                                ]
+                        'price_resolution': None,
+                        'candidate_eligibility': {},
+                        'known_valid_asins': set(),
+                        'progress_tracker': (
+                            EvidenceProgressTracker(
+                                max_steps=self.max_steps,
+                                exact_repeat_limit=int(
+                                    self.environment_v2_config["termination"][
+                                        "exact_repeat_limit"
+                                    ]
+                                ),
+                                no_progress_limit=int(
+                                    self.environment_v2_config["termination"][
+                                        "no_progress_limit"
+                                    ]
+                                ),
+                                min_new_asins_per_result_set=int(
+                                    self.environment_v2_config["termination"][
+                                        "min_new_asins_per_result_set"
+                                    ]
+                                ),
+                                product_open_progress_budget=int(
+                                    self.environment_v2_config["termination"][
+                                        "product_open_progress_budget"
+                                    ]
+                                ),
+                                subpage_progress_budget=int(
+                                    self.environment_v2_config["termination"][
+                                        "subpage_progress_budget"
+                                    ]
+                                ),
+                                result_set_progress_budget=int(
+                                    self.environment_v2_config["termination"][
+                                        "result_set_progress_budget"
+                                    ]
+                                ),
                             )
-                            if self.environment_v2
-                            else 2,
-                            no_new_asin_limit=int(
-                                self.environment_v2_config["termination"][
-                                    "no_new_asin_limit"
-                                ]
+                            if self.environment_v2_1
+                            else ProgressTracker(
+                                max_steps=self.max_steps,
+                                exact_repeat_limit=int(
+                                    self.environment_v2_config["termination"][
+                                        "exact_repeat_limit"
+                                    ]
+                                )
+                                if self.environment_v2
+                                else 2,
+                                no_new_asin_limit=int(
+                                    self.environment_v2_config["termination"][
+                                        "no_new_asin_limit"
+                                    ]
+                                )
+                                if self.environment_v2
+                                else 4,
                             )
-                            if self.environment_v2
-                            else 4,
                         ),
                         'actions': defaultdict(int)
                     }
@@ -892,6 +1048,7 @@ class SimServer:
                             "current_page_asins": [],
                             "options": {},
                             "selected_price": None,
+                            "price_resolution": None,
                             "subpage": None,
                         }
                     )

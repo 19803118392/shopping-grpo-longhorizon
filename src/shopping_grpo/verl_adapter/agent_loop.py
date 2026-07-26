@@ -324,6 +324,15 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
             output.metrics["shopping_reward/unverifiable"] = int(
                 state.get("reward_unverifiable", False)
             )
+            output.metrics["shopping_reward/match_score"] = float(
+                breakdown.get("match_score", 0.0)
+            )
+            output.metrics["shopping_reward/evidence_coverage"] = float(
+                breakdown.get("evidence_coverage", 0.0)
+            )
+            output.metrics["shopping_reward/partial_purchase"] = int(
+                state.get("reward_type") == "partial_alternative_purchase"
+            )
             output.metrics["shopping_termination/graceful_stop"] = int(
                 state.get("reward_type") == "graceful_stop"
             )

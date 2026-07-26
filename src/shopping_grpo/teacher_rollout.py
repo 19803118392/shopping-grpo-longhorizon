@@ -296,7 +296,11 @@ def collect_for_task(
         trajectory["messages"] = messages
         tool_schemas = tools or (
             SHOP_TOOL_SCHEMAS_V2
-            if initial.get("environment_version") == "shopsimulator-environment-v2"
+            if initial.get("environment_version")
+            in {
+                "shopsimulator-environment-v2",
+                "shopsimulator-environment-v2.1",
+            }
             else SHOP_TOOL_SCHEMAS
         )
         consecutive_blocked_calls = 0

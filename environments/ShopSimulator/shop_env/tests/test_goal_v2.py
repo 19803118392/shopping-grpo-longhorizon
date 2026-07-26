@@ -21,6 +21,21 @@ class GoalV2Test(unittest.TestCase):
             2199.0,
         )
         self.assertEqual(
+            explicit_budget_from_instruction("价格在70元左右"),
+            77.0,
+        )
+        self.assertEqual(
+            explicit_budget_from_instruction("价格在130-140元之间"),
+            140.0,
+        )
+        self.assertEqual(
+            explicit_budget_from_instruction("价格30元到40元之间"),
+            40.0,
+        )
+        self.assertIsNone(
+            explicit_budget_from_instruction("预算4k+"),
+        )
+        self.assertEqual(
             explicit_budget_from_instruction("预算在1万元左右"),
             11000.0,
         )

@@ -22,6 +22,7 @@ REWARD_V2_TYPES = {
     "max_steps",
     "reward_unverifiable",
 }
+REWARD_V3_TYPES = REWARD_V2_TYPES | {"partial_alternative_purchase"}
 
 
 def make_runtime_state(task_id: int, max_steps: int) -> dict:
@@ -45,6 +46,7 @@ def make_runtime_state(task_id: int, max_steps: int) -> dict:
         "reward_valid": True,
         "reward_unverifiable": False,
         "reward_v2_detail": None,
+        "reward_v3_detail": None,
         "infrastructure_invalid": False,
         "error": None,
         "context_compactions": 0,
@@ -180,6 +182,102 @@ def validate_reward_v2(raw_detail: object) -> dict:
     }
 
 
+def validate_reward_v3(raw_detail: object) -> dict:
+    """Validate and minimize public Environment v2.1 / Reward v3 diagnostics."""
+    if not isinstance(raw_detail, Mapping):
+        raise ValueError("reward_detail must be an object")
+    if raw_detail.get("reward_version") != "shopsimulator-reward-v3":
+        raise ValueError("reward_detail has an unsupported reward_version")
+    reward_type = str(raw_detail.get("reward_type", ""))
+    if reward_type not in REWARD_V3_TYPES:
+        raise ValueError(f"unknown Reward v3 reward_type: {reward_type!r}")
+    if raw_detail.get("termination_reason") != reward_type:
+        raise ValueError("termination_reason must equal reward_type")
+    reward_valid = raw_detail.get("reward_valid")
+    if not isinstance(reward_valid, bool):
+        raise ValueError("reward_valid must be boolean")
+    if (reward_type == "reward_unverifiable") != (not reward_valid):
+        raise ValueError("only reward_unverifiable may set reward_valid=false")
+    try:
+        terminal_utility = float(raw_detail.get("terminal_utility"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("terminal_utility must be numeric") from exc
+    if not math.isfinite(terminal_utility):
+        raise ValueError("terminal_utility must be finite")
+    purchase_success = raw_detail.get("purchase_success")
+    sampling_invalid = raw_detail.get("sampling_invalid")
+    if not isinstance(purchase_success, bool):
+        raise ValueError("purchase_success must be boolean")
+    if not isinstance(sampling_invalid, bool):
+        raise ValueError("sampling_invalid must be boolean")
+    if sampling_invalid != (not reward_valid):
+        raise ValueError("sampling_invalid must equal not reward_valid")
+    hard_gates = raw_detail.get("hard_gates")
+    if not isinstance(hard_gates, Mapping):
+        raise ValueError("hard_gates must be an object")
+    public_gates = {}
+    for name, raw_gate in hard_gates.items():
+        if not isinstance(raw_gate, Mapping):
+            raise ValueError(f"hard gate {name!r} must be an object")
+        status = raw_gate.get("status")
+        if status not in {"pass", "fail", "unverifiable"}:
+            raise ValueError(f"hard gate {name!r} has invalid status")
+        if raw_gate.get("passed") != (status == "pass"):
+            raise ValueError(f"hard gate {name!r} has inconsistent passed")
+        if raw_gate.get("verifiable") != (status != "unverifiable"):
+            raise ValueError(f"hard gate {name!r} has inconsistent verifiable")
+        public_gates[str(name)] = {
+            "status": status,
+            "passed": raw_gate["passed"],
+            "verifiable": raw_gate["verifiable"],
+            "comparator": str(raw_gate.get("comparator") or ""),
+            "source_field": str(raw_gate.get("source_field") or ""),
+        }
+    try:
+        weighted_score = float(raw_detail.get("weighted_score", 0.0))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("weighted_score must be numeric") from exc
+    if not math.isfinite(weighted_score) or not 0.0 <= weighted_score <= 1.0:
+        raise ValueError("weighted_score must be finite and in [0, 1]")
+    try:
+        evidence_coverage = float(raw_detail.get("evidence_coverage", 0.0))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("evidence_coverage must be numeric") from exc
+    if (
+        not math.isfinite(evidence_coverage)
+        or not 0.0 <= evidence_coverage <= 1.0
+    ):
+        raise ValueError("evidence_coverage must be finite and in [0, 1]")
+    raw_dimension_scores = raw_detail.get("dimension_scores") or {}
+    if not isinstance(raw_dimension_scores, Mapping):
+        raise ValueError("dimension_scores must be an object")
+    dimension_scores = {}
+    for name in ("brand", "model", "core_functions", "key_options"):
+        try:
+            score = float(raw_dimension_scores.get(name, 0.0))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"dimension score {name} must be numeric") from exc
+        if not math.isfinite(score) or not 0.0 <= score <= 1.0:
+            raise ValueError(
+                f"dimension score {name} must be finite and in [0, 1]"
+            )
+        dimension_scores[name] = score
+    return {
+        "reward_version": "shopsimulator-reward-v3",
+        "reward_type": reward_type,
+        "reward_valid": reward_valid,
+        "termination_reason": reward_type,
+        "target_asin_match": bool(raw_detail.get("target_asin_match")),
+        "hard_gates": public_gates,
+        "weighted_score": weighted_score,
+        "evidence_coverage": evidence_coverage,
+        "dimension_scores": dimension_scores,
+        "terminal_utility": terminal_utility,
+        "purchase_success": purchase_success,
+        "sampling_invalid": sampling_invalid,
+    }
+
+
 def _normal_terminal(state: dict) -> bool:
     terminal = state.get("terminal_result") or {}
     return (
@@ -198,23 +296,60 @@ def reward_breakdown(state: dict) -> dict[str, float | bool]:
         invalid = True
         native = 0.0
 
-    if state.get("reward_version") == "shopsimulator-reward-v2":
-        detail = state.get("reward_v2_detail") or {}
+    if state.get("reward_version") in {
+        "shopsimulator-reward-v2",
+        "shopsimulator-reward-v3",
+    }:
+        is_v3 = state.get("reward_version") == "shopsimulator-reward-v3"
+        detail = (
+            state.get("reward_v3_detail")
+            if is_v3
+            else state.get("reward_v2_detail")
+        ) or {}
         reward_valid = bool(state.get("reward_valid", True))
         invalid_reward = not reward_valid
         gates = detail.get("hard_gates") or {}
+        dimension_scores = detail.get("dimension_scores") or {}
         component = lambda name: float(bool(gates.get(name, {}).get("passed")))
         full = float(state.get("reward_type") == "gold_purchase")
         strict = full
-        # Shift the frozen terminal range [-0.7, 1.0] to a non-negative
-        # signal for bounded group diagnostics. The optimizer still receives
-        # the unshifted terminal reward in ``total``.
-        semantic = native + 0.7 if normal_terminal and not invalid_reward else 0.0
+        purchase_success = bool(
+            state.get("reward_type")
+            in {"gold_purchase", "valid_alternative_purchase"}
+        )
+        terminal_utility = (
+            native if normal_terminal and not invalid and not invalid_reward else 0.0
+        )
+        semantic = (
+            float(purchase_success)
+            if is_v3
+            else native + 0.7
+            if normal_terminal and not invalid_reward
+            else 0.0
+        )
         return {
             "r_type": component("category"),
             "r_att": float(detail.get("weighted_score", 0.0)),
-            "r_option": component("key_options"),
+            "r_option": (
+                float(dimension_scores.get("key_options", 0.0))
+                if is_v3
+                else component("key_options")
+            ),
             "r_price": component("budget"),
+            "match_score": float(detail.get("weighted_score", 0.0)),
+            "evidence_coverage": (
+                float(detail.get("evidence_coverage", 0.0))
+                if is_v3
+                else 0.0
+            ),
+            "brand_score": float(dimension_scores.get("brand", 0.0)),
+            "model_score": float(dimension_scores.get("model", 0.0)),
+            "core_function_score": float(
+                dimension_scores.get("core_functions", 0.0)
+            ),
+            "option_score": float(
+                dimension_scores.get("key_options", 0.0)
+            ),
             "full": full,
             "strict": strict,
             "native": native,
@@ -227,7 +362,10 @@ def reward_breakdown(state: dict) -> dict[str, float | bool]:
                 int(state.get("repeat_action_count", 0))
                 / max(int(state.get("action_attempt_count", 0)), 1)
             ),
-            "total": native if not invalid and not invalid_reward else 0.0,
+            "total": terminal_utility,
+            "terminal_utility": terminal_utility,
+            "purchase_success": float(purchase_success),
+            "sampling_invalid": bool(invalid or invalid_reward),
             "infrastructure_invalid": invalid,
             "reward_unverifiable": invalid_reward,
         }
@@ -259,6 +397,9 @@ def reward_breakdown(state: dict) -> dict[str, float | bool]:
             "penalty_repeat": 0.0,
             "repeat_action_rate": repeat_action_rate,
             "total": 0.0,
+            "terminal_utility": 0.0,
+            "purchase_success": 0.0,
+            "sampling_invalid": True,
             "infrastructure_invalid": True,
         }
 
@@ -293,6 +434,9 @@ def reward_breakdown(state: dict) -> dict[str, float | bool]:
         "penalty_repeat": penalty_repeat,
         "repeat_action_rate": repeat_action_rate,
         "total": total,
+        "terminal_utility": total,
+        "purchase_success": full,
+        "sampling_invalid": False,
         "infrastructure_invalid": False,
     }
 

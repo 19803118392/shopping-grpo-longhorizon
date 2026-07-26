@@ -35,14 +35,20 @@ def acceptance_reasons(trajectory):
         reasons.append("environment_not_done")
     if not any(step.get("tool_name") == "buy_now" or step.get("env_action") == "click[Buy Now]" for step in steps):
         reasons.append("missing_buy")
-    if (
-        isinstance(reward_detail, dict)
-        and reward_detail.get("reward_version") == "shopsimulator-reward-v2"
-    ):
+    reward_version = (
+        reward_detail.get("reward_version")
+        if isinstance(reward_detail, dict)
+        else None
+    )
+    if reward_version in {
+        "shopsimulator-reward-v2",
+        "shopsimulator-reward-v3",
+    }:
+        prefix = "reward_v2" if reward_version.endswith("-v2") else "reward_v3"
         if reward_detail.get("reward_type") != "gold_purchase":
-            reasons.append("reward_v2_not_gold_purchase")
+            reasons.append(f"{prefix}_not_gold_purchase")
         if reward_detail.get("reward_valid") is not True:
-            reasons.append("reward_v2_invalid")
+            reasons.append(f"{prefix}_invalid")
     elif not isinstance(reward_detail, dict) or any(
         key not in reward_detail for key in REWARD_KEYS
     ):
@@ -90,7 +96,10 @@ def build_sft_row(trajectory, retain_reasoning=False):
         "tools": (
             SHOP_TOOL_SCHEMAS_V2
             if (trajectory.get("initial_result") or {}).get("environment_version")
-            == "shopsimulator-environment-v2"
+            in {
+                "shopsimulator-environment-v2",
+                "shopsimulator-environment-v2.1",
+            }
             else SHOP_TOOL_SCHEMAS
         ),
     }
