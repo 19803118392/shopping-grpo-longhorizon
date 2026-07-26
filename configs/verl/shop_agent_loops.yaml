@@ -12,7 +12,8 @@
   context_preserve_recent_groups: 1
   # 正式 Vanilla 基线保持连续轨迹；旧 token 删除只保留为显式应急开关。
   context_compaction_enable: false
-  observation_token_budget: 768
+  # ShopSimulator 每页返回 20 个商品。投影必须保留整页所有商品，避免分页永久盲区。
+  observation_token_budget: 1536
   observation_detail_token_budget: 4096
   observation_generic_token_budget: 768
-  observation_search_top_k: 10
+  observation_search_top_k: 20

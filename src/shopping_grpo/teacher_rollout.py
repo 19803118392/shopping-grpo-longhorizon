@@ -66,7 +66,7 @@ class OpenAIChatClient:
         observation_token_budget=None,
         observation_detail_token_budget=4096,
         observation_generic_token_budget=768,
-        observation_search_top_k=10,
+        observation_search_top_k=20,
         token_counter=None,
         observation_token_counter=None,
         transport=None,
@@ -582,7 +582,7 @@ def client_from_env(
     observation_token_budget=None,
     observation_detail_token_budget=4096,
     observation_generic_token_budget=768,
-    observation_search_top_k=10,
+    observation_search_top_k=20,
 ):
     api_key = api_key or os.environ.get("OPENAI_API_KEY")
     if not api_key:

@@ -35,7 +35,7 @@ def parse_args():
     parser.add_argument("--observation-token-budget", type=int, default=0)
     parser.add_argument("--observation-detail-token-budget", type=int, default=4096)
     parser.add_argument("--observation-generic-token-budget", type=int, default=768)
-    parser.add_argument("--observation-search-top-k", type=int, default=10)
+    parser.add_argument("--observation-search-top-k", type=int, default=20)
     parser.add_argument(
         "--max-steps",
         type=int,

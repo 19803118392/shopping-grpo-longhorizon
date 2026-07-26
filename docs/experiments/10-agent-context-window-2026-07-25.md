@@ -221,8 +221,9 @@ GRPO/PPO clip 均未修改。
 | 搜索 768 / Top-10 | 2 | 8 | 1 | 0.15 | 29.6 | 16,965 |
 
 两组投影评测均为 10/10 完成、HTTP/error=0、release error=0、旧历史
-compaction=0、footer failure=0。448/Top-8 明显过度压缩，因此最终默认值固定为
-768/Top-10。10 条样本只用于运行时选择，不能作为模型效果的显著性结论。
+compaction=0、footer failure=0。448/Top-8 明显过度压缩，因此这一阶段曾将默认值固定为
+768/Top-10；该设置随后发现分页盲区，已由下述 v2 契约取代。10 条样本只用于运行时
+选择，不能作为模型效果的显著性结论。
 
 输出目录（不进入 Git）：
 
@@ -263,3 +264,31 @@ PYTHONPATH=src .venv-grpo-v080/bin/python scripts/project_sft_observations.py \
 份投影版 SFT 数据做短 SFT refresh，再让 refresh 后的模型执行 GRPO rollout、
 validation 和 benchmark。当前证据不支持在旧 SFT/GRPO 模型上直接启动正式投影版
 GRPO。
+
+## 第三阶段：消除搜索分页盲区
+
+ShopSimulator 的 `PRODUCT_WINDOW=20`，但 v1 projector 最多只保留当前环境页前 10 个
+商品，且 768-token 预算在真实页面上通常只能容纳 8--9 个。环境翻页仍以 20 个商品
+为单位，因此每页被投影删除的商品不会在下一页补回，形成永久不可见且不可点击的
+页内盲区。
+
+`shopping-observation-v2` 改为：
+
+1. 搜索页预算提高到 1,536 token，配置页容量与环境一致设为 20；
+2. 当前环境页的所有商品都必须保留 ASIN、价格、页内序号和公平压缩的标题；
+3. 预算不足时对每个标题做相同上限的头尾压缩，不再删除整件商品；
+4. 原始 ASIN 集合、模型可见 ASIN 集合和动作守卫可点击 ASIN 集合必须完全相同；
+5. 环境实际页容量超过配置或全部商品即使空标题也无法装入预算时，明确失败并将轨迹
+   作为基础设施无效处理，而不是静默制造盲区。
+
+CPU 离线重放两组既有 10-task 投影轨迹，共覆盖 294 个搜索页，其中 201 个页面包含
+完整 20 个商品。结果为：
+
+- 投影失败：0；
+- 原始/可见 ASIN 集合不一致：0；
+- 最大可见搜索页长度：1,536 token；
+- GPU 使用：0。
+
+本阶段只修复项目侧 projector、AgentLoop 默认配置以及 Teacher/SFT/benchmark 共用
+参数，没有修改 ShopSimulator、BM25、reward、模型、veRL 或训练数据。真实效果对比
+仍需在 GPU 可用后使用相同固定任务另行评测。

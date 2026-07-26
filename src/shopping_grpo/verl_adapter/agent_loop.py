@@ -37,10 +37,10 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         context_input_budget_tokens=16384,
         context_preserve_recent_groups=1,
         context_compaction_enable=False,
-        observation_token_budget=768,
+        observation_token_budget=1536,
         observation_detail_token_budget=4096,
         observation_generic_token_budget=768,
-        observation_search_top_k=10,
+        observation_search_top_k=20,
         env_factory=None,
         **kwargs,
     ):

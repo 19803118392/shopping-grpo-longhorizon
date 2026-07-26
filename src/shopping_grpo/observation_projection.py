@@ -11,7 +11,7 @@ from shopping_grpo.action_validation import clickable_buttons, product_ids
 
 FOOTER_MARKER = "\n\n搜索功能是否可用:"
 TRUNCATION_MARKER = "[TRUNCATED_BY_SHOPPING_PROJECTOR]"
-PROJECTION_CONTRACT_VERSION = "shopping-observation-v1"
+PROJECTION_CONTRACT_VERSION = "shopping-observation-v2"
 ASIN_PATTERN = re.compile(r"^\d{12}$")
 NAVIGATION_BUTTONS = {
     "back to search",
@@ -53,11 +53,11 @@ def project_observation(
     observation,
     *,
     count_tokens,
-    token_budget=768,
+    token_budget=1536,
     detail_token_budget=4096,
     generic_token_budget=768,
     parameters=None,
-    search_top_k=10,
+    search_top_k=20,
 ):
     """Return a bounded observation whose visible targets are also the guard targets."""
     observation = str(observation)
@@ -115,12 +115,16 @@ def project_observation(
     if page_type != "search_results" and set(visible_buttons) != set(raw_buttons):
         raise ObservationProjectionError("non-search projection changed actionable buttons")
     if page_type == "search_results":
+        if set(raw_asins) != set(visible_asins):
+            raise ObservationProjectionError(
+                "search projection must preserve every product on the current environment page"
+            )
         visible_product_targets = {
             button for button in visible_buttons if ASIN_PATTERN.fullmatch(button)
         }
-        if set(visible_asins) != visible_product_targets:
+        if set(raw_asins) != visible_product_targets:
             raise ObservationProjectionError(
-                "visible search products and actionable ASIN buttons do not match"
+                "all current-page search products must remain visible and actionable"
             )
 
     meta = ObservationProjectionMeta(
@@ -177,16 +181,26 @@ def _project_search_results(
             count_tokens=count_tokens,
             token_budget=token_budget,
         )
+    if len(products) > search_top_k:
+        raise ObservationProjectionError(
+            f"raw search page has {len(products)} products, above configured "
+            f"page capacity {search_top_k}"
+        )
 
     query = str(parameters.get("query", "")).strip()
     raw_buttons = clickable_buttons(observation)
-    maximum = min(search_top_k, len(products))
-    for shown in range(maximum, 0, -1):
-        selected = products[:shown]
-        selected_asins = {asin for asin, _, _ in selected}
+    selected_asins = {asin for asin, _, _ in products}
+
+    def render(title_character_limit):
+        compacted_titles = [
+            _compact_title(title, title_character_limit) for _, title, _ in products
+        ]
+        titles_compacted = any(
+            compacted != title
+            for compacted, (_, title, _) in zip(compacted_titles, products, strict=True)
+        )
         visible_buttons = [
-            button
-            for button in raw_buttons
+            button for button in raw_buttons
             if button.casefold() in NAVIGATION_BUTTONS or button in selected_asins
         ]
         lines = [
@@ -194,21 +208,52 @@ def _project_search_results(
             "page_type: search_results",
             f"query: {query or '(not recorded)'}",
             f"page: {page}",
-            f"products_shown: {shown}/{len(products)}",
+            f"products_shown: {len(products)}/{len(products)}",
         ]
         lines.extend(
-            f"- ASIN={asin} | title={title} | price={price}"
-            for asin, title, price in selected
+            f"{position:02d}|{asin}|{price}|{title}"
+            for position, ((asin, _, price), title) in enumerate(
+                zip(products, compacted_titles, strict=True),
+                start=1,
+            )
         )
-        if shown < len(products):
-            lines.append(f"{TRUNCATION_MARKER} omitted_products={len(products) - shown}")
+        if titles_compacted:
+            lines.append(f"{TRUNCATION_MARKER} product_titles_compacted=true")
         lines.extend(_footer_lines(footer, visible_buttons))
-        candidate = "\n".join(lines)
+        return "\n".join(lines)
+
+    maximum_title_characters = max((len(title) for _, title, _ in products), default=0)
+    low, high, best = 0, maximum_title_characters, None
+    while low <= high:
+        middle = (low + high) // 2
+        candidate = render(middle)
         if int(count_tokens(candidate)) <= token_budget:
-            return candidate
+            best = candidate
+            low = middle + 1
+        else:
+            high = middle - 1
+    if best is not None:
+        return best
     raise ObservationProjectionError(
-        "search result footer plus one visible product exceeds the observation token budget"
+        "all current-page search products cannot fit the observation token budget, "
+        "even with empty title snippets"
     )
+
+
+def _compact_title(title, character_limit):
+    title = str(title)
+    character_limit = int(character_limit)
+    if character_limit <= 0:
+        return ""
+    if len(title) <= character_limit:
+        return title
+    if character_limit == 1:
+        return "…"
+    if character_limit == 2:
+        return title[0] + "…"
+    head_length = max(1, (character_limit - 1) * 2 // 3)
+    tail_length = max(1, character_limit - 1 - head_length)
+    return title[:head_length] + "…" + title[-tail_length:]
 
 
 def _project_generic_page(observation, *, count_tokens, token_budget):

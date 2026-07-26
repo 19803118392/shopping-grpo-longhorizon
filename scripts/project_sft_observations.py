@@ -22,10 +22,10 @@ def parse_args():
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--metadata", type=Path, required=True)
-    parser.add_argument("--token-budget", type=int, default=768)
+    parser.add_argument("--token-budget", type=int, default=1536)
     parser.add_argument("--detail-token-budget", type=int, default=4096)
     parser.add_argument("--generic-token-budget", type=int, default=768)
-    parser.add_argument("--search-top-k", type=int, default=10)
+    parser.add_argument("--search-top-k", type=int, default=20)
     return parser.parse_args()
 
 

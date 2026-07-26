@@ -35,10 +35,10 @@ def parse_args():
         action="store_true",
         help="应急启用旧历史删除；正式 Vanilla 评测默认关闭。",
     )
-    parser.add_argument("--observation-token-budget", type=int, default=768)
+    parser.add_argument("--observation-token-budget", type=int, default=1536)
     parser.add_argument("--observation-detail-token-budget", type=int, default=4096)
     parser.add_argument("--observation-generic-token-budget", type=int, default=768)
-    parser.add_argument("--observation-search-top-k", type=int, default=10)
+    parser.add_argument("--observation-search-top-k", type=int, default=20)
     return parser.parse_args()
 
 

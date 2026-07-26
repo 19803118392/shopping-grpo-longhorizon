@@ -16,12 +16,12 @@ from shopping_grpo.observation_projection import (
 from shopping_grpo.sft_data import project_sft_messages
 
 
-def search_page(product_count=12):
+def search_page(product_count=12, page=1):
     segments = [
         "Instruction:",
         "find a useful product",
         "Back to Search",
-        "Page 1 (Total results: 12)",
+        f"Page {page} (Total results: 40)",
         "Next >",
     ]
     buttons = ["back to search", "next >"]
@@ -38,18 +38,18 @@ def search_page(product_count=12):
 
 
 class ObservationProjectionTest(unittest.TestCase):
-    def test_search_projection_keeps_navigation_and_only_visible_product_targets(self):
-        raw = search_page()
+    def test_search_projection_preserves_every_current_page_product(self):
+        raw = search_page(product_count=20)
         visible, meta = project_observation(
             "search_products",
             raw,
             parameters={"query": "useful product"},
             count_tokens=len,
-            token_budget=500,
-            search_top_k=8,
+            token_budget=1200,
+            search_top_k=20,
         )
 
-        self.assertLessEqual(len(visible), 500)
+        self.assertLessEqual(len(visible), 1200)
         self.assertTrue(meta.truncated)
         self.assertTrue(meta.critical_footer_preserved)
         self.assertIn(TRUNCATION_MARKER, visible)
@@ -61,27 +61,47 @@ class ObservationProjectionTest(unittest.TestCase):
             set(product_ids(visible)),
             {button for button in clickable_buttons(visible) if button.isdigit()},
         )
+        self.assertEqual(product_ids(visible), product_ids(raw))
 
-    def test_guard_accepts_visible_asin_and_rejects_projected_away_asin(self):
-        raw = search_page()
+    def test_guard_accepts_last_product_instead_of_creating_blind_spot(self):
+        raw = search_page(product_count=20)
         visible, _ = project_observation(
             "search_products",
             raw,
             parameters={"query": "useful product"},
             count_tokens=len,
-            token_budget=500,
-            search_top_k=8,
+            token_budget=1200,
+            search_top_k=20,
         )
-        visible_asin = product_ids(visible)[0]
-        omitted_asin = product_ids(raw)[-1]
+        last_asin = product_ids(raw)[-1]
 
         self.assertIsNone(
-            action_reject_reason("open_product", {"asin": visible_asin}, visible)
+            action_reject_reason("open_product", {"asin": last_asin}, visible)
         )
-        self.assertEqual(
-            action_reject_reason("open_product", {"asin": omitted_asin}, visible),
-            "click_not_in_previous_observation",
+
+    def test_second_environment_page_preserves_products_21_through_40(self):
+        raw = search_page(product_count=20, page=2)
+        visible, _ = project_observation(
+            "next_page",
+            raw,
+            count_tokens=len,
+            token_budget=1200,
+            search_top_k=20,
         )
+
+        self.assertIn("page: Page 2", visible)
+        self.assertEqual(product_ids(visible), product_ids(raw))
+
+    def test_capacity_mismatch_fails_instead_of_silently_dropping_products(self):
+        raw = search_page(product_count=20)
+        with self.assertRaisesRegex(ObservationProjectionError, "page capacity"):
+            project_observation(
+                "search_products",
+                raw,
+                count_tokens=len,
+                token_budget=1200,
+                search_top_k=10,
+            )
 
     def test_short_product_page_is_identity_projection(self):
         raw = (
@@ -155,7 +175,7 @@ class ObservationProjectionTest(unittest.TestCase):
                     observation,
                     parameters=parameters,
                     count_tokens=len,
-                    token_budget=500,
+                    token_budget=1200,
                 )
             ),
         )

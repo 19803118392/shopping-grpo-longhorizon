@@ -20,10 +20,10 @@ class GrpoRuntimeAssetsTest(unittest.TestCase):
         self.assertIn("context_input_budget_tokens: 16384", config)
         self.assertIn("context_preserve_recent_groups: 1", config)
         self.assertIn("context_compaction_enable: false", config)
-        self.assertIn("observation_token_budget: 768", config)
+        self.assertIn("observation_token_budget: 1536", config)
         self.assertIn("observation_detail_token_budget: 4096", config)
         self.assertIn("observation_generic_token_budget: 768", config)
-        self.assertIn("observation_search_top_k: 10", config)
+        self.assertIn("observation_search_top_k: 20", config)
 
     def test_vanilla_config_uses_qwen_parser_and_environment_reward_only(self):
         config = (ROOT / "configs/verl/vanilla_grpo.yaml").read_text(encoding="utf-8")
