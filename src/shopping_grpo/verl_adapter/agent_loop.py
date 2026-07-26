@@ -30,6 +30,7 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         base_url="http://127.0.0.1:5700",
         timeout=60,
         max_steps=35,
+        required_environment_version=None,
         reward_mode="native",
         context_window_tokens=24576,
         context_generation_reserve_tokens=512,
@@ -48,6 +49,7 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         self.base_url = base_url
         self.timeout = int(timeout)
         self.max_steps = int(max_steps)
+        self.required_environment_version = required_environment_version
         self.reward_mode = str(reward_mode)
         self.context_window_tokens = int(context_window_tokens)
         self.context_generation_reserve_tokens = int(context_generation_reserve_tokens)
@@ -223,6 +225,7 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
             base_url=self.base_url,
             timeout=self.timeout,
             max_steps=self.max_steps,
+            required_environment_version=self.required_environment_version,
             env_factory=self.env_factory,
         )
         state = await session.start(task_id)
@@ -244,6 +247,10 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
                 "action_attempts": int(state["action_attempt_count"]),
                 "repeat_actions": int(state["repeat_action_count"]),
                 "reward_mode": self.reward_mode,
+                "reward_version": state.get("reward_version"),
+                "reward_type": state.get("reward_type"),
+                "reward_valid": bool(state.get("reward_valid", True)),
+                "reward_unverifiable": bool(state.get("reward_unverifiable")),
                 "reward": breakdown,
                 "context_compactions": int(state["context_compactions"]),
                 "context_tokens_removed": int(state["context_tokens_removed"]),
@@ -313,6 +320,18 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
             )
             output.metrics["shopping_context/overflow"] = int(
                 state["termination_reason"] == "context_hard_limit_exceeded"
+            )
+            output.metrics["shopping_reward/unverifiable"] = int(
+                state.get("reward_unverifiable", False)
+            )
+            output.metrics["shopping_termination/graceful_stop"] = int(
+                state.get("reward_type") == "graceful_stop"
+            )
+            output.metrics["shopping_termination/early_abstain"] = int(
+                state.get("reward_type") == "early_abstain"
+            )
+            output.metrics["shopping_termination/repeat_loop"] = int(
+                state.get("reward_type") == "repeat_loop"
             )
             return output
         finally:

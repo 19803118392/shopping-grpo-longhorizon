@@ -145,6 +145,11 @@ def project_observation(
 
 
 def _page_type(observation):
+    if (
+        "[SHOPPING_OBSERVATION_V2]" in observation
+        and "page_type: search_results" in observation
+    ):
+        return "search_results"
     if re.search(r"(?:^|\[SEP\]\s*)Page \d+", observation) and product_ids(observation):
         return "search_results"
     buttons = {button.casefold() for button in clickable_buttons(observation)}
@@ -165,6 +170,12 @@ def _project_search_results(
     token_budget,
     search_top_k,
 ):
+    if "[SHOPPING_OBSERVATION_V2]" in observation:
+        return _project_structured_search_results(
+            observation,
+            count_tokens=count_tokens,
+            token_budget=token_budget,
+        )
     body, footer = _split_footer(observation)
     segments = [segment.strip() for segment in body.split("[SEP]")]
     page = next((segment for segment in segments if re.fullmatch(r"Page \d+.*", segment)), "Page unknown")
@@ -238,6 +249,70 @@ def _project_search_results(
         "all current-page search products cannot fit the observation token budget, "
         "even with empty title snippets"
     )
+
+
+def _project_structured_search_results(
+    observation,
+    *,
+    count_tokens,
+    token_budget,
+):
+    body, footer = _split_footer(observation)
+    lines = body.splitlines()
+    product_lines = []
+    header_lines = []
+    for line in lines:
+        match = re.fullmatch(r"(\d+)\|(\d{12})\|(.*)", line)
+        if match:
+            product_lines.append((match.group(1), match.group(2), match.group(3)))
+        elif line and not line.startswith("products_shown:"):
+            header_lines.append(line)
+    if not product_lines:
+        raise ObservationProjectionError(
+            "structured search observation has no product rows"
+        )
+    raw_buttons = clickable_buttons(observation)
+    product_asins = {asin for _, asin, _ in product_lines}
+    visible_buttons = [
+        button
+        for button in raw_buttons
+        if button in product_asins or button.casefold() in NAVIGATION_BUTTONS
+    ]
+
+    def render(character_limit):
+        compacted = []
+        truncated = False
+        for rank, asin, payload in product_lines:
+            fields = payload.split("|")
+            compacted_fields = [
+                _compact_title(field, character_limit) for field in fields
+            ]
+            truncated = truncated or compacted_fields != fields
+            compacted.append("|".join((rank, asin, *compacted_fields)))
+        rendered = [*header_lines, *compacted]
+        if truncated:
+            rendered.append(f"{TRUNCATION_MARKER} product_fields_compacted=true")
+        rendered.extend(_footer_lines(footer, visible_buttons))
+        return "\n".join(rendered)
+
+    maximum = max(
+        (len(field) for _, _, payload in product_lines for field in payload.split("|")),
+        default=0,
+    )
+    low, high, best = 0, maximum, None
+    while low <= high:
+        middle = (low + high) // 2
+        candidate = render(middle)
+        if int(count_tokens(candidate)) <= token_budget:
+            best = candidate
+            low = middle + 1
+        else:
+            high = middle - 1
+    if best is None:
+        raise ObservationProjectionError(
+            "all structured current-page products cannot fit the observation token budget"
+        )
+    return best
 
 
 def _compact_title(title, character_limit):

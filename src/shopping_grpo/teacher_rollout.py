@@ -20,7 +20,12 @@ from shopping_grpo.context_window import (
 )
 from shopping_grpo.observation_projection import project_observation
 from shopping_grpo.shop_http_env import ShopAgentEnv, ShopEnvironmentError, ShopHttpError
-from shopping_grpo.shop_tools import SHOP_TOOL_SCHEMAS, tool_call_to_action
+from shopping_grpo.shop_tools import (
+    SHOP_TOOL_SCHEMAS,
+    SHOP_TOOL_SCHEMAS_V2,
+    tool_call_to_action,
+)
+from shopping_grpo.structured_observation import render_structured_observation
 
 
 SYSTEM_PROMPT = """你是一个购物 Agent，负责在 ShopSimulator 中替用户完成购买。
@@ -278,11 +283,22 @@ def collect_for_task(
     env = env_factory(base_url=base_url)
     try:
         initial = env.reset(task["task_id"])
-        latest_observation = initial.get("instruction", initial.get("observation", ""))
+        if initial.get("observation_state") is not None:
+            latest_observation = render_structured_observation(
+                initial["observation_state"]
+            )
+        else:
+            latest_observation = initial.get(
+                "instruction", initial.get("observation", "")
+            )
         trajectory["initial_result"] = initial
         messages = _initial_messages(task, initial)
         trajectory["messages"] = messages
-        tool_schemas = tools or SHOP_TOOL_SCHEMAS
+        tool_schemas = tools or (
+            SHOP_TOOL_SCHEMAS_V2
+            if initial.get("environment_version") == "shopsimulator-environment-v2"
+            else SHOP_TOOL_SCHEMAS
+        )
         consecutive_blocked_calls = 0
         latest_observation_truncated = False
 
@@ -488,9 +504,13 @@ def _execute_tool_call(env, tool_call, step_index):
         except Exception as exc:
             step["error"] = {"type": exc.__class__.__name__, "message": str(exc)}
             raise ToolExecutionError(step, exc) from exc
+    if result.get("observation_state") is not None:
+        observation = render_structured_observation(result["observation_state"])
+    else:
+        observation = result.get("instruction", result.get("observation", ""))
     step.update(
         {
-            "observation": result.get("instruction", result.get("observation", "")),
+            "observation": observation,
             "reward": float(result.get("reward", 0.0)),
             "done": bool(result.get("done", False)),
             "result": result,

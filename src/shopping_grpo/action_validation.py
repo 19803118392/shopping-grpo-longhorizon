@@ -3,7 +3,7 @@
 import json
 import re
 
-from shopping_grpo.shop_tools import SHOP_TOOL_SCHEMAS, tool_call_to_action
+from shopping_grpo.shop_tools import SHOP_TOOL_SCHEMAS_V2, tool_call_to_action
 
 
 RUNTIME_GUARD_FIELD = "runtime_action_guard"
@@ -19,7 +19,7 @@ NAVIGATION_BUTTONS = {
 }
 TOOL_ARGUMENT_NAMES = {
     tool["function"]["name"]: set(tool["function"]["parameters"].get("properties", {}))
-    for tool in SHOP_TOOL_SCHEMAS
+    for tool in SHOP_TOOL_SCHEMAS_V2
 }
 
 
@@ -29,6 +29,10 @@ def action_reject_reason(name, arguments, observation):
     if extra_argument_names:
         return "schema_extra_arguments:" + ",".join(extra_argument_names)
     if name == "think":
+        return None
+    if name == "finish_without_purchase":
+        if arguments.get("reason") != "no_suitable_product":
+            return "invalid_finish_reason"
         return None
     if name == "search_products":
         if "搜索功能是否可用: False" in observation:
@@ -98,6 +102,12 @@ def action_guard_tool_message(tool_call, reason, observation):
 
 
 def product_ids(observation):
+    if "[SHOPPING_OBSERVATION_V2]" in observation:
+        return list(
+            dict.fromkeys(
+                re.findall(r"(?m)^\d+\|(\d{12})\|", observation)
+            )
+        )
     return list(dict.fromkeys(re.findall(r"(?<!\d)\d{12}(?!\d)", observation)))
 
 

@@ -9,11 +9,13 @@ from uuid import uuid4
 
 from shopping_grpo.action_validation import action_reject_reason
 from shopping_grpo.shop_tools import tool_call_to_action
+from shopping_grpo.structured_observation import render_structured_observation
 from shopping_grpo.verl_adapter.runtime import (
     current_environment,
     current_runtime_state,
     record_action_attempt,
     validate_reward_components,
+    validate_reward_v2,
 )
 
 try:  # 本地单测不安装 veRL；部署时由 veRL 注入真实类型。
@@ -82,7 +84,14 @@ class ShopSimulatorTool(BaseTool):
         try:
             action = tool_call_to_action(self.name, parameters)
             result = await asyncio.to_thread(env.step, action)
-            observation = str(result.get("instruction", result.get("observation", "")))
+            if result.get("observation_state") is not None:
+                observation = render_structured_observation(
+                    result["observation_state"]
+                )
+            else:
+                observation = str(
+                    result.get("instruction", result.get("observation", ""))
+                )
             step = _append_step(
                 state,
                 self.name,
@@ -101,7 +110,9 @@ class ShopSimulatorTool(BaseTool):
         if step["done"]:
             state["done"] = True
             state["terminate"] = True
-            state["termination_reason"] = "environment_done"
+            state["termination_reason"] = str(
+                result.get("termination_reason") or "environment_done"
+            )
             state["terminal_result"] = {
                 "done": True,
                 "over": result.get("over") is True,
@@ -110,15 +121,38 @@ class ShopSimulatorTool(BaseTool):
             if result.get("over") is not True or not math.isfinite(step["reward"]):
                 _mark_infrastructure_invalid(state, "invalid_terminal_result")
             else:
-                try:
-                    state["reward_components"] = validate_reward_components(
-                        result.get("reward_detail")
-                    )
-                except ValueError as exc:
-                    _mark_infrastructure_invalid(
-                        state,
-                        f"invalid_terminal_reward_detail:{exc}",
-                    )
+                reward_detail = result.get("reward_detail")
+                if (
+                    isinstance(reward_detail, dict)
+                    and reward_detail.get("reward_version")
+                    == "shopsimulator-reward-v2"
+                ):
+                    try:
+                        public_detail = validate_reward_v2(reward_detail)
+                    except ValueError as exc:
+                        _mark_infrastructure_invalid(
+                            state,
+                            f"invalid_terminal_reward_detail:{exc}",
+                        )
+                    else:
+                        state["reward_version"] = public_detail["reward_version"]
+                        state["reward_type"] = public_detail["reward_type"]
+                        state["reward_valid"] = public_detail["reward_valid"]
+                        state["reward_unverifiable"] = not public_detail["reward_valid"]
+                        state["reward_v2_detail"] = public_detail
+                        state["termination_reason"] = public_detail[
+                            "termination_reason"
+                        ]
+                else:
+                    try:
+                        state["reward_components"] = validate_reward_components(
+                            reward_detail
+                        )
+                    except ValueError as exc:
+                        _mark_infrastructure_invalid(
+                            state,
+                            f"invalid_terminal_reward_detail:{exc}",
+                        )
             return ToolResponse(text="Environment terminated."), 0.0, step
         state["latest_observation"] = observation
         state["latest_observation_raw"] = observation

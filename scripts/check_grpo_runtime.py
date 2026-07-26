@@ -25,6 +25,58 @@ MAX_SAFE_RESPONSE_LENGTH = 20480
 MAX_SAFE_SEQUENCE_LENGTH = 24576
 
 
+def validate_environment_contract():
+    required_version = os.environ.get(
+        "SHOPPING_ENVIRONMENT_VERSION",
+        "shopsimulator-environment-v1",
+    )
+    if required_version != "shopsimulator-environment-v2":
+        return
+    manifest_path = os.environ.get("SHOPPING_ENV_MANIFEST")
+    if not manifest_path or not Path(manifest_path).is_file():
+        raise SystemExit(
+            "Environment v2 requires SHOPPING_ENV_MANIFEST pointing to a frozen manifest"
+        )
+    try:
+        from shopping_grpo.environment_manifest import validate_manifest
+
+        manifest = validate_manifest(
+            json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+        )
+    except (ImportError, OSError, ValueError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"invalid Environment v2 manifest: {exc}") from exc
+    tools_path = Path(
+        os.environ.get(
+            "SHOPPING_TOOL_CONFIG",
+            Path(__file__).resolve().parents[1]
+            / "configs/verl/shop_tools_v2.json",
+        )
+    )
+    tools = json.loads(tools_path.read_text(encoding="utf-8")).get("tools", [])
+    tool_names = {
+        item.get("tool_schema", {}).get("function", {}).get("name")
+        for item in tools
+    }
+    if "finish_without_purchase" not in tool_names:
+        raise SystemExit("Environment v2 tool config is missing finish_without_purchase")
+    if int(manifest["max_steps"]) != 35:
+        raise SystemExit("Environment v2 GRPO contract requires max_steps=35")
+    print(
+        "Environment v2 manifest preflight passed: "
+        + json.dumps(
+            {
+                "manifest": str(Path(manifest_path).resolve()),
+                "shopsimulator_commit": manifest["shopsimulator_commit"],
+                "shopping_grpo_commit": manifest["shopping_grpo_commit"],
+                "observation_version": manifest["observation_version"],
+                "reward_version": manifest["reward"]["version"],
+                "search_version": manifest["search"]["version"],
+            },
+            sort_keys=True,
+        )
+    )
+
+
 def compose_runtime_config(overrides):
     try:
         from hydra import compose, initialize_config_dir
@@ -192,6 +244,7 @@ def validate_training_memory_budget(config):
 
 def main():
     config = compose_runtime_config(sys.argv[1:])
+    validate_environment_contract()
     required_paths = {
         "GRPO_TRAIN_FILE": os.environ.get("GRPO_TRAIN_FILE"),
         "GRPO_VAL_FILE": os.environ.get("GRPO_VAL_FILE"),

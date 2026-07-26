@@ -86,7 +86,7 @@ actor_rollout_ref:
       # 项目 projector 已按页面类型限制 token；这里仅作不会触发的字符级故障保护。
       max_tool_response_length: 16384
       tool_response_truncate_side: middle
-      tool_config_path: ${oc.env:SHOPPING_GRPO_ROOT}/configs/verl/shop_tools.json
+      tool_config_path: ${oc.env:SHOPPING_TOOL_CONFIG,${oc.env:SHOPPING_GRPO_ROOT}/configs/verl/shop_tools.json}
       tokenization_sanity_check_mode: ignore_strippable
     val_kwargs:
       n: 1

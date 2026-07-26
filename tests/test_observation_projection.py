@@ -14,6 +14,7 @@ from shopping_grpo.observation_projection import (
     project_observation,
 )
 from shopping_grpo.sft_data import project_sft_messages
+from shopping_grpo.structured_observation import render_structured_observation
 
 
 def search_page(product_count=12, page=1):
@@ -192,6 +193,49 @@ class ObservationProjectionTest(unittest.TestCase):
                 count_tokens=len,
                 generic_token_budget=128,
             )
+
+    def test_structured_search_projection_preserves_all_twenty_products(self):
+        products = [
+            {
+                "rank": index,
+                "asin": f"{index:012d}",
+                "title": "很长的商品标题" * 20,
+                "brand": "品牌",
+                "category": "类目",
+                "price": index,
+                "key_attributes": ["属性"],
+            }
+            for index in range(1, 21)
+        ]
+        raw = render_structured_observation(
+            {
+                "observation_version": "shopping-observation-v2",
+                "page_type": "search_results",
+                "search_available": False,
+                "actions": [
+                    "back to search",
+                    "next >",
+                    *[product["asin"] for product in products],
+                ],
+                "query": "商品",
+                "normalized_query": "商品",
+                "page": 1,
+                "total_pages": 2,
+                "total_results": 40,
+                "rank_start": 1,
+                "rank_end": 20,
+                "products": products,
+            }
+        )
+        visible, _ = project_observation(
+            "search_products",
+            raw,
+            count_tokens=len,
+            token_budget=1400,
+            search_top_k=20,
+        )
+        self.assertEqual(product_ids(visible), product_ids(raw))
+        self.assertLessEqual(len(visible), 1400)
 
 
 if __name__ == "__main__":  # pragma: no cover

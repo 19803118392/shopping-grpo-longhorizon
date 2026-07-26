@@ -108,6 +108,19 @@ class RewardGroupSelectionTest(unittest.TestCase):
         self.assertEqual(semantic, [0.2, 0.0])
         self.assertEqual(invalid, [False, True])
 
+    def test_unverifiable_reward_is_sampling_invalid_but_not_infrastructure(self):
+        semantic, invalid = extract_shopping_group_signals(
+            [
+                {
+                    "infrastructure_invalid": False,
+                    "reward_unverifiable": True,
+                    "reward": {"semantic": 0.0},
+                }
+            ]
+        )
+        self.assertEqual(semantic, [0.0])
+        self.assertEqual(invalid, [True])
+
     def test_missing_shopping_filter_signal_fails_closed(self):
         with self.assertRaisesRegex(ValueError, "shopping"):
             extract_shopping_group_signals([None])

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 
 from shopping_grpo.shop_http_env import ShopAgentEnv
+from shopping_grpo.structured_observation import render_structured_observation
 from shopping_grpo.verl_adapter.runtime import current_environment, current_runtime_state, make_runtime_state
 
 
@@ -16,11 +17,13 @@ class ShopSimulatorSession:
         base_url: str = "http://127.0.0.1:5700",
         timeout: int = 60,
         max_steps: int = 35,
+        required_environment_version: str | None = None,
         env_factory=None,
     ):
         self.base_url = base_url
         self.timeout = int(timeout)
         self.max_steps = int(max_steps)
+        self.required_environment_version = required_environment_version
         self.env_factory = env_factory or ShopAgentEnv
         self.env = None
         self.state = None
@@ -41,9 +44,32 @@ class ShopSimulatorSession:
             raise
 
         self.state = make_runtime_state(task_id=task_id, max_steps=self.max_steps)
-        self.state["latest_observation"] = str(
-            initial.get("instruction", initial.get("observation", "")) if isinstance(initial, dict) else initial
+        actual_version = (
+            initial.get("environment_version") if isinstance(initial, dict) else None
         )
+        if (
+            self.required_environment_version is not None
+            and actual_version != self.required_environment_version
+        ):
+            try:
+                await asyncio.to_thread(self.env.release)
+            finally:
+                self.env = None
+            raise RuntimeError(
+                "ShopSimulator environment version mismatch: "
+                f"expected {self.required_environment_version!r}, got {actual_version!r}"
+            )
+        if isinstance(initial, dict) and initial.get("observation_state") is not None:
+            self.state["latest_observation"] = render_structured_observation(
+                initial["observation_state"]
+            )
+            self.state["environment_version"] = actual_version
+        else:
+            self.state["latest_observation"] = str(
+                initial.get("instruction", initial.get("observation", ""))
+                if isinstance(initial, dict)
+                else initial
+            )
         self._environment_token = current_environment.set(self.env)
         self._state_token = current_runtime_state.set(self.state)
         return self.state

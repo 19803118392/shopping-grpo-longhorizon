@@ -156,6 +156,48 @@ class VerlAdapterRuntimeTest(unittest.TestCase):
 
         asyncio.run(run())
 
+    def test_environment_v2_terminal_reward_keeps_unverifiable_separate_from_infrastructure(self):
+        class FakeEnv:
+            def step(self, action):
+                return {
+                    "instruction": "terminal",
+                    "done": True,
+                    "over": True,
+                    "reward": 0.0,
+                    "termination_reason": "reward_unverifiable",
+                    "reward_valid": False,
+                    "reward_detail": {
+                        "reward_version": "shopsimulator-reward-v2",
+                        "reward_type": "reward_unverifiable",
+                        "reward_valid": False,
+                        "termination_reason": "reward_unverifiable",
+                        "target_asin_match": False,
+                        "hard_gates": {
+                            "category": {"passed": True, "verifiable": True}
+                        },
+                        "weighted_score": 0.0,
+                    },
+                }
+
+        async def run():
+            state = make_runtime_state(task_id=2, max_steps=35)
+            state["latest_observation"] = "搜索功能是否可用: True"
+            env_token = current_environment.set(FakeEnv())
+            state_token = current_runtime_state.set(state)
+            try:
+                await make_tool("search_products").execute(
+                    "tool-v2", {"query": "mug"}
+                )
+            finally:
+                current_runtime_state.reset(state_token)
+                current_environment.reset(env_token)
+            self.assertFalse(state["infrastructure_invalid"])
+            self.assertTrue(state["reward_unverifiable"])
+            self.assertEqual(state["reward_type"], "reward_unverifiable")
+            self.assertEqual(state["termination_reason"], "reward_unverifiable")
+
+        asyncio.run(run())
+
     def test_sync_environment_step_runs_off_the_event_loop_thread(self):
         main_thread = threading.get_ident()
 
@@ -275,6 +317,34 @@ class VerlAdapterRuntimeTest(unittest.TestCase):
         asyncio.run(run())
         self.assertNotEqual(created[0].reset_thread, main_thread)
         self.assertNotEqual(created[0].release_thread, main_thread)
+
+    def test_session_rejects_wrong_environment_version_and_releases(self):
+        created = []
+
+        class FakeEnv:
+            def __init__(self, **kwargs):
+                self.released = False
+                created.append(self)
+
+            def reset(self, task_id):
+                return {
+                    "instruction": f"task {task_id}",
+                    "environment_version": "shopsimulator-environment-v1",
+                }
+
+            def release(self):
+                self.released = True
+
+        async def run():
+            session = ShopSimulatorSession(
+                required_environment_version="shopsimulator-environment-v2",
+                env_factory=FakeEnv,
+            )
+            with self.assertRaisesRegex(RuntimeError, "version mismatch"):
+                await session.start(1)
+
+        asyncio.run(run())
+        self.assertTrue(created[0].released)
 
     def test_reset_failure_still_releases_the_environment(self):
         created = []

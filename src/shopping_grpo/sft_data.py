@@ -6,7 +6,11 @@ from collections import Counter
 from pathlib import Path
 
 from shopping_grpo.action_validation import RUNTIME_GUARD_FIELD, action_reject_reason
-from shopping_grpo.shop_tools import SHOP_TOOL_SCHEMAS, tool_call_to_action
+from shopping_grpo.shop_tools import (
+    SHOP_TOOL_SCHEMAS,
+    SHOP_TOOL_SCHEMAS_V2,
+    tool_call_to_action,
+)
 
 
 REWARD_KEYS = ("r_type", "r_att", "r_option", "r_price")
@@ -31,7 +35,17 @@ def acceptance_reasons(trajectory):
         reasons.append("environment_not_done")
     if not any(step.get("tool_name") == "buy_now" or step.get("env_action") == "click[Buy Now]" for step in steps):
         reasons.append("missing_buy")
-    if not isinstance(reward_detail, dict) or any(key not in reward_detail for key in REWARD_KEYS):
+    if (
+        isinstance(reward_detail, dict)
+        and reward_detail.get("reward_version") == "shopsimulator-reward-v2"
+    ):
+        if reward_detail.get("reward_type") != "gold_purchase":
+            reasons.append("reward_v2_not_gold_purchase")
+        if reward_detail.get("reward_valid") is not True:
+            reasons.append("reward_v2_invalid")
+    elif not isinstance(reward_detail, dict) or any(
+        key not in reward_detail for key in REWARD_KEYS
+    ):
         reasons.append("reward_detail_incomplete")
     else:
         for key in REWARD_KEYS:
@@ -73,7 +87,12 @@ def build_sft_row(trajectory, retain_reasoning=False):
             terminal_tool_call_id,
             retain_reasoning=retain_reasoning,
         ),
-        "tools": SHOP_TOOL_SCHEMAS,
+        "tools": (
+            SHOP_TOOL_SCHEMAS_V2
+            if (trajectory.get("initial_result") or {}).get("environment_version")
+            == "shopsimulator-environment-v2"
+            else SHOP_TOOL_SCHEMAS
+        ),
     }
 
 

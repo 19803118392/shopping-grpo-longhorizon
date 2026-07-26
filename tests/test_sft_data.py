@@ -105,6 +105,24 @@ class SftDataTest(unittest.TestCase):
         self.assertFalse(accepted)
         self.assertIn("reward_detail.r_option_not_1", reasons)
 
+    def test_environment_v2_accepts_only_valid_gold_purchase(self):
+        traj = accepted_trajectory()
+        traj["terminal_result"]["reward_detail"] = {
+            "reward_version": "shopsimulator-reward-v2",
+            "reward_type": "gold_purchase",
+            "reward_valid": True,
+        }
+        accepted, reasons = acceptance_reasons(traj)
+        self.assertTrue(accepted)
+        self.assertEqual(reasons, [])
+
+        traj["terminal_result"]["reward_detail"]["reward_type"] = (
+            "valid_alternative_purchase"
+        )
+        accepted, reasons = acceptance_reasons(traj)
+        self.assertFalse(accepted)
+        self.assertIn("reward_v2_not_gold_purchase", reasons)
+
     def test_acceptance_reasons_rejects_missing_buy(self):
         traj = accepted_trajectory()
         traj["steps"] = traj["steps"][:-1]

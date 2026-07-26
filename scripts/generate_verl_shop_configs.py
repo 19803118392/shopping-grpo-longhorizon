@@ -7,10 +7,13 @@ import argparse
 import json
 from pathlib import Path
 
-from shopping_grpo.shop_tools import SHOP_TOOL_SCHEMAS
+from shopping_grpo.shop_tools import SHOP_TOOL_SCHEMAS, SHOP_TOOL_SCHEMAS_V2
 
 
-def build_tool_config():
+def build_tool_config(environment_version="v1"):
+    schemas = (
+        SHOP_TOOL_SCHEMAS_V2 if environment_version == "v2" else SHOP_TOOL_SCHEMAS
+    )
     return {
         "tools": [
             {
@@ -18,7 +21,7 @@ def build_tool_config():
                 "config": {"type": "native"},
                 "tool_schema": schema,
             }
-            for schema in SHOP_TOOL_SCHEMAS
+            for schema in schemas
         ]
     }
 
@@ -26,6 +29,11 @@ def build_tool_config():
 def parse_args():
     parser = argparse.ArgumentParser(description="生成 veRL 0.8 ShopSimulator tool JSON")
     parser.add_argument("--tool-output", type=Path, default=Path("configs/verl/shop_tools.json"))
+    parser.add_argument(
+        "--environment-version",
+        choices=("v1", "v2"),
+        default="v1",
+    )
     return parser.parse_args()
 
 
@@ -36,7 +44,7 @@ def _write(path, value):
 
 def main():
     args = parse_args()
-    _write(args.tool_output, build_tool_config())
+    _write(args.tool_output, build_tool_config(args.environment_version))
     print(f"tools={args.tool_output}")
 
 

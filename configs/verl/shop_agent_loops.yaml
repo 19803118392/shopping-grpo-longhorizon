@@ -3,6 +3,7 @@
   base_url: ${oc.env:SHOPSIM_BASE_URL,http://127.0.0.1:5700}
   timeout: 60
   max_steps: 35
+  required_environment_version: ${oc.env:SHOPPING_ENVIRONMENT_VERSION,shopsimulator-environment-v1}
   reward_mode: ${oc.env:SHOPPING_REWARD_MODE,native}
   context_window_tokens: 24576
   context_generation_reserve_tokens: 512

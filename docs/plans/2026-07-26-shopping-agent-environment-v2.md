@@ -1,6 +1,6 @@
 # Shopping Agent Environment v2 技术方案
 
-**状态：** 设计共识已冻结，尚未实现
+**状态：** 第一轮 CPU 实现已完成；待冻结任务约束元数据和执行 GPU 模型门禁
 
 **目标仓库：** `ShopSimulator` 当前 `main` 分支 + `shopping-grpo-longhorizon`
 
@@ -17,6 +17,34 @@ Teacher Rollout → SFT → GRPO → Offline Evaluation
 本文定义的是一个稳定、可信、可训练的最小购物 Agent 环境，不是工业级电商平台，也不以构建最先进的搜索系统为目标。第一版只解决已经实质影响训练闭环的问题：商品召回不可靠、分页/Observation 信息缺失、Reward 方向错误、无效循环、基础设施错误混入训练，以及训练和评测契约不一致。
 
 本文已合并 Environment v2 方案评审后的最终收缩决策：首版搜索只做多字段 BM25，不把 Dense Retrieval 和 RRF 作为必经阶段；主动放弃与循环检测采用简单、可解释的计数规则；初期只维护轻量 Manifest。Dense/RRF 仅在实际轨迹证明新 BM25 仍是主要瓶颈时重新立项。
+
+### 0.1 2026-07-26 第一轮实现状态
+
+已在 ShopSimulator 和训练仓库完成不使用 GPU 的第一轮实现：
+
+- 23,421 商品的可复现 SQLite FTS5 多字段 BM25 索引；
+- 商品数据 SHA、字段权重、Tokenizer 和排序规则索引 manifest；
+- 同一次查询缓存、20 条完整分页和 ASIN 确定性同分排序；
+- ShopSimulator 结构化公开状态与本仓库 canonical renderer；
+- v1/v2 工具配置分离及 `finish_without_purchase`；
+- Reward v2、主动放弃、循环/最大步数终止；
+- Environment v2 JSON 配置由运行时实际加载并严格校验，搜索、Reward、分页
+  和终止阈值发生漂移时拒绝启动；
+- `reward_unverifiable` 与 `infrastructure_invalid` 的独立诊断；
+- 8 个槽共享只读商品库/索引、独立 session；
+- Python 3.10 轻量 v2 环境、代码审计和 CPU 集成测试。
+
+实际构建索引为 55MB，商品数 23,421。抽查的 10 个历史困难任务均通过
+商品存在、索引存在、标题 oracle 召回、详情、规格、价格、购买路径和 Gold
+Reward 检查。真实 HTTP 集成测试验证了 rank 1–20/21–40 无重叠、Gold
+购买为 1.0、合格/过早主动结束分别为 -0.1/-0.25，以及不可核验购买不会
+伪装成基础设施异常。
+
+尚未进入 Teacher Rollout、SFT 或 GRPO。原始任务当前没有完整的
+`hard_constraints`/`weighted_preferences` 分类；实现选择保守失败：
+目标 ASIN 正常评分，非目标商品在缺少完整约束证据时标记
+`reward_unverifiable`。正式生成 v2 Teacher 数据前必须先冻结任务约束元数据，
+不能在 Reward 内根据模型轨迹或目标商品临时猜测。
 
 ---
 
@@ -417,6 +445,11 @@ Reward 的判定顺序固定为：
 ```
 
 各子属性的具体权重在 Reward 实现阶段放入一个配置文件统一确定并冻结，不再使用所有属性简单平均或“四个属性完全同级”的逻辑。无法由商品元数据确定性验证的约束不得由 LLM Judge 临时猜测。
+
+金额上限优先从任务文本的明确预算表达中确定性解析，支持“1万2以内”等
+常见中文写法。对于“1万元左右”这类近似预算，首版固定使用 10% 上浮容差；
+它仍然是硬门禁，只是先把自然语言中的近似范围确定化。无明确预算时才使用
+按 ASIN 和 instruction 固定种子的回退值。该解析规则随 Reward 配置冻结。
 
 ### 8.3 初始离散 Reward 表
 

@@ -18,6 +18,8 @@ def tool_call_to_action(name, parameters):
         return None
     if name == "search_products":
         return f"search[{parameters['query']}]"
+    if name == "finish_without_purchase":
+        return f"finish[{parameters['reason']}]"
     key, fixed_value = CLICK_TOOL_ACTIONS[name]
     value = fixed_value if fixed_value is not None else parameters[key]
     return f"click[{value}]"
@@ -67,4 +69,21 @@ SHOP_TOOL_SCHEMAS = [
     _schema("back_to_search", "仅当当前页面显示 Back to Search 按钮时返回搜索页；无参数，必须传 {}。"),
     _schema("buy_now", "仅当最新 observation 显示 Buy Now 且商品和规格满足需求时购买；无参数，必须传 {}。"),
     _schema("think", "Record private reasoning.", {"note": {"type": "string"}}, ["note"]),
+]
+
+FINISH_WITHOUT_PURCHASE_SCHEMA = _schema(
+    "finish_without_purchase",
+    "经过最低限度的有效探索后，确认没有合适商品时主动结束；这不是成功购买。",
+    {
+        "reason": {
+            "type": "string",
+            "enum": ["no_suitable_product"],
+        }
+    },
+    ["reason"],
+)
+SHOP_TOOL_SCHEMAS_V2 = [
+    *SHOP_TOOL_SCHEMAS[:-1],
+    FINISH_WITHOUT_PURCHASE_SCHEMA,
+    SHOP_TOOL_SCHEMAS[-1],
 ]

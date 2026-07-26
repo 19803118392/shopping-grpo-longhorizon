@@ -33,6 +33,7 @@ def aggregate_shopping_metrics(shopping_infos: Sequence[object]) -> dict[str, fl
     done = []
     max_steps = []
     infrastructure_invalid = []
+    reward_unverifiable = []
     for index, info in enumerate(shopping_infos):
         if not isinstance(info, Mapping) or not isinstance(info.get("reward"), Mapping):
             raise ValueError(f"shopping extra field at index {index} is missing reward diagnostics")
@@ -51,6 +52,7 @@ def aggregate_shopping_metrics(shopping_infos: Sequence[object]) -> dict[str, fl
         done.append(float(info.get("done") is True))
         max_steps.append(float(info.get("termination_reason") == "max_steps"))
         infrastructure_invalid.append(float(bool(info.get("infrastructure_invalid"))))
+        reward_unverifiable.append(float(bool(info.get("reward_unverifiable"))))
 
     def mean(values):
         return sum(values) / len(values)
@@ -76,11 +78,17 @@ def aggregate_shopping_metrics(shopping_infos: Sequence[object]) -> dict[str, fl
         "trajectory/max_steps_rate": mean(max_steps),
         "trajectory/repeat_action_rate": mean(rewards["repeat_action_rate"]),
         "trajectory/infrastructure_invalid_rate": mean(infrastructure_invalid),
+        "trajectory/reward_unverifiable_rate": mean(reward_unverifiable),
     }
 
 
 def extract_shopping_group_signals(shopping_infos: Sequence[object]) -> tuple[list[float], list[bool]]:
-    """从 AgentLoop extra_fields 提取动态采样所需的两个公开信号。"""
+    """Return semantic reward and combined sampling-invalid flags.
+
+    Infrastructure failures and unverifiable rewards remain separate in
+    trajectory metrics, but either one makes a complete rollout group unsafe
+    for an optimizer update.
+    """
     semantic_rewards = []
     infrastructure_invalid = []
     for index, info in enumerate(shopping_infos):
@@ -99,7 +107,10 @@ def extract_shopping_group_signals(shopping_infos: Sequence[object]) -> tuple[li
                 f"shopping extra field at index {index} is missing infrastructure_invalid"
             )
         semantic_rewards.append(semantic)
-        infrastructure_invalid.append(bool(info["infrastructure_invalid"]))
+        infrastructure_invalid.append(
+            bool(info["infrastructure_invalid"])
+            or bool(info.get("reward_unverifiable"))
+        )
     return semantic_rewards, infrastructure_invalid
 
 
