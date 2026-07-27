@@ -671,7 +671,7 @@ vLLM rollout log-prob
 符合预期。
 
 完整服务器操作步骤见
-[Vanilla GRPO 服务器执行手册](../grpo-runtime-setup.md)，任务冻结与数据边界见
+[Vanilla GRPO 服务器执行手册](../../grpo-runtime-setup.md)，任务冻结与数据边界见
 [Vanilla GRPO v1：任务冻结与 veRL 接入准备](04-vanilla-grpo-v1-preparation-2026-07-21.md)。
 
 ## 证据与提交

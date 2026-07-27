@@ -6,13 +6,7 @@
 
 | 编号 | 记录 | 状态 | 说明 |
 |---|---|---|---|
-| 00 | [单轮轨迹采集与确定性验收](00-data-collection-2026-07-20.md) | 已完成快照 | 757 条 raw → 380 条 accepted |
-| 01 | [Qwen3.5-2B Instruct 零样本基线](01-qwen35-2b-instruct-baseline-2026-07-20.md) | 已完成首轮 | 200 条完成；严格成功率 0%，原始产物待服务器同步 |
-| 02 | [LoRA SFT v1：首轮冷启动](02-sft-v1-pitfalls-2026-07-20.md) | 已完成首轮 | 12K Full-CoT SFT 首次达到约 5% 严格成功率，同时暴露长上下文 OOM 与长轨迹问题 |
 | 03 | [SFT v2：显存实验与 Action-only 决策](03-sft-v2-memory-and-action-only-2026-07-20.md) | 已完成 | Liger + SDPA + Action-only；benchmark v2_50 严格成功率 12% |
-| 04 | [Vanilla GRPO v1：任务冻结与 veRL 接入准备](04-vanilla-grpo-v1-preparation-2026-07-21.md) | 准备完成 | 50 条评测、2,000 条 probe 候选池、veRL 最小适配层与 SFT 合并入口 |
-| 05 | [GRPO 运行时与任务适配踩坑实录](05-grpo-runtime-and-task-adaptation-pitfalls-2026-07-23.md) | 8 条 rollout 已通过，更新修复待实测 | veRL 0.8、vLLM 0.25.1、ShopSimulator 租约、LoRA 权重同步与 padding fallback |
-| 06 | [veRL 0.8 Vanilla GRPO 的有限 reward-group 动态采样](06-verl-080-bounded-dynamic-sampling-2026-07-23.md) | CPU 实现完成，GPU 行为见实验 09 | 固定 wheel 窄补丁、常量 reward group 过滤、最多 3 批补采 |
 | 07 | [SFT v3：加入 100 条短成功轨迹后的重新冷启动](07-sft-v3-short-successes-2026-07-24.md) | 已完成训练、合并与 50 条评测 | 480 条 Action-only；购买率 28%，严格成功率 10%，记录 loss-only eval OOM 修复与早停 |
 | 08 | [GRPO A0 五步稳定性与 actor 长序列 OOM](08-grpo-a0-memory-stability-2026-07-25.md) | 修复后 5-step 已通过 | 强制三条 log-prob/actor 路径 micro-batch=1，将 response/总序列预算降到 20K/24K |
 | 09 | [GRPO A1 bounded dynamic sampling 五步稳定性](09-grpo-a1-dynamic-sampling-stability-2026-07-25.md) | 已通过 5 次非零更新 | 过滤常量/无 semantic signal group，3 次安全跳过，总计 168 条 rollout |
@@ -22,8 +16,19 @@
 
 | 编号 | 模板 | 什么时候使用 |
 |---|---|---|
-| 02 | [SFT 实验记录模板](sft-experiment-template.md) | 每次 LoRA SFT run、数据版本或超参数变动后 |
-| 04 | [Vanilla GRPO 实验记录模板](grpo-experiment-template.md) | 首次 GRPO 与每个后续消融 |
+| 02 | [SFT 实验记录模板](archived/sft-experiment-template.md) | 已归档的空白模板 |
+| 04 | [Vanilla GRPO 实验记录模板](archived/grpo-experiment-template.md) | 已归档的空白模板 |
+
+## 已归档
+
+以下记录保留在 [archived/](archived/) 中，仅供历史追溯：
+
+- [实验 00：单轮轨迹采集与确定性验收](archived/00-data-collection-2026-07-20.md)
+- [实验 01：Qwen3.5-2B Instruct 零样本基线](archived/01-qwen35-2b-instruct-baseline-2026-07-20.md)
+- [实验 02：LoRA SFT v1 首轮冷启动](archived/02-sft-v1-pitfalls-2026-07-20.md)
+- [实验 04：Vanilla GRPO v1 准备](archived/04-vanilla-grpo-v1-preparation-2026-07-21.md)
+- [实验 05：GRPO 运行时与任务适配踩坑](archived/05-grpo-runtime-and-task-adaptation-pitfalls-2026-07-23.md)
+- [实验 06：veRL 0.8 有限 reward-group 动态采样](archived/06-verl-080-bounded-dynamic-sampling-2026-07-23.md)
 
 ## 记录规则
 

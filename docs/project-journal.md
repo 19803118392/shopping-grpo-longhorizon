@@ -89,7 +89,7 @@ Base（这里指“尚未做购物 SFT 的 Instruct 模型”）、未来 SFT ad
 
 核心发现：Qwen3.5-2B Instruct 会生成合法 tool call JSON，但**完全不懂购物场景下的工具使用规则**。它不知道搜索结果页和商品详情页有哪些不同的按钮，也不知道 `view_features` 不是每个商品都有的。这是 SFT 冷启动必要性的直接、可量化的证据。
 
-完整分析和可检验假设见 [实验 01](experiments/01-qwen35-2b-instruct-baseline-2026-07-20.md)。
+完整分析和可检验假设见已归档的 [实验 01](experiments/archived/01-qwen35-2b-instruct-baseline-2026-07-20.md)。
 
 ## 接下来，但还没有发生的事
 
