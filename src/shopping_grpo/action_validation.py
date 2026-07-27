@@ -3,6 +3,7 @@
 import json
 import re
 
+from shopping_grpo.product_id import PRODUCT_ID_CAPTURE, is_product_id
 from shopping_grpo.shop_tools import SHOP_TOOL_SCHEMAS_V2, tool_call_to_action
 
 
@@ -105,10 +106,27 @@ def product_ids(observation):
     if "[SHOPPING_OBSERVATION_V2]" in observation:
         return list(
             dict.fromkeys(
-                re.findall(r"(?m)^\d+\|(\d{12})\|", observation)
+                re.findall(
+                    rf"(?m)^\d+\|({PRODUCT_ID_CAPTURE})\|",
+                    observation,
+                )
             )
         )
-    return list(dict.fromkeys(re.findall(r"(?<!\d)\d{12}(?!\d)", observation)))
+    button_ids = [
+        button for button in clickable_buttons(observation) if is_product_id(button)
+    ]
+    if button_ids:
+        return list(dict.fromkeys(button_ids))
+    # Compatibility fallback for old observations without the action footer.
+    # Only accept complete [SEP] fields so prices or prose numbers are not targets.
+    segments = re.split(r"\s*\[SEP\]\s*", str(observation))
+    return list(
+        dict.fromkeys(
+            segment.strip()
+            for segment in segments
+            if is_product_id(segment.strip())
+        )
+    )
 
 
 def clickable_buttons(observation):

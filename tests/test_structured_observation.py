@@ -60,6 +60,30 @@ class StructuredObservationTest(unittest.TestCase):
         with self.assertRaisesRegex(StructuredObservationError, "forbidden"):
             render_structured_observation(state)
 
+    def test_catalog_product_ids_from_eight_through_twelve_digits_are_supported(self):
+        asins = ["12345678", "123456789", "1234567890", "35842622441", "123456789012"]
+        state = search_state(len(asins))
+        for product, asin in zip(state["products"], asins, strict=True):
+            product["asin"] = asin
+        state["actions"] = ["back to search", "next >", *asins]
+
+        visible = render_structured_observation(state)
+
+        self.assertEqual(product_ids(visible), asins)
+        for asin in asins:
+            self.assertIsNone(
+                action_reject_reason("open_product", {"asin": asin}, visible)
+            )
+
+    def test_product_ids_outside_catalog_length_are_rejected(self):
+        for invalid in ("1234567", "1234567890123"):
+            with self.subTest(invalid=invalid):
+                state = search_state(1)
+                state["products"][0]["asin"] = invalid
+                state["actions"] = ["back to search", "next >", invalid]
+                with self.assertRaisesRegex(StructuredObservationError, "invalid"):
+                    render_structured_observation(state)
+
 
 if __name__ == "__main__":
     unittest.main()

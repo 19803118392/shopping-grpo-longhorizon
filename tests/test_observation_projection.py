@@ -237,6 +237,46 @@ class ObservationProjectionTest(unittest.TestCase):
         self.assertEqual(product_ids(visible), product_ids(raw))
         self.assertLessEqual(len(visible), 1400)
 
+    def test_structured_projection_preserves_mixed_catalog_id_lengths(self):
+        asins = ["12345678", "123456789", "1234567890", "35842622441", "123456789012"]
+        products = [
+            {
+                "rank": index,
+                "asin": asin,
+                "title": "很长的商品标题" * 20,
+                "brand": "品牌",
+                "category": "类目",
+                "price": index,
+                "key_attributes": ["属性"],
+            }
+            for index, asin in enumerate(asins, start=1)
+        ]
+        raw = render_structured_observation(
+            {
+                "observation_version": "shopping-observation-v2",
+                "page_type": "search_results",
+                "search_available": False,
+                "actions": ["back to search", *asins],
+                "query": "商品",
+                "normalized_query": "商品",
+                "page": 1,
+                "total_pages": 1,
+                "total_results": len(products),
+                "rank_start": 1,
+                "rank_end": len(products),
+                "products": products,
+            }
+        )
+        visible, _ = project_observation(
+            "search_products",
+            raw,
+            count_tokens=len,
+            token_budget=700,
+            search_top_k=20,
+        )
+
+        self.assertEqual(product_ids(visible), asins)
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

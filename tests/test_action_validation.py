@@ -1,6 +1,7 @@
+import json
 import unittest
 
-from shopping_grpo.action_validation import action_reject_reason
+from shopping_grpo.action_validation import action_reject_reason, product_ids
 
 
 class ActionValidationTest(unittest.TestCase):
@@ -32,6 +33,25 @@ class ActionValidationTest(unittest.TestCase):
         reason = action_reject_reason("buy_now", {"string": "true"}, observation)
 
         self.assertEqual(reason, "schema_extra_arguments:string")
+
+    def test_legacy_footer_accepts_real_eleven_digit_product_id(self):
+        asin = "35842622441"
+        observation = (
+            "结果 [SEP] 35842622441 [SEP] 泰国乳胶枕 [SEP] 158.0"
+            "\n\n可点击的按钮: "
+            + json.dumps(["back to search", asin])
+        )
+        self.assertEqual(product_ids(observation), [asin])
+        self.assertIsNone(
+            action_reject_reason("open_product", {"asin": asin}, observation)
+        )
+
+    def test_unrelated_long_number_is_not_treated_as_legacy_product(self):
+        observation = (
+            "商品描述包含电话号码 13800138000 和价格 12345678"
+            '\n\n可点击的按钮: ["back to search"]'
+        )
+        self.assertEqual(product_ids(observation), [])
 
 
 if __name__ == "__main__":

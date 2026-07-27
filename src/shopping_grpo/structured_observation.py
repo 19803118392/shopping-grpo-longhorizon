@@ -6,10 +6,10 @@ import json
 import re
 from collections.abc import Mapping
 
+from shopping_grpo.product_id import is_product_id
 
 OBSERVATION_VERSION = "shopping-observation-v2"
 HEADER = "[SHOPPING_OBSERVATION_V2]"
-ASIN_PATTERN = re.compile(r"^\d{12}$")
 
 
 class StructuredObservationError(ValueError):
@@ -83,7 +83,7 @@ def _render_search_results(state):
         if not isinstance(product, Mapping):
             raise StructuredObservationError("each product must be an object")
         asin = _text(product.get("asin"))
-        if not ASIN_PATTERN.fullmatch(asin):
+        if not is_product_id(asin):
             raise StructuredObservationError(f"invalid search-result ASIN: {asin!r}")
         product_asins.append(asin)
         attributes = ",".join(_list(product.get("key_attributes")))
@@ -100,7 +100,7 @@ def _render_search_results(state):
                 )
             )
         )
-    actionable_asins = {action for action in actions if ASIN_PATTERN.fullmatch(action)}
+    actionable_asins = {action for action in actions if is_product_id(action)}
     if set(product_asins) != actionable_asins:
         raise StructuredObservationError(
             "model-visible search ASINs differ from environment-actionable ASINs"
@@ -115,8 +115,11 @@ def _render_product(state):
     product = state.get("product")
     if not isinstance(product, Mapping):
         raise StructuredObservationError("product page must contain a product object")
+    asin = _text(product.get("asin"))
+    if not is_product_id(asin):
+        raise StructuredObservationError(f"invalid product ASIN: {asin!r}")
     lines = [
-        f"asin: {_text(product.get('asin'))}",
+        f"asin: {asin}",
         f"title: {_text(product.get('title'))}",
         f"brand: {_text(product.get('brand'))}",
         f"category: {_text(product.get('category'))}",

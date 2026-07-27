@@ -52,6 +52,12 @@ class TerminationV2Test(unittest.TestCase):
         self.assertEqual(result["new_asin_count"], 1)
         self.assertEqual(result["no_new_asin_steps"], 0)
 
+    def test_eleven_digit_catalog_id_counts_as_opened_candidate(self):
+        tracker = ProgressTracker(exact_repeat_limit=99)
+        result = tracker.record("click", "35842622441", ["35842622441"])
+        self.assertTrue(result["candidate_opened"])
+        self.assertEqual(result["newly_opened_asin_count"], 1)
+
     def test_max_steps_is_bounded(self):
         tracker = ProgressTracker(
             max_steps=2,

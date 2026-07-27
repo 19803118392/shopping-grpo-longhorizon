@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 
+from web_agent_site.engine.product_id import is_product_id
 from web_agent_site.engine.reward_features_v1 import (
     canonicalize_option_axis,
     normalize_option_text,
@@ -107,8 +108,7 @@ class EvidenceProgressTracker:
 
         candidate_opened = (
             normalized_name == "click"
-            and normalized_argument.isdigit()
-            and len(normalized_argument) == 12
+            and is_product_id(normalized_argument)
         )
         if candidate_opened:
             asin = normalized_argument

@@ -7,12 +7,12 @@ import json
 import re
 
 from shopping_grpo.action_validation import clickable_buttons, product_ids
+from shopping_grpo.product_id import PRODUCT_ID_CAPTURE, is_product_id
 
 
 FOOTER_MARKER = "\n\n搜索功能是否可用:"
 TRUNCATION_MARKER = "[TRUNCATED_BY_SHOPPING_PROJECTOR]"
 PROJECTION_CONTRACT_VERSION = "shopping-observation-v2"
-ASIN_PATTERN = re.compile(r"^\d{12}$")
 NAVIGATION_BUTTONS = {
     "back to search",
     "next >",
@@ -120,7 +120,7 @@ def project_observation(
                 "search projection must preserve every product on the current environment page"
             )
         visible_product_targets = {
-            button for button in visible_buttons if ASIN_PATTERN.fullmatch(button)
+            button for button in visible_buttons if is_product_id(button)
         }
         if set(raw_asins) != visible_product_targets:
             raise ObservationProjectionError(
@@ -181,7 +181,7 @@ def _project_search_results(
     page = next((segment for segment in segments if re.fullmatch(r"Page \d+.*", segment)), "Page unknown")
     products = []
     for index, segment in enumerate(segments):
-        if not ASIN_PATTERN.fullmatch(segment):
+        if not is_product_id(segment):
             continue
         title = segments[index + 1] if index + 1 < len(segments) else ""
         price = segments[index + 2] if index + 2 < len(segments) else ""
@@ -262,7 +262,7 @@ def _project_structured_search_results(
     product_lines = []
     header_lines = []
     for line in lines:
-        match = re.fullmatch(r"(\d+)\|(\d{12})\|(.*)", line)
+        match = re.fullmatch(rf"(\d+)\|({PRODUCT_ID_CAPTURE})\|(.*)", line)
         if match:
             product_lines.append((match.group(1), match.group(2), match.group(3)))
         elif line and not line.startswith("products_shown:"):

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import json
 
+from web_agent_site.engine.product_id import is_product_id
 from web_agent_site.engine.search_v2 import normalize_query
 
 
@@ -58,8 +59,7 @@ class ProgressTracker:
         )
         candidate_opened = (
             normalized_name == "click"
-            and normalized_argument.isdigit()
-            and len(normalized_argument) == 12
+            and is_product_id(normalized_argument)
         )
 
         new_asins = set()

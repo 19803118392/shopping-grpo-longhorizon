@@ -69,6 +69,12 @@ class TerminationV3Test(unittest.TestCase):
         result = tracker.record("click", "invalid-final", [])
         self.assertEqual(result["termination_reason"], "repeat_loop")
 
+    def test_eleven_digit_catalog_id_adds_product_evidence(self):
+        tracker = EvidenceProgressTracker(exact_repeat_limit=99, no_progress_limit=99)
+        result = tracker.record("click", "35842622441", ["35842622441"])
+        self.assertIn("product:35842622441", result["evidence_added"])
+        self.assertEqual(result["opened_candidate_count"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
