@@ -143,26 +143,27 @@ def assistant_tool(name, arguments, call_id="call_1"):
 
 
 class TeacherRolloutTest(unittest.TestCase):
-    def test_default_prompt_requires_tool_driven_purchase(self):
-        """默认提示词应适配单轮任务，并约束模型完成购买。"""
+    def test_default_prompt_matches_reward_v3_policy(self):
+        """默认提示词应表达 Reward v3 的购买优先级和停止门槛。"""
         self.assertIn("单轮购物任务", SYSTEM_PROMPT)
         self.assertIn("不得向用户追问", SYSTEM_PROMPT)
-        self.assertIn("当前页面显示的可点击按钮", SYSTEM_PROMPT)
-        self.assertIn("select_option", SYSTEM_PROMPT)
         self.assertIn("buy_now", SYSTEM_PROMPT)
-        self.assertIn("Buy Now 是否出现在最新 observation", SYSTEM_PROMPT)
-        self.assertIn("返回商品详情页", SYSTEM_PROMPT)
-        self.assertIn("不要在购买前输出最终答复", SYSTEM_PROMPT)
-        self.assertIn("选中规格后才显示", SYSTEM_PROMPT)
-        self.assertIn("同一规格组只能选择一个值", SYSTEM_PROMPT)
-        self.assertIn("选中规格即结束探索阶段", SYSTEM_PROMPT)
-        self.assertIn("不得查看子页、返回搜索、再次搜索或打开其他商品", SYSTEM_PROMPT)
-        self.assertIn("不得把它用于试价格或比较候选", SYSTEM_PROMPT)
-        self.assertIn("明确预算已冲突时，绝不为了完成任务而购买", SYSTEM_PROMPT)
-        self.assertIn("只有按钮实际出现才可调用", SYSTEM_PROMPT)
-        self.assertIn("用户硬约束", SYSTEM_PROMPT)
-        self.assertIn("任一硬约束未在当前页面证实，不得购买", SYSTEM_PROMPT)
-        self.assertIn("选择前检查点", SYSTEM_PROMPT)
+        self.assertIn("不要在任务结束前输出最终答复", SYSTEM_PROMPT)
+        self.assertIn("当前页面是动作合法性的唯一依据", SYSTEM_PROMPT)
+        self.assertIn("历史 observation 可以用于记住和比较候选", SYSTEM_PROMPT)
+        self.assertIn("不能直接点击历史页面中的 ASIN", SYSTEM_PROMPT)
+        self.assertIn("品类必须正确", SYSTEM_PROMPT)
+        self.assertIn("不得超过用户明确预算", SYSTEM_PROMPT)
+        self.assertIn("品类 > 预算 > 品牌 > 型号与核心功能 > 规格属性", SYSTEM_PROMPT)
+        self.assertIn("Reviews 只用于辅助判断使用体验", SYSTEM_PROMPT)
+        self.assertIn("不能用于确认型号、官方功能、规格或价格", SYSTEM_PROMPT)
+        self.assertIn("所有影响可购买 variant 的必要规格轴", SYSTEM_PROMPT)
+        self.assertIn("finish_without_purchase", SYSTEM_PROMPT)
+        self.assertIn("多次有实质差异的搜索和多个候选核验", SYSTEM_PROMPT)
+        self.assertIn("没有明显值得继续核验的候选", SYSTEM_PROMPT)
+        self.assertIn("是否达到结束资格由环境判断", SYSTEM_PROMPT)
+        self.assertIn("不要连续重复同一动作", SYSTEM_PROMPT)
+        self.assertIn("不要调用 `think` 工具", SYSTEM_PROMPT)
 
     def test_guard_gives_a_return_only_instruction_on_information_subpage(self):
         """子页误操作后，守卫应明确引导模型先返回，不重复猜测按钮。"""
@@ -202,6 +203,32 @@ class TeacherRolloutTest(unittest.TestCase):
         self.assertEqual(traj["steps"][2]["env_action"], "click[Buy Now]")
         self.assertEqual(traj["terminal_result"]["purchase"]["asin"], "A1")
         self.assertTrue(any(message["role"] == "tool" for message in traj["messages"]))
+
+    def test_environment_v21_exposes_finish_without_purchase_to_teacher(self):
+        class EnvironmentV21(FakeEnv):
+            def reset(self, task_id):
+                result = super().reset(task_id)
+                result["environment_version"] = "shopsimulator-environment-v2.1"
+                return result
+
+        client = MockClient([{"role": "assistant", "content": "stop"}])
+        env = EnvironmentV21()
+
+        collect_for_task(
+            {"task_id": 7},
+            client=client,
+            env_factory=lambda **kwargs: env,
+            base_url="http://shop.test",
+            max_steps=1,
+        )
+
+        tool_names = [
+            schema["function"]["name"]
+            for schema in client.requests[0]["tools"]
+        ]
+        self.assertIn("finish_without_purchase", tool_names)
+        self.assertIn("finish_without_purchase", client.requests[0]["messages"][0]["content"])
+        self.assertTrue(env.released)
 
     def test_collect_for_task_blocks_invalid_click_then_keeps_clean_recovery(self):
         client = MockClient(
@@ -732,6 +759,49 @@ class TeacherRolloutTest(unittest.TestCase):
         self.assertNotIn("temperature", captured["payload"])
         self.assertNotIn("top_p", captured["payload"])
         self.assertEqual(message["reasoning_content"], "先核对规格，再搜索。")
+
+    def test_openai_client_explicitly_disables_deepseek_v4_thinking(self):
+        captured = {}
+
+        def transport(url, payload, headers, timeout):
+            captured.update({"payload": payload})
+            return {"choices": [{"message": {"role": "assistant", "content": "ok"}}]}
+
+        client = OpenAIChatClient(
+            model="deepseek-v4-flash",
+            base_url="https://opencode.ai/zen/go/v1",
+            api_key="secret",
+            thinking=False,
+            reasoning_effort="max",
+            transport=transport,
+        )
+
+        client.complete([{"role": "user", "content": "继续"}], tools=[])
+
+        self.assertEqual(captured["payload"]["thinking"], {"type": "disabled"})
+        self.assertNotIn("reasoning_effort", captured["payload"])
+        self.assertEqual(captured["payload"]["temperature"], 0.0)
+        self.assertEqual(captured["payload"]["top_p"], 1.0)
+
+    def test_openai_client_does_not_send_thinking_to_local_non_deepseek_model(self):
+        captured = {}
+
+        def transport(url, payload, headers, timeout):
+            captured.update({"payload": payload})
+            return {"choices": [{"message": {"role": "assistant", "content": "ok"}}]}
+
+        client = OpenAIChatClient(
+            model="Qwen/Qwen3.5-2B",
+            base_url="http://127.0.0.1:8000/v1",
+            api_key="EMPTY",
+            thinking=False,
+            transport=transport,
+        )
+
+        client.complete([{"role": "user", "content": "继续"}], tools=[])
+
+        self.assertNotIn("thinking", captured["payload"])
+        self.assertNotIn("reasoning_effort", captured["payload"])
 
     def test_openai_client_retries_transient_disconnect_without_replaying_tools(self):
         attempts = []
