@@ -52,6 +52,8 @@ class EvidenceProgressTracker:
     no_progress_steps: int = 0
     seen_asins: set[str] = field(default_factory=set)
     opened_asins: set[str] = field(default_factory=set)
+    runtime_result_fingerprints: set[str] = field(default_factory=set)
+    runtime_subpage_evidence: set[str] = field(default_factory=set)
     result_set_evidence: set[str] = field(default_factory=set)
     product_evidence: set[str] = field(default_factory=set)
     subpage_evidence: set[str] = field(default_factory=set)
@@ -86,7 +88,8 @@ class EvidenceProgressTracker:
         visible = set(visible_ordered)
         new_asins = visible - self.seen_asins
         self.seen_asins.update(visible)
-        evidence_added = []
+        runtime_progress_added = []
+        credited_evidence_added = []
 
         discovery_action = (
             normalized_name == "search"
@@ -97,14 +100,17 @@ class EvidenceProgressTracker:
         )
         if discovery_action and visible_ordered:
             fingerprint = _result_set_fingerprint(visible_ordered)
+            new_runtime_result = fingerprint not in self.runtime_result_fingerprints
+            self.runtime_result_fingerprints.add(fingerprint)
             if (
-                fingerprint not in self.result_set_evidence
+                new_runtime_result
                 and len(new_asins) >= self.min_new_asins_per_result_set
-                and len(self.result_set_evidence)
-                < self.result_set_progress_budget
             ):
-                self.result_set_evidence.add(fingerprint)
-                evidence_added.append(f"result_set:{fingerprint}")
+                key = f"result_set:{fingerprint}"
+                runtime_progress_added.append(key)
+                if len(self.result_set_evidence) < self.result_set_progress_budget:
+                    self.result_set_evidence.add(fingerprint)
+                    credited_evidence_added.append(key)
 
         candidate_opened = (
             normalized_name == "click"
@@ -112,15 +118,14 @@ class EvidenceProgressTracker:
         )
         if candidate_opened:
             asin = normalized_argument
+            new_runtime_product = asin not in self.opened_asins
             self.opened_asins.add(asin)
             key = f"product:{asin}"
-            if (
-                key not in self.product_evidence
-                and len(self.product_evidence)
-                < self.product_open_progress_budget
-            ):
-                self.product_evidence.add(key)
-                evidence_added.append(key)
+            if new_runtime_product:
+                runtime_progress_added.append(key)
+                if len(self.product_evidence) < self.product_open_progress_budget:
+                    self.product_evidence.add(key)
+                    credited_evidence_added.append(key)
 
         if (
             normalized_name == "click"
@@ -129,13 +134,12 @@ class EvidenceProgressTracker:
         ):
             asin = visible_ordered[0]
             key = f"subpage:{asin}:{normalized_argument}"
-            if (
-                key not in self.subpage_evidence
-                and len(self.subpage_evidence)
-                < self.subpage_progress_budget
-            ):
-                self.subpage_evidence.add(key)
-                evidence_added.append(key)
+            if key not in self.runtime_subpage_evidence:
+                self.runtime_subpage_evidence.add(key)
+                runtime_progress_added.append(key)
+                if len(self.subpage_evidence) < self.subpage_progress_budget:
+                    self.subpage_evidence.add(key)
+                    credited_evidence_added.append(key)
 
         if isinstance(selected_options, dict) and visible_ordered:
             asin = visible_ordered[0]
@@ -146,15 +150,17 @@ class EvidenceProgressTracker:
                 )
                 if key not in self.option_evidence:
                     self.option_evidence.add(key)
-                    evidence_added.append(key)
+                    runtime_progress_added.append(key)
+                    credited_evidence_added.append(key)
 
         for raw_evidence in constraint_evidence or ():
             key = f"constraint:{str(raw_evidence)}"
             if key not in self.constraint_evidence:
                 self.constraint_evidence.add(key)
-                evidence_added.append(key)
+                runtime_progress_added.append(key)
+                credited_evidence_added.append(key)
 
-        if evidence_added:
+        if runtime_progress_added:
             self.no_progress_steps = 0
         else:
             self.no_progress_steps += 1
@@ -173,11 +179,22 @@ class EvidenceProgressTracker:
             "action_signature": signature,
             "consecutive_repeats": self.consecutive_repeats,
             "no_progress_steps": self.no_progress_steps,
-            "evidence_added": evidence_added,
+            # Compatibility field: evidence that counts toward bounded abstention
+            # qualification and metrics, not the liveness decision.
+            "evidence_added": credited_evidence_added,
+            "credited_evidence_added": credited_evidence_added,
+            "runtime_progress_added": runtime_progress_added,
             "new_asin_count": len(new_asins),
             "seen_asin_count": len(self.seen_asins),
             "opened_candidate_count": len(self.opened_asins),
             "effective_result_sets": self.effective_result_sets,
+            "runtime_evidence_counts": {
+                "result_set": len(self.runtime_result_fingerprints),
+                "product": len(self.opened_asins),
+                "subpage": len(self.runtime_subpage_evidence),
+                "option": len(self.option_evidence),
+                "constraint": len(self.constraint_evidence),
+            },
             "evidence_counts": {
                 "result_set": len(self.result_set_evidence),
                 "product": len(self.product_evidence),
