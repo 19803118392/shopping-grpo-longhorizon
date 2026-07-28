@@ -13,6 +13,21 @@ benchmark、历史 Teacher raw task 和历史 GRPO probe pool。train/validation
 按 fresh merged policy 的实际工具步数分布做确定性比例分层，不按 reward 选题。
 对应 veRL 输入使用 `data/verl/grpo_reward_v3_fresh_v1_{train,val}.parquet`。
 
+本世代已冻结的结果：
+
+- probe：2,000 条，SHA256
+  `0c1598cbc9534997387086e01a6896cc85bf8f20128f8ecbaa6b80034225ac5d`；
+  其中 1,949 条可用于长度分层，51 条
+  `context_hard_limit_exceeded` 显式隔离；
+- train：1,000 条，short/medium/long=`695/201/104`，SHA256
+  `a3f02f26a8c5ac91a9617b733adf4b3405303e00cc17631a1df566733d2097e9`；
+- validation：50 条，short/medium/long=`35/10/5`，SHA256
+  `52540f0ea0d68eaa0a14594f9769bf6323aade95e04d869555fac15d7f8af33a`；
+- train parquet：SHA256
+  `e4b4765b67efcc064ba4e656db625a812a34cbcff00da0e23d6a3df8aac5fdd4`；
+- validation parquet：SHA256
+  `9aa370f00d7ead942e47cf9aed4ab0c55cd7426220f4603f4fed5dc949ea2788`。
+
 ## Archived: GRPO task split v1
 
 这里的清单不是离线 RL 轨迹数据。它们只保存 `task_id`，实际训练时由当前 policy 在线进入 ShopSimulator rollout。

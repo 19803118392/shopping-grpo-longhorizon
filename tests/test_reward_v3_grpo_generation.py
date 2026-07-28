@@ -11,6 +11,7 @@ from scripts.prepare_grpo_reward_v3_fresh_v1 import (
     validate_probe_contract,
 )
 from scripts.probe_grpo_reward_v3_fresh_v1 import normalize_expected_limit_status
+from scripts.check_grpo_runtime import validate_reward_v3_runtime_files
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +40,19 @@ def trajectory(task_id, steps, reward_type="gold_purchase"):
 
 
 class RewardV3GrpoGenerationTest(unittest.TestCase):
+    def test_reward_v3_manifest_freezes_runtime_files(self):
+        manifest = json.loads(
+            (
+                ROOT
+                / "data/manifests/environment_v2_1_reward_v3_fresh_v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        validate_reward_v3_runtime_files(manifest, ROOT)
+        self.assertEqual(
+            manifest["lease_contract"],
+            "explicit-client-release-v1",
+        )
+
     def test_probe_context_limit_matches_agent_loop_status(self):
         row = {
             "status": "error",
@@ -103,6 +117,7 @@ class RewardV3GrpoGenerationTest(unittest.TestCase):
         self.assertIn("shop_tools_v2.json", result.stdout)
         self.assertIn("grpo_reward_v3_fresh_v1_train.parquet", result.stdout)
         self.assertNotIn("grpo_train_v1.parquet", result.stdout)
+        self.assertIn("export OMP_NUM_THREADS=1", launcher.read_text(encoding="utf-8"))
 
     def test_legacy_launcher_is_refused_by_default(self):
         result = subprocess.run(

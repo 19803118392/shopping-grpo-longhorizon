@@ -1,0 +1,19 @@
+{
+  "output": "/root/autodl-tmp/shopping-grpo-longhorizon/data/verl/grpo_reward_v3_fresh_v1_val.parquet",
+  "output_sha256": "9aa370f00d7ead942e47cf9aed4ab0c55cd7426220f4603f4fed5dc949ea2788",
+  "required_environment_version": "shopsimulator-environment-v2.1",
+  "reward_contract": "shopsimulator-reward-v3",
+  "row_count": 50,
+  "schema_columns": [
+    "data_source",
+    "prompt",
+    "ability",
+    "reward_model",
+    "extra_info"
+  ],
+  "source_probe": "/root/autodl-tmp/shopping-grpo-longhorizon/outputs/grpo_reward_v3_fresh_v1_probe/raw.jsonl",
+  "source_probe_sha256": "0c1598cbc9534997387086e01a6896cc85bf8f20128f8ecbaa6b80034225ac5d",
+  "source_tasks": "/root/autodl-tmp/shopping-grpo-longhorizon/data/splits/grpo_reward_v3_fresh_v1_val.jsonl",
+  "source_tasks_sha256": "52540f0ea0d68eaa0a14594f9769bf6323aade95e04d869555fac15d7f8af33a",
+  "split": "validation"
+}

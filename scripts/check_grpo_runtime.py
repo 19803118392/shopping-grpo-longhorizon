@@ -24,6 +24,37 @@ EXPECTED_TRANSFORMERS_REVISION = "7ea2320c76117e6742364808a666ef6f2fb40a67"
 PATCH_MARKER = "SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V3"
 MAX_SAFE_RESPONSE_LENGTH = 20480
 MAX_SAFE_SEQUENCE_LENGTH = 24576
+REWARD_V3_RUNTIME_FILES = {
+    "observation_v2.py": "environments/ShopSimulator/shop_env/web_agent_site/engine/observation_v2.py",
+    "pack_api.py": "environments/ShopSimulator/shop_env/shop_env/pack_api.py",
+    "reward_v3.py": "environments/ShopSimulator/shop_env/web_agent_site/engine/reward_v3.py",
+    "slot_lease_pool.py": "environments/ShopSimulator/shop_env/shop_env/slot_lease_pool.py",
+    "web_agent_text_env.py": "environments/ShopSimulator/shop_env/web_agent_site/envs/web_agent_text_env.py",
+}
+
+
+def validate_reward_v3_runtime_files(manifest, root):
+    if manifest.get("lease_contract") != "explicit-client-release-v1":
+        raise SystemExit(
+            "Environment v2.1 manifest must select explicit-client-release-v1"
+        )
+    expected = manifest.get("runtime_files_sha256")
+    if not isinstance(expected, dict) or set(expected) != set(REWARD_V3_RUNTIME_FILES):
+        raise SystemExit(
+            "Environment v2.1 manifest runtime_files_sha256 is missing or incomplete"
+        )
+    from shopping_grpo.environment_manifest import sha256_file
+
+    mismatches = {}
+    for name, relative_path in REWARD_V3_RUNTIME_FILES.items():
+        actual = sha256_file(Path(root) / relative_path)
+        if actual != expected[name]:
+            mismatches[name] = {"expected": expected[name], "actual": actual}
+    if mismatches:
+        raise SystemExit(
+            "Environment v2.1 runtime file hash mismatch: "
+            + json.dumps(mismatches, sort_keys=True)
+        )
 
 
 def validate_environment_contract():
@@ -74,6 +105,11 @@ def validate_environment_contract():
         raise SystemExit("Environment v2 tool config is missing finish_without_purchase")
     if int(manifest["max_steps"]) != 35:
         raise SystemExit("Environment v2 GRPO contract requires max_steps=35")
+    if required_version == "shopsimulator-environment-v2.1":
+        validate_reward_v3_runtime_files(
+            manifest,
+            Path(__file__).resolve().parents[1],
+        )
     print(
         f"{required_version} manifest preflight passed: "
         + json.dumps(
@@ -84,6 +120,8 @@ def validate_environment_contract():
                 "observation_version": manifest["observation_version"],
                 "reward_version": manifest["reward"]["version"],
                 "search_version": manifest["search"]["version"],
+                "lease_contract": manifest.get("lease_contract"),
+                "runtime_file_count": len(manifest.get("runtime_files_sha256") or {}),
             },
             sort_keys=True,
         )

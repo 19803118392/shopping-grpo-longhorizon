@@ -1,5 +1,6 @@
 {
   "environment_version": "shopsimulator-environment-v2.1",
+  "lease_contract": "explicit-client-release-v1",
   "manifest_version": "shopping-environment-manifest-v1",
   "max_steps": 35,
   "observation_version": "shopping-observation-v2",
@@ -33,7 +34,14 @@
     "version": "shopsimulator-multifield-bm25-v2"
   },
   "seed": 20260728,
-  "shopping_grpo_commit": "79c6b828b04e341c2406f107c673816b2b1212d7",
+  "runtime_files_sha256": {
+    "observation_v2.py": "adabdf0109b8a0f592148c098e44065913ce6c699230047239d8809f412bf998",
+    "pack_api.py": "46998442f25948b420cd4d467400c420b39e1e8e4e89a2ae197bf8fe56d8bcea",
+    "reward_v3.py": "25a8d01888243d982c88925b030d5557579e33900cc9db2cfce00801626129a8",
+    "slot_lease_pool.py": "5be40275eebbed6735196a1dea4581ce707558e247d23d0de4d98907772a0420",
+    "web_agent_text_env.py": "10e7ba124ebf231cc500a64c674197c57bdd36d6bdebda9eea5c692329c0d701"
+  },
+  "shopping_grpo_commit": "fed2906a055e2fba282abcf9d46b8b82a3884fb5",
   "shopsimulator_commit": "9ecba272963960ab4a10e1a781bd05cd7634ce20",
   "task_data_sha256": "35a5978bba829a6b4196f0e4ce65d5f7d366cc0704469e3b7f8a6d02f50a9dea",
   "tool_version": "shopping-tools-v2"

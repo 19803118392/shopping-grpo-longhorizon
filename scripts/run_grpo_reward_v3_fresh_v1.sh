@@ -19,6 +19,7 @@ fi
 
 export PYTHONPATH="$PROJECT_ROOT/src"
 export HF_HOME=/root/autodl-tmp/.cache/huggingface
+export OMP_NUM_THREADS=1
 export SHOPPING_GRPO_ROOT="$PROJECT_ROOT"
 export GRPO_CONFIG_NAME=vanilla_grpo_reward_v3_fresh_v1
 export SHOPPING_ENVIRONMENT_VERSION=shopsimulator-environment-v2.1

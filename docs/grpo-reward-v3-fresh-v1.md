@@ -87,6 +87,16 @@ bash scripts/build_grpo_reward_v3_fresh_v1_parquet.sh
 parquet 只包含 system prompt、用户可见 instruction 和 task_id，不包含 goal、
 标准答案、reward_detail 或 Teacher trajectory。
 
+当前冻结资产为：
+
+- probe 2,000 条，1,949 条进入长度分层候选，51 条 context hard limit 隔离；
+- train 1,000 条，short/medium/long=`695/201/104`；
+- validation 50 条，short/medium/long=`35/10/5`；
+- train/validation 与 fresh-v1 raw、benchmark、历史 Teacher 和历史 GRPO probe
+  的 task overlap 均为 0。
+
+精确 SHA256 记录在 `data/splits/README.md` 以及每个相邻 metadata 文件中。
+
 ## 正式启动边界
 
 正式启动只允许使用：
