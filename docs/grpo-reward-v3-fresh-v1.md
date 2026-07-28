@@ -38,8 +38,15 @@ PYTHONPATH=src .venv-grpo-v080/bin/python \
 3. 历史 Teacher raw task；
 4. 历史 `grpo_probe_pool_v1`。
 
-启动 v2.1 ShopSimulator 和 fresh merged vLLM 后，执行可断点续跑的 8-worker
-probe：
+启动 v2.1 ShopSimulator 和 fresh merged vLLM。该脚本固定 8 个环境槽、
+24,576 context、Qwen3.5 tool parser，并关闭当前 Blackwell 上会误判 SM 版本的
+FlashInfer sampler：
+
+```bash
+bash scripts/start_reward_v3_probe_services.sh
+```
+
+两个服务健康后，执行可断点续跑的 8-worker probe：
 
 ```bash
 PYTHONPATH=src .venv-grpo-v080/bin/python \

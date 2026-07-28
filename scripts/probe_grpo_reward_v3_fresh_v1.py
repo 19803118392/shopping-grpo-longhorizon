@@ -31,6 +31,14 @@ DEFAULT_TASKS = ROOT / "data/splits/grpo_reward_v3_fresh_v1_probe_pool.jsonl"
 DEFAULT_OUTPUT = ROOT / "outputs/grpo_reward_v3_fresh_v1_probe/raw.jsonl"
 
 
+def display_path(path: Path) -> str:
+    resolved = path.resolve()
+    try:
+        return str(resolved.relative_to(ROOT))
+    except ValueError:
+        return str(resolved)
+
+
 def repository_head() -> str:
     return subprocess.run(
         ["git", "rev-parse", "HEAD"],
@@ -98,7 +106,7 @@ def write_probe_metadata(args, expected_ids: set[int]) -> dict:
         "environment_version": ENVIRONMENT_VERSION,
         "reward_version": REWARD_VERSION,
         "shopping_grpo_commit": repository_head(),
-        "candidate_pool": str(args.tasks.resolve().relative_to(ROOT)),
+        "candidate_pool": display_path(args.tasks),
         "candidate_pool_sha256": sha256_file(args.tasks),
         "candidate_task_count": len(expected_ids),
         "completed_task_count": len(rows),

@@ -90,6 +90,15 @@ class RewardV3GrpoGenerationTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("archived", result.stderr)
 
+    def test_probe_service_launcher_pins_reward_v3_runtime(self):
+        content = (
+            ROOT / "scripts/start_reward_v3_probe_services.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn("run_environment_v2_1.sh", content)
+        self.assertIn("qwen35-2b-sft-v1-fresh-merged", content)
+        self.assertIn("VLLM_USE_FLASHINFER_SAMPLER=0", content)
+        self.assertIn("--tool-call-parser qwen3_xml", content)
+
 
 if __name__ == "__main__":
     unittest.main()
