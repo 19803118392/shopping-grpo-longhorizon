@@ -31,3 +31,25 @@
 - `mean_weighted_score`：Reward v3 约束匹配分的平均值，只作为诊断指标，不能当作购买成功率。
 
 禁止再用缺失于 Reward v3 的 `r_type`、`r_att`、`r_option`、`r_price` 计算正式 benchmark 主指标。
+
+## Reward v3 final test
+
+`shop_benchmark_reward_v3_final_200.jsonl` 是 Reward v3 / fresh-v1 世代的盲测集。
+它包含 200 个 task_id，不是训练 parquet，也不进入 GRPO validation。
+
+生成时排除了本机所有带 task_id 的历史输出、fresh SFT、完整 Reward v3 probe、
+历史 GRPO split/probe 和旧 benchmark。完整排除 task 快照保存在相邻
+`shop_benchmark_reward_v3_final_200.exclusions.jsonl`，来源文件及 SHA256 保存在
+metadata。冻结统计为：全集 23,421 条、排除 6,720 条、可选 16,701 条；按种子
+`20260728` 确定性随机无放回抽取 200 条。
+
+该 final test 冻结后不得通过 SFT/GRPO rollout 再做选题或切分。GRPO checkpoint
+只能由 validation 选择；最终选定 checkpoint 后，fresh merged SFT 与 GRPO 在同一
+200 条上各运行一次固定 temperature=0 的配对评测。
+
+- final test SHA256：
+  `2c4ff070e13ddc30796d38e85170210e7d3c211992425a62090f2419fe8e0208`
+- exclusions SHA256：
+  `00030db1042a75c7c988c878bd957cfe39478e369beec1e9e41a03c52b2e9e88`
+- metadata SHA256：
+  `42d7adc26ed48430da3def670453f44ee8a69f8ac7bbe5729a5cefa7bbd47b1b`

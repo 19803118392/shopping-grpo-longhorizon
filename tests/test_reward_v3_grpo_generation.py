@@ -12,6 +12,7 @@ from scripts.prepare_grpo_reward_v3_fresh_v1 import (
 )
 from scripts.probe_grpo_reward_v3_fresh_v1 import normalize_expected_limit_status
 from scripts.check_grpo_runtime import validate_reward_v3_runtime_files
+from scripts.prepare_reward_v3_final_test import select_final_test
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +41,18 @@ def trajectory(task_id, steps, reward_type="gold_purchase"):
 
 
 class RewardV3GrpoGenerationTest(unittest.TestCase):
+    def test_final_test_selection_is_deterministic_and_unseen(self):
+        first = select_final_test(set(range(20)), {0, 1, 2, 3}, size=5, seed=7)
+        second = select_final_test(set(range(20)), {0, 1, 2, 3}, size=5, seed=7)
+        self.assertEqual(first, second)
+        selected = {row["task_id"] for row in first}
+        self.assertEqual(len(selected), 5)
+        self.assertFalse(selected & {0, 1, 2, 3})
+
+    def test_final_test_selection_rejects_insufficient_population(self):
+        with self.assertRaisesRegex(ValueError, "exceeds"):
+            select_final_test({1, 2}, {1}, size=2, seed=7)
+
     def test_reward_v3_manifest_freezes_runtime_files(self):
         manifest = json.loads(
             (

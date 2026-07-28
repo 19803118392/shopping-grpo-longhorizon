@@ -1,0 +1,1279 @@
+{
+  "asset": "shop_benchmark_reward_v3_final_200",
+  "checks": {
+    "final_test_exclusion_overlap": 0,
+    "unique_final_test_task_count": 200
+  },
+  "contract": "environment-v2.1/reward-v3/fresh-v1",
+  "eligible_task_count": 16701,
+  "environment_version": "shopsimulator-environment-v2.1",
+  "evaluated": false,
+  "excluded_task_count": 6720,
+  "exclusion_source_file_count": 207,
+  "exclusion_sources": [
+    {
+      "path": "data/benchmarks/shop_benchmark_v1.jsonl",
+      "row_count": 200,
+      "sha256": "9905ab9f4b8d9bbbc44adfd8cc4de2bce2797a63366dc94950015a5eed86655b",
+      "task_count": 200
+    },
+    {
+      "path": "data/benchmarks/shop_benchmark_v2_50.jsonl",
+      "row_count": 50,
+      "sha256": "67db75b636bfc15d28ca99df6250db66778e567d53b8205b5f2cbc4955f70328",
+      "task_count": 50
+    },
+    {
+      "path": "data/splits/grpo_probe_pool_v1.jsonl",
+      "row_count": 2000,
+      "sha256": "5fed28b33b48c29c5f8f818cbfdaf2ef190869dadcbc0e080ca336718c5d477a",
+      "task_count": 2000
+    },
+    {
+      "path": "data/splits/grpo_reward_v3_fresh_v1_probe_pool.jsonl",
+      "row_count": 2000,
+      "sha256": "465ebee87982f23fb1d56b1f50c56a795221e502a04142bc1f32d1cd919bfe9e",
+      "task_count": 2000
+    },
+    {
+      "path": "data/splits/grpo_reward_v3_fresh_v1_train.jsonl",
+      "row_count": 1000,
+      "sha256": "a3f02f26a8c5ac91a9617b733adf4b3405303e00cc17631a1df566733d2097e9",
+      "task_count": 1000
+    },
+    {
+      "path": "data/splits/grpo_reward_v3_fresh_v1_val.jsonl",
+      "row_count": 50,
+      "sha256": "52540f0ea0d68eaa0a14594f9769bf6323aade95e04d869555fac15d7f8af33a",
+      "task_count": 50
+    },
+    {
+      "path": "data/splits/grpo_train_v1.jsonl",
+      "row_count": 1000,
+      "sha256": "13c959d1bace5aa1cfaf0022c1e65ddb82be0e578fb8e85a70ce6a86b57ba0ed",
+      "task_count": 1000
+    },
+    {
+      "path": "data/splits/grpo_val_v1.jsonl",
+      "row_count": 50,
+      "sha256": "c068b6ee7bad8eb63587295aa487a09dcc093e3b9bdca82b3320778ce43726d3",
+      "task_count": 50
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_5_20260727/raw.jsonl",
+      "row_count": 5,
+      "sha256": "9bd99be624010b653482d0d7f35034c39ec3b8f92ea971edc4b6edad463c1986",
+      "task_count": 5
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_5_prompt_v2_20260727/raw.jsonl",
+      "row_count": 5,
+      "sha256": "5f7cc429ae93161bd5d89c5cffdd776da92e20160689caf8d1389eff2fe708a0",
+      "task_count": 5
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_5_runtime_progress_v1_20260727/raw.jsonl",
+      "row_count": 5,
+      "sha256": "343cc3b2e6c3ea1c66314029ff9bd96cb4f794255ef7490cacb07ad9d4cf2a22",
+      "task_count": 5
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_aggregate_604_20260727/accepted.jsonl",
+      "row_count": 428,
+      "sha256": "193a283b55e229d725fc89c47c270eb55cba55fc3bb3e4a40b3544ecae7e3815",
+      "task_count": 428
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_aggregate_604_20260727/raw.jsonl",
+      "row_count": 604,
+      "sha256": "b1db9e41673d285da7164e8352fa0a702f537157792fa137c94f7cf200435fa1",
+      "task_count": 604
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_aggregate_604_20260727/rejected.jsonl",
+      "row_count": 176,
+      "sha256": "1a9dcddc31903fc624825dafc44f1b8f08e2bfea57e1c2135ffdcef1d49fbd31",
+      "task_count": 176
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_aggregate_604_20260727/sft.jsonl",
+      "row_count": 428,
+      "sha256": "aab4d81f134dfcd40e67611f5a413142e4825d5cb6ea60b697536aec2c88fab7",
+      "task_count": 428
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_aggregate_604_20260727/train/accepted.jsonl",
+      "row_count": 379,
+      "sha256": "78e34ce76c8ceb9470892e98d8e7587c2a0f921d2eb02119cb6c603f2e89cde5",
+      "task_count": 379
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_aggregate_604_20260727/train/raw.jsonl",
+      "row_count": 543,
+      "sha256": "c6e9642d7bbd95d8b38974331240133e1267ac7ab53be45735affd44f2e0a6c7",
+      "task_count": 543
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_aggregate_604_20260727/train/rejected.jsonl",
+      "row_count": 164,
+      "sha256": "610241fa5f5a44964f82b7b74f99315ac8effdcc5bf49947a655703d65c03072",
+      "task_count": 164
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_aggregate_604_20260727/train/sft.jsonl",
+      "row_count": 379,
+      "sha256": "8cd1f72130b3c781d5ffe08fe3e399b2a9e45d204e3f3bd0d8e677d1b51c8ec5",
+      "task_count": 379
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_aggregate_604_20260727/val/accepted.jsonl",
+      "row_count": 49,
+      "sha256": "5cbc4984916a3474140f5c4ec29ac5e210ea5f469b49131c70db28832ec3cb3a",
+      "task_count": 49
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_aggregate_604_20260727/val/raw.jsonl",
+      "row_count": 61,
+      "sha256": "788b6daa8d96c5b1377fdb6724faa2fad5e11ab3a5b93b51c7df461801c59f3d",
+      "task_count": 61
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_aggregate_604_20260727/val/rejected.jsonl",
+      "row_count": 12,
+      "sha256": "47fda33f471269d9a5962b211290a8d92d51871b1bc93e1af5e26bacab994fbe",
+      "task_count": 12
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_aggregate_604_20260727/val/sft.jsonl",
+      "row_count": 49,
+      "sha256": "f8ae506d0fa9d1526342a9f717da24922c8a55776d076a296698abac4fde05b3",
+      "task_count": 49
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch001_100_20260727/accepted.jsonl",
+      "row_count": 80,
+      "sha256": "aee7d5b00030211aadf3c5f89cc1089b4f13ca04c610ac7a3b269cb6d47de5c8",
+      "task_count": 80
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch001_100_20260727/raw.jsonl",
+      "row_count": 100,
+      "sha256": "20d950013b35ced01306f7af23cefa24bbb0c01180efc3da41dd7dba0b742648",
+      "task_count": 100
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch001_100_20260727/raw_part_0.jsonl",
+      "row_count": 25,
+      "sha256": "a85ea548d1c782a89ffd98369ef0d17d9a6bebae483706eec2c06169e7beab7e",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch001_100_20260727/raw_part_1.jsonl",
+      "row_count": 25,
+      "sha256": "122d36c7b1c235b7d1c7098e5fcd8b43bddb1796de94f83bdc4f7bc66e56a363",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch001_100_20260727/raw_part_2.jsonl",
+      "row_count": 25,
+      "sha256": "bba3ea9877afae7fbfe130a30296ed78faf7574b649525ec5a3f627bb9208247",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch001_100_20260727/raw_part_3.jsonl",
+      "row_count": 25,
+      "sha256": "ef363fdeef9cf6d7d9017f7adaa97060d91f788f2f5c1bde2fd368dbe22bdf6b",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch001_100_20260727/rejected.jsonl",
+      "row_count": 20,
+      "sha256": "072490c658629a5d79f7497b9aadc4e0312febe030b04514eff2bb493e774b2f",
+      "task_count": 20
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch001_100_20260727/sft.jsonl",
+      "row_count": 80,
+      "sha256": "51a4e33951965822405bd6ede8fc0b9c0ab4a85ba9df98891460692ba4f3192a",
+      "task_count": 80
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch001_100_20260727/tasks.jsonl",
+      "row_count": 100,
+      "sha256": "dfdc3de194d433c1e71237de13898673216345e6048a8ae74f7e75c24dc6bbfd",
+      "task_count": 100
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch001_100_20260727/tasks_part_0.jsonl",
+      "row_count": 25,
+      "sha256": "782ff11f568590393afc2b6c37416429b7896ecf78578359875d1b53a42323bd",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch001_100_20260727/tasks_part_1.jsonl",
+      "row_count": 25,
+      "sha256": "ec1e4f4198d5869f6b3fd6b5d98e2d3f7aa34705a45835313c7f4637b53219b4",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch001_100_20260727/tasks_part_2.jsonl",
+      "row_count": 25,
+      "sha256": "2fbeb84a6be0fe6e2b52e2fc47f0e9c14bf93207a2c35cb0c78b5787f5c97a4a",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch001_100_20260727/tasks_part_3.jsonl",
+      "row_count": 25,
+      "sha256": "1dac67856abcf8f63258a0734fadc1f55518e376bc630b43bf60821009c90837",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch002_1000_20260727/tasks.jsonl",
+      "row_count": 1000,
+      "sha256": "be78c3233cc07089a1546e050fa55b76d6e92e79cfc3e687df9290621c21e83a",
+      "task_count": 1000
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch002_1000_20260727/tasks_part_0.jsonl",
+      "row_count": 250,
+      "sha256": "3a538a7ab0f2b2c8479a152ff2f81693d37380b112d323c0dfb95bab580b116f",
+      "task_count": 250
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch002_1000_20260727/tasks_part_1.jsonl",
+      "row_count": 250,
+      "sha256": "0957656dd6c4ca121520b9be900183dfc192974c9c84bd787b487ac0f3c50ce7",
+      "task_count": 250
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch002_1000_20260727/tasks_part_2.jsonl",
+      "row_count": 250,
+      "sha256": "6854387550c9120b77cd633980afc56eb4dadd3d3bebf2d9a4d17402a1923903",
+      "task_count": 250
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch002_1000_20260727/tasks_part_3.jsonl",
+      "row_count": 250,
+      "sha256": "41219da112c3b4643021bcf7ef50878e7b5cc7aa993da4d10d928e803074465f",
+      "task_count": 250
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch002_100_20260727/accepted.jsonl",
+      "row_count": 74,
+      "sha256": "f3abce497023fbf3ea8411207226b9179583d0f0c7c26f3eb1086fd21e8c6884",
+      "task_count": 74
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch002_100_20260727/raw.jsonl",
+      "row_count": 100,
+      "sha256": "9fd5936e0a194f2ab4ec45d4cb6986575bd124335cc2e44313e5596ee588e907",
+      "task_count": 100
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch002_100_20260727/raw_part_0.jsonl",
+      "row_count": 25,
+      "sha256": "20aa60d2a05d87bb02c1e0d4c9e5008132b8e09b9e49dc5584c803d0c1a2a3c8",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch002_100_20260727/raw_part_1.jsonl",
+      "row_count": 25,
+      "sha256": "0488dd46ecc1d3b1c0a5adc393fa394f6b4ba06eb37daec279ea71077d90bc69",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch002_100_20260727/raw_part_2.jsonl",
+      "row_count": 25,
+      "sha256": "30595f51d4da0c2f5e77fe9622f2fc30ec299c3536d8df3d567a59ef04a17a54",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch002_100_20260727/raw_part_3.jsonl",
+      "row_count": 25,
+      "sha256": "be74655773cfc5df1cc9d2658ffb6b559cb4c5580cc328bf7f45856dbf55b9a4",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch002_100_20260727/rejected.jsonl",
+      "row_count": 26,
+      "sha256": "1176a7b1b98272c6106f45aa0a9b930ba4dbfa38b61c7326f0882486bbc1776b",
+      "task_count": 26
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch002_100_20260727/sft.jsonl",
+      "row_count": 74,
+      "sha256": "00403e6e27c045b75cff1c8ebd84591ca66186712d96359c7aff6b803a931565",
+      "task_count": 74
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch002_100_20260727/tasks.jsonl",
+      "row_count": 100,
+      "sha256": "6e3aa80af00197c45d0f15adcd49c5245f91336bc8403eea59bb92088ba9de83",
+      "task_count": 100
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch002_100_20260727/tasks_part_0.jsonl",
+      "row_count": 25,
+      "sha256": "fb06a9e6faa56fc27148659a047fc1fda1b4be919da897edfd0345f95d99e70c",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch002_100_20260727/tasks_part_1.jsonl",
+      "row_count": 25,
+      "sha256": "57c28db66695c85b7f2a7353c41d1f231cd9f12bf2fe23e92e124857c37d983f",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch002_100_20260727/tasks_part_2.jsonl",
+      "row_count": 25,
+      "sha256": "6b3081d7ea6333b67850459c2bead57caf5e49d72f906ad858f680f815a6bb16",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch002_100_20260727/tasks_part_3.jsonl",
+      "row_count": 25,
+      "sha256": "76560ed68b9d3432b3586766c2c1e7a6b9d047caadeaffd7576a568c8e4f34f6",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch003_100_20260727/accepted.jsonl",
+      "row_count": 74,
+      "sha256": "2a50e3c2c132ae5472ac4da92822e95edeb7e4ae4c67e69b756fa2bd48386a75",
+      "task_count": 74
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch003_100_20260727/raw.jsonl",
+      "row_count": 100,
+      "sha256": "00ca1c4a3818cdbcc436aba89b6f913bfc39c34dcbc79eb3b0ee167968718120",
+      "task_count": 100
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch003_100_20260727/raw_part_0.jsonl",
+      "row_count": 25,
+      "sha256": "30fa71c59dc755bfaeccbd74cf02f445b72c8b0cc02d3a65a84609286e341fa7",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch003_100_20260727/raw_part_1.jsonl",
+      "row_count": 25,
+      "sha256": "79d568f5a4ec463b6e28b6d84190158fe6558e8cf02f8326cf5b15e9b739a9e9",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch003_100_20260727/raw_part_2.jsonl",
+      "row_count": 25,
+      "sha256": "5d822e13bb78535d99a26b08be7432f08f101d97257e62619a696a4193bf1650",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch003_100_20260727/raw_part_3.jsonl",
+      "row_count": 25,
+      "sha256": "733c95744bafcd1c722e455007b4841f770c14a15024f15da39e92f7fb76b289",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch003_100_20260727/rejected.jsonl",
+      "row_count": 26,
+      "sha256": "20b0005b6eaf7b8a97014521602e8d99da190a828ba9bbd66c7a94fc8b52d6df",
+      "task_count": 26
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch003_100_20260727/sft.jsonl",
+      "row_count": 74,
+      "sha256": "b5c0967cbe59bcd26377c4cb2b46209346fccb62b9c5f9a11924846f0185a773",
+      "task_count": 74
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch003_100_20260727/tasks.jsonl",
+      "row_count": 100,
+      "sha256": "1bc1b3934172e2a7e275fa837db82f0cd36f661007a4b4e181bb850c91311be7",
+      "task_count": 100
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch003_100_20260727/tasks_part_0.jsonl",
+      "row_count": 25,
+      "sha256": "77b09dd780d73d46ee695648ce848932f6191e36ae070e308985642b92f7deb7",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch003_100_20260727/tasks_part_1.jsonl",
+      "row_count": 25,
+      "sha256": "c4ffb9538febab0e8a73f60e7201f8dd211ebb6c1007c35ef51631456196ac07",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch003_100_20260727/tasks_part_2.jsonl",
+      "row_count": 25,
+      "sha256": "7f2198f4d9bbd09623d79d52ccff7c8dec7558292fc94c6cef0e582201b9fa3c",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch003_100_20260727/tasks_part_3.jsonl",
+      "row_count": 25,
+      "sha256": "5e10e7e8e38d9ff781d27a7d32c7dc30eccf3a005fcd83b87ec1f8d5d9db2fcb",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch004_100_20260727/accepted.jsonl",
+      "row_count": 63,
+      "sha256": "f33978ed7f07e78c45ad23e27f3cc8589823ded98f2093a99db8ae5704f6284f",
+      "task_count": 63
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch004_100_20260727/raw.jsonl",
+      "row_count": 100,
+      "sha256": "3bc67f224f0a56f78741da411eca03805347170e41f4df441fb67e3de53fc609",
+      "task_count": 100
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch004_100_20260727/raw_part_0.jsonl",
+      "row_count": 25,
+      "sha256": "3a54f5baf2b6d889d4ad0f613dc3621fa58925a4130c73f36f8bfa21bf083830",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch004_100_20260727/raw_part_1.jsonl",
+      "row_count": 25,
+      "sha256": "79ea2ecd384c33bcad6a40254be749966d4b787ef27f8c882cc09330f611dc9d",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch004_100_20260727/raw_part_2.jsonl",
+      "row_count": 25,
+      "sha256": "508f7305c4d496f9522ee8657bef1709afaa7b1315ca1c478cba25fa49d7ebbd",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch004_100_20260727/raw_part_3.jsonl",
+      "row_count": 25,
+      "sha256": "d2a2c50de2907dafaa21c3b71f12af68bb92d41cc643b256316691dbd6dd110c",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch004_100_20260727/rejected.jsonl",
+      "row_count": 37,
+      "sha256": "008354fc313b852eb4e4a41cf3a692abc349c800a816d0159a84c26757aae329",
+      "task_count": 37
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch004_100_20260727/sft.jsonl",
+      "row_count": 63,
+      "sha256": "fc680beb68e940550850482772675c2288a7864b10a8cff4e0063ca23635fd6b",
+      "task_count": 63
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch004_100_20260727/tasks.jsonl",
+      "row_count": 100,
+      "sha256": "4067e4b6a4e68b21d5e2811ea3fe704e580c7c52ea279809772056633d1acd73",
+      "task_count": 100
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch004_100_20260727/tasks_part_0.jsonl",
+      "row_count": 25,
+      "sha256": "d3093d4f13882e2c0d7242d21d4b6494ff3026c0a1336fd7cd307948c546b3b6",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch004_100_20260727/tasks_part_1.jsonl",
+      "row_count": 25,
+      "sha256": "78b13d5e74c0ddc154f075b021ed86c1c5c8517858901978d22cb96be86f397c",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch004_100_20260727/tasks_part_2.jsonl",
+      "row_count": 25,
+      "sha256": "ef22c5fe1dea24bf181b0b737476b3703754b15e47fce2d7362a81098c81654f",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch004_100_20260727/tasks_part_3.jsonl",
+      "row_count": 25,
+      "sha256": "e97eef2d60eb3415d3ba0aba2db6c452e3f5c7bdb2389157a1501a32ffc55721",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch005_100_20260727/accepted.jsonl",
+      "row_count": 65,
+      "sha256": "2b08ce7693aa500c3fcc3977385d22518967c0fa967c11acb2b689c5e0ba7956",
+      "task_count": 65
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch005_100_20260727/raw.jsonl",
+      "row_count": 100,
+      "sha256": "396c2f41e97ee3578440176be9fb502456ff8d224eed68222ceeaf1c467b379e",
+      "task_count": 100
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch005_100_20260727/raw_part_0.jsonl",
+      "row_count": 25,
+      "sha256": "186d29d54cd85133f6c66846abd18ee7521c3cb5a19fd43fae6719139d2b80a4",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch005_100_20260727/raw_part_1.jsonl",
+      "row_count": 25,
+      "sha256": "f1b6f47a3b294bd5c435fa8294e9629feab4377195741d145491771156fd20ae",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch005_100_20260727/raw_part_2.jsonl",
+      "row_count": 25,
+      "sha256": "d88ec0494d48b3024ccf544385202fb6738edccb6d647c5ed7c29e37e26ff122",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch005_100_20260727/raw_part_3.jsonl",
+      "row_count": 25,
+      "sha256": "d1a58fa303397bee83c7572cc1a6da7ff3d0d9106d548059ab62ddcb63213b35",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch005_100_20260727/rejected.jsonl",
+      "row_count": 35,
+      "sha256": "e064b95c8c093c2aa6eec6080395600e3a374a39414def6d16386406f6addc93",
+      "task_count": 35
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch005_100_20260727/sft.jsonl",
+      "row_count": 65,
+      "sha256": "fdde6dc183a9e2bf179e2a2489ea5d89159f1f23ddce4cba6a4caaf088952c2a",
+      "task_count": 65
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch005_100_20260727/tasks.jsonl",
+      "row_count": 100,
+      "sha256": "6be8751ff7d72c65f7b1f9f45f211d1aa47b1c651ddaefbb243b48163f10476a",
+      "task_count": 100
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch005_100_20260727/tasks_part_0.jsonl",
+      "row_count": 25,
+      "sha256": "e2f506ca0a466779f65944dad44ea49b955a6f1d3e6909b6e5debe6fa0c3b3d2",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch005_100_20260727/tasks_part_1.jsonl",
+      "row_count": 25,
+      "sha256": "c4d939312a674708ae9e7a89d7b567fe1db2e47b1949f45c54cd2ad3b1e57a43",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch005_100_20260727/tasks_part_2.jsonl",
+      "row_count": 25,
+      "sha256": "13b6f38b239f2b119214bd1b5e99963ce27e5994c73f7aecb42635709a30a6f0",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch005_100_20260727/tasks_part_3.jsonl",
+      "row_count": 25,
+      "sha256": "e4c620341d6749e57178a683c78ebddc9ceb90900a0584d984673124f73db96b",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch006_100_20260727/accepted.jsonl",
+      "row_count": 72,
+      "sha256": "f7aeed85fd5e9962bb4ec223bc4a6699cd4a3a0c755daa2c7b032a18046346f0",
+      "task_count": 72
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch006_100_20260727/raw.jsonl",
+      "row_count": 100,
+      "sha256": "e17ed49fd66490b07668800a6958328e994e53f9b59f0ceedf055a56ab2e8aed",
+      "task_count": 100
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch006_100_20260727/raw_part_0.jsonl",
+      "row_count": 25,
+      "sha256": "3f4103b332064d25fb7d990b99a75d8b09d012486d55d8a1cec6d1e5dad49e38",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch006_100_20260727/raw_part_1.jsonl",
+      "row_count": 25,
+      "sha256": "7fea7accfcf0fd18dbaab495a8cf301d8ea00e249af76259a36385b1829f948a",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch006_100_20260727/raw_part_2.jsonl",
+      "row_count": 25,
+      "sha256": "a623874c1c8fdd23cdf0d11f1ba997bb47fa9848d4e87137fcad16f99fd4bbdc",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch006_100_20260727/raw_part_3.jsonl",
+      "row_count": 25,
+      "sha256": "6c98f6c13ae442b74a68b9f1ba803c099d367a2daa8130d089f74013eab87a94",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch006_100_20260727/rejected.jsonl",
+      "row_count": 28,
+      "sha256": "6113ab89ec80441cc0f07e494981c2d982b729c213a842ebc8093eb66ad18104",
+      "task_count": 28
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch006_100_20260727/sft.jsonl",
+      "row_count": 72,
+      "sha256": "b721c83b24c5b6475af0f31d6a18acecd2c978a217e7a5cb030ac93f12ac99dc",
+      "task_count": 72
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch006_100_20260727/tasks.jsonl",
+      "row_count": 100,
+      "sha256": "0e07769ed38cb42887541773f503ff6b9369fd4373494ad4ed79958702c11482",
+      "task_count": 100
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch006_100_20260727/tasks_part_0.jsonl",
+      "row_count": 25,
+      "sha256": "51f6f9349f03b2b410ccd2586b7092122521eafac0169c615097d4db6cbacda4",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch006_100_20260727/tasks_part_1.jsonl",
+      "row_count": 25,
+      "sha256": "6af9ad88316390e9d2c12f6845393309617d56825b53631c72ac23c64957e55a",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch006_100_20260727/tasks_part_2.jsonl",
+      "row_count": 25,
+      "sha256": "e18447371ab4f0ec4e272e54d7d310ebe5f0f6bc2ef49cf183a6d1ec481ce484",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch006_100_20260727/tasks_part_3.jsonl",
+      "row_count": 25,
+      "sha256": "857fd7c8c96a96358161d50a9765266b0a254e7ef07853c3e1d30f6479829c94",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch007_100_20260727/raw.jsonl",
+      "row_count": 4,
+      "sha256": "db229d227cf5a5f6a41be059abef0e20d7ba6d56bdcb464fe68ec606fa190498",
+      "task_count": 4
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch007_100_20260727/raw_part_0.jsonl",
+      "row_count": 1,
+      "sha256": "d6b9f0b839d8d73525d8cb817cd39b6515b135b8e700d3594fafd3618169e038",
+      "task_count": 1
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch007_100_20260727/raw_part_1.jsonl",
+      "row_count": 1,
+      "sha256": "37ed3b35f5151497d5e0ff7f6ff525c6941550adc7e6102ab5b3146348604039",
+      "task_count": 1
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch007_100_20260727/raw_part_2.jsonl",
+      "row_count": 1,
+      "sha256": "a1494fa9647c81036547b9575c00c05fba010a67d730f7269d473931ffb4819e",
+      "task_count": 1
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch007_100_20260727/raw_part_3.jsonl",
+      "row_count": 1,
+      "sha256": "9bd97db1bafd4466a0465fa89f02c45a53025006e09630ade1fc636367756a90",
+      "task_count": 1
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch007_100_20260727/rejected.jsonl",
+      "row_count": 4,
+      "sha256": "48c5947cd6fffb9e57da26842dd96e7079bcc461c41970c70a7ee8960286bbf0",
+      "task_count": 4
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch007_100_20260727/tasks.jsonl",
+      "row_count": 100,
+      "sha256": "c27dea4c0d1af3f1f5ad10d0229c4a2aed41596ae1b459fde32198452b0416c8",
+      "task_count": 100
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch007_100_20260727/tasks_part_0.jsonl",
+      "row_count": 25,
+      "sha256": "f9ed2bb4ae7590b9b8ba03aa0934a2a31588a049416f1f1cc43b36ee716b8f96",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch007_100_20260727/tasks_part_1.jsonl",
+      "row_count": 25,
+      "sha256": "a530e02eae7b779c5aeb9e2cabad3558e47a2e14f5772bd60b77e3bd725170a8",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch007_100_20260727/tasks_part_2.jsonl",
+      "row_count": 25,
+      "sha256": "916ae04c36c2774dc60414e039de4360d841eecb7a5a39bc61ad0017191dd462",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_batch007_100_20260727/tasks_part_3.jsonl",
+      "row_count": 25,
+      "sha256": "f943f606c09de9913fdcda09413b69acde4b0b3987cc5d85c4d1b5c048cd2a97",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_pilot100_20260727/accepted.jsonl",
+      "row_count": 6,
+      "sha256": "0ab0095865a0c88590f12002cd89a556753adbde23348943934b9b362df748e5",
+      "task_count": 6
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_pilot100_20260727/pilot_tasks_100.jsonl",
+      "row_count": 100,
+      "sha256": "d56b5c56c763a89670c8a4047d3515878fbf2b5907fcb733d8829c6ef31c1945",
+      "task_count": 100
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_pilot100_20260727/raw.jsonl",
+      "row_count": 100,
+      "sha256": "f5836e56aac73db9cc8d0db171283e8711b60d79ed9180730d5c78232650d358",
+      "task_count": 100
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_pilot100_20260727/raw_part_0.jsonl",
+      "row_count": 25,
+      "sha256": "59934b74813b93a385bb4cc37e156a0017318bfba42eb0e533441c57025b897e",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_pilot100_20260727/raw_part_1.jsonl",
+      "row_count": 25,
+      "sha256": "170bf90d4254d40fb180eb39fed950a2b79b51f55dd5a60ecabb98a8e70b1cd6",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_pilot100_20260727/raw_part_2.jsonl",
+      "row_count": 25,
+      "sha256": "cde13a37b26dc176fb6a2675d176037a4c10f968519b99f7feac8fc786c9f94a",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_pilot100_20260727/raw_part_3.jsonl",
+      "row_count": 25,
+      "sha256": "75c4654bb5c46a1389e7dd49b5597e128241d6170afab317918dec90f4875653",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_pilot100_20260727/rejected.jsonl",
+      "row_count": 94,
+      "sha256": "87d303593cfbf803c13b8d79c773bd8a555ff425ea8e2565d84ec638bac5a2b6",
+      "task_count": 94
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_pilot100_20260727/sft.jsonl",
+      "row_count": 6,
+      "sha256": "59083fe5234f65439fe839d75cb43129da6e86909529f14f8e97b64d7d27c04b",
+      "task_count": 6
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_pilot100_20260727/tasks_part_0.jsonl",
+      "row_count": 25,
+      "sha256": "2f90e8eb9c32d9ad60ea64de91d7dbdad11b46738da5b0bb0fef3216196b0abb",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_pilot100_20260727/tasks_part_1.jsonl",
+      "row_count": 25,
+      "sha256": "3ae32e81d3915c5f3325a7602a3f7be437dba61735096a7978f15e5cfafe6500",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_pilot100_20260727/tasks_part_2.jsonl",
+      "row_count": 25,
+      "sha256": "1ea86d0d9f52aacd35716c128eaabbef6a6df34ad1724ae4cae90443c15762c3",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_pilot100_20260727/tasks_part_3.jsonl",
+      "row_count": 25,
+      "sha256": "16075e25b55ab208e3eee0b6c79462b023ec83d1612145bf40bef26381aeb231",
+      "task_count": 25
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_prompt_guard_5_20260727/raw.jsonl",
+      "row_count": 5,
+      "sha256": "fd556c7a631987375160440793a3f9c5ede6ba0d65df4d53cb3c6dd8ed0e8399",
+      "task_count": 5
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_prompt_guard_5_20260727/tasks.jsonl",
+      "row_count": 5,
+      "sha256": "1bc0b98f4879e6f41e15758b4cebe3049f6243f362d14290b2cc484faed9f175",
+      "task_count": 5
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_pro_5_product_id_v2_20260727/raw.jsonl",
+      "row_count": 3,
+      "sha256": "a7526cf9ada3c4ab9c25911cb1b8fe7d1b968c1f06ab36f1efdcc1d168d54fda",
+      "task_count": 3
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_pro_5_product_id_v3_20260727/raw.jsonl",
+      "row_count": 5,
+      "sha256": "1145d554cae26c905108eeef05b0f6f703e241f1cd38cfe725832823f954b773",
+      "task_count": 5
+    },
+    {
+      "path": "outputs/environment_v2_1_teacher_pro_5_prompt_v2_20260727/raw.jsonl",
+      "row_count": 2,
+      "sha256": "17d9499cbcb359c6268c82aca966e6da27b691c8bbf7dffa2c90a997cd50b99f",
+      "task_count": 2
+    },
+    {
+      "path": "outputs/eval/qwen35_2b_grpo_a1_projection768_smoke10/raw.jsonl",
+      "row_count": 10,
+      "sha256": "1fedb8fe6901e9005f246bd12aa735ba38a436e6081a4b5eb9719d291c3ae253",
+      "task_count": 10
+    },
+    {
+      "path": "outputs/eval/qwen35_2b_grpo_a1_projection_smoke10/raw.jsonl",
+      "row_count": 10,
+      "sha256": "cfbf0de08e211f25fa3358d05775526e3c6c072431bf79f3c91620650a4fdd7e",
+      "task_count": 10
+    },
+    {
+      "path": "outputs/eval/qwen35_2b_grpo_a1_step50_v2_50/raw.jsonl",
+      "row_count": 50,
+      "sha256": "fd379c3875c1bf212d26044ee0bc28c9db3e01662381680b4a03fde75f030329",
+      "task_count": 50
+    },
+    {
+      "path": "outputs/eval/qwen35_2b_grpo_a1_step50_v2_50_context_window/raw.jsonl",
+      "row_count": 50,
+      "sha256": "cec4112f3b3210f6d185af466c710c00ab32e9b5a35df6b4ff041fced43c8eba",
+      "task_count": 50
+    },
+    {
+      "path": "outputs/eval/qwen35_2b_grpo_a1_step50_v2_50_retry/raw.jsonl",
+      "row_count": 50,
+      "sha256": "0ec6ccbdb16b672f7946c8d3872c6750e027f783d524aa2dcb3f8a2023385af0",
+      "task_count": 50
+    },
+    {
+      "path": "outputs/eval/qwen35_2b_instruct_v2/raw.jsonl",
+      "row_count": 200,
+      "sha256": "92970403750404b34db5690c142d66a6146ea684f4cb44272f25250bfe0190f1",
+      "task_count": 200
+    },
+    {
+      "path": "outputs/eval/qwen35_2b_instruct_v2_smoke/raw.jsonl",
+      "row_count": 10,
+      "sha256": "296d5216a4ebddb3f276db2e1c4e840d14849adb7a72d169bc0878b93c1abfc3",
+      "task_count": 10
+    },
+    {
+      "path": "outputs/eval/qwen35_2b_sft_v2/raw.jsonl",
+      "row_count": 50,
+      "sha256": "de8d9af7da81a25be1147ef28519ceec4e0ba0930faabf8940b7b551bd9c8fce",
+      "task_count": 50
+    },
+    {
+      "path": "outputs/eval/qwen35_2b_sft_v3_50/raw.jsonl",
+      "row_count": 50,
+      "sha256": "a72e2ccf42b5ce3954abbbe78857ba020316e74d60df5ed6db6b39a46d9b8bb0",
+      "task_count": 50
+    },
+    {
+      "path": "outputs/eval/qwen35_2b_sft_v3_projected_baseline_smoke10/raw.jsonl",
+      "row_count": 10,
+      "sha256": "e566ce1817dcc3f50d36c9682fdebdc14c5f328f03b469f8ed9dd770f434aa06",
+      "task_count": 10
+    },
+    {
+      "path": "outputs/eval/qwen35_2b_sft_v3_projected_refresh_smoke10/raw.jsonl",
+      "row_count": 10,
+      "sha256": "8e82320f071d628c7bfe2ed70158045031a44731bb534783ef85e9debd81de8b",
+      "task_count": 10
+    },
+    {
+      "path": "outputs/eval/qwen35_2b_sft_v3_smoke10/benchmark_first10.jsonl",
+      "row_count": 10,
+      "sha256": "00fae0ec1c581e8c343a8581175639d5ba191ee212f403b4e902d09fb38a45f0",
+      "task_count": 10
+    },
+    {
+      "path": "outputs/eval/qwen35_2b_sft_v3_smoke10/raw.jsonl",
+      "row_count": 10,
+      "sha256": "f9567d301d0e4be72fda7fc2ae8ea1fddbba60d85450017a23f6d641a41a51ff",
+      "task_count": 10
+    },
+    {
+      "path": "outputs/eval/sft_v2_merged_smoke/raw.jsonl",
+      "row_count": 2,
+      "sha256": "9571edd9e536df6f070af5983c1edaa6307ab715984394f405e32604491c22d2",
+      "task_count": 2
+    },
+    {
+      "path": "outputs/flash_accepted_500_parallel/accepted.jsonl",
+      "row_count": 380,
+      "sha256": "334c196f79306127f4597c05741b0d43675a4827d08c763575d70a580c1a591e",
+      "task_count": 380
+    },
+    {
+      "path": "outputs/flash_accepted_500_parallel/raw.jsonl.gz",
+      "row_count": 757,
+      "sha256": "91a0b488dbd7d7c1baf9d3f53460131bed8489e7f3cf7a1cda2c4d330772aed0",
+      "task_count": 757
+    },
+    {
+      "path": "outputs/flash_accepted_500_parallel/rejected.jsonl",
+      "row_count": 377,
+      "sha256": "f6fb7dd2472aa6ab5ce873f35ebeb8ebba15a6dac771231168859417ef67a201",
+      "task_count": 377
+    },
+    {
+      "path": "outputs/flash_accepted_500_parallel/sft.jsonl",
+      "row_count": 380,
+      "sha256": "7b1d82ed8c18c6fbd23af89a574258d040c4c6db8d1ba9d9512fc1e418abc3fa",
+      "task_count": 380
+    },
+    {
+      "path": "outputs/flash_accepted_500_parallel_action_only/accepted.jsonl",
+      "row_count": 380,
+      "sha256": "334c196f79306127f4597c05741b0d43675a4827d08c763575d70a580c1a591e",
+      "task_count": 380
+    },
+    {
+      "path": "outputs/flash_accepted_500_parallel_action_only/raw.jsonl",
+      "row_count": 757,
+      "sha256": "b044a7c99c0c24be75ecff3dfc6fd27fdff06418855393c1d53eb9a2f14b8246",
+      "task_count": 757
+    },
+    {
+      "path": "outputs/flash_accepted_500_parallel_action_only/rejected.jsonl",
+      "row_count": 377,
+      "sha256": "f6fb7dd2472aa6ab5ce873f35ebeb8ebba15a6dac771231168859417ef67a201",
+      "task_count": 377
+    },
+    {
+      "path": "outputs/flash_accepted_500_parallel_action_only/sft.jsonl",
+      "row_count": 380,
+      "sha256": "e8eee39a135f5708cf387b0b1ce9194ea1cb7f0f73a2a309da7c8fe20500c4d5",
+      "task_count": 380
+    },
+    {
+      "path": "outputs/flash_accepted_500_parallel_action_only/train.jsonl",
+      "row_count": 361,
+      "sha256": "7189f7d2aa62fed42c61ecf3b8fbbea331e01df1fd880f09747d389206afb3fe",
+      "task_count": 361
+    },
+    {
+      "path": "outputs/flash_accepted_500_parallel_action_only/validation.jsonl",
+      "row_count": 19,
+      "sha256": "26190dbbba17f1cba21f247db357d4e904bc6c1ef5dd25f8883bc0e96ecadc0e",
+      "task_count": 19
+    },
+    {
+      "path": "outputs/grpo_diagnosis/cheap_probe/current_task.jsonl",
+      "row_count": 1,
+      "sha256": "d2b62aac3ac2cceab6c9b2a312ded6a06625a7d6472d84be2dda06852974cf17",
+      "task_count": 1
+    },
+    {
+      "path": "outputs/grpo_diagnosis/cheap_probe/first10_candidates.jsonl",
+      "row_count": 10,
+      "sha256": "2f5af09ce11233233b79a984344bfc4a4a263d47d02b08e0f7a4401f29f3ae83",
+      "task_count": 10
+    },
+    {
+      "path": "outputs/grpo_diagnosis/cheap_probe/historical_recheck_raw.jsonl",
+      "row_count": 2,
+      "sha256": "c47300f6b3d101d4dd2518251c099ca8a13ccd1938982ba1dcba0c61beb7d0dd",
+      "task_count": 2
+    },
+    {
+      "path": "outputs/grpo_diagnosis/cheap_probe/historical_two_tasks.jsonl",
+      "row_count": 2,
+      "sha256": "786584288beba9160259d4ac16cb7f9d2a7930c4e941f7b68390b8c7b8a1d460",
+      "task_count": 2
+    },
+    {
+      "path": "outputs/grpo_diagnosis/cheap_probe/raw.jsonl",
+      "row_count": 9,
+      "sha256": "c8ce2ac9565fcc5a5ae22a73a762c3919a59dd5084a18ec852248bab672f9672",
+      "task_count": 6
+    },
+    {
+      "path": "outputs/grpo_diagnosis/cheap_probe/signal_smoke_tasks.jsonl",
+      "row_count": 2,
+      "sha256": "9a34e0b27d1e37f176f7750b8d54ad3daa97805019a781353b2759b96e36410c",
+      "task_count": 2
+    },
+    {
+      "path": "outputs/grpo_probe_sft_v3/raw.jsonl",
+      "row_count": 1207,
+      "sha256": "758df5971a6545a29761755500288986f508aaaffed764bce617033e4382d3e2",
+      "task_count": 1207
+    },
+    {
+      "path": "outputs/grpo_probe_sft_v3/shards/raw_00.jsonl",
+      "row_count": 150,
+      "sha256": "2d0fede32141736f2c64ef24b4392734976c9c9a0c0c0600a83fee4ee0c18d59",
+      "task_count": 150
+    },
+    {
+      "path": "outputs/grpo_probe_sft_v3/shards/raw_01.jsonl",
+      "row_count": 140,
+      "sha256": "fcf3b9a4c3adc808e099737c940a15e13305ff4a5dbfa5843a983e48644ee0e1",
+      "task_count": 140
+    },
+    {
+      "path": "outputs/grpo_probe_sft_v3/shards/raw_02.jsonl",
+      "row_count": 152,
+      "sha256": "c34fb1c443cd9cb3a6ef561c71903ab50c37e9f607aa2789313bfac5b8726e62",
+      "task_count": 152
+    },
+    {
+      "path": "outputs/grpo_probe_sft_v3/shards/raw_03.jsonl",
+      "row_count": 142,
+      "sha256": "a6a9434e9e5a03dd885934f8a95971e11339561ef01bc777bf76c6c0f5c9e097",
+      "task_count": 142
+    },
+    {
+      "path": "outputs/grpo_probe_sft_v3/shards/raw_04.jsonl",
+      "row_count": 155,
+      "sha256": "84f39dfb14efe5e9143ae85e373e6a34b43bfeca198b01e951b43540b192f3c4",
+      "task_count": 155
+    },
+    {
+      "path": "outputs/grpo_probe_sft_v3/shards/raw_05.jsonl",
+      "row_count": 148,
+      "sha256": "1e49a581533116687f3e047c1ce0b4dbe08e3d0939d4308250d2e2a46c0cdb70",
+      "task_count": 148
+    },
+    {
+      "path": "outputs/grpo_probe_sft_v3/shards/raw_06.jsonl",
+      "row_count": 157,
+      "sha256": "acd78f2ae8220faa0b3abce73f444318691779e24270110608333349a96f274c",
+      "task_count": 157
+    },
+    {
+      "path": "outputs/grpo_probe_sft_v3/shards/raw_07.jsonl",
+      "row_count": 163,
+      "sha256": "989c2d043289d804469cb9018bd537fb60263db9eb6025efd6513ed716c888c9",
+      "task_count": 163
+    },
+    {
+      "path": "outputs/grpo_probe_sft_v3/shards/tasks_00.jsonl",
+      "row_count": 250,
+      "sha256": "b4b1b5fa949dfcceccbfc25070ec6d0f4e8d3c3b1a2755cebb8406e77f2cb5d2",
+      "task_count": 250
+    },
+    {
+      "path": "outputs/grpo_probe_sft_v3/shards/tasks_01.jsonl",
+      "row_count": 250,
+      "sha256": "20e043c91d4a08ba9deadef1a94d3dee43b5573aef42525eac99ea096635bed3",
+      "task_count": 250
+    },
+    {
+      "path": "outputs/grpo_probe_sft_v3/shards/tasks_02.jsonl",
+      "row_count": 250,
+      "sha256": "0ba26dd7f44685b7d12be80c3a3f59221abc17e6d6d7fcc05701b3649eef4fb1",
+      "task_count": 250
+    },
+    {
+      "path": "outputs/grpo_probe_sft_v3/shards/tasks_03.jsonl",
+      "row_count": 250,
+      "sha256": "c1e7f16c4afff4aa9cebc94e1d8e4957a936037a1c95a63f797066cc667ca453",
+      "task_count": 250
+    },
+    {
+      "path": "outputs/grpo_probe_sft_v3/shards/tasks_04.jsonl",
+      "row_count": 250,
+      "sha256": "295fb7f6b9db1541d45dc2a8a4ada08c861b7883c4d29e7e3d6e6e144268c49b",
+      "task_count": 250
+    },
+    {
+      "path": "outputs/grpo_probe_sft_v3/shards/tasks_05.jsonl",
+      "row_count": 250,
+      "sha256": "40e936d5c66405477ccf938e431272c9cb5ec00d06199e4568a6b66bbd1a1b56",
+      "task_count": 250
+    },
+    {
+      "path": "outputs/grpo_probe_sft_v3/shards/tasks_06.jsonl",
+      "row_count": 250,
+      "sha256": "0d5546fa3a56f0a1b4d7bd790d9a963b49f4a4a579255ce9f0aa6629653bb7f3",
+      "task_count": 250
+    },
+    {
+      "path": "outputs/grpo_probe_sft_v3/shards/tasks_07.jsonl",
+      "row_count": 250,
+      "sha256": "8b9fcdfade9e273f7e3937f14d5ec252336ba8c29143f60129702ce63b24373a",
+      "task_count": 250
+    },
+    {
+      "path": "outputs/grpo_readiness/ten_by_four_20260723/raw.jsonl",
+      "row_count": 40,
+      "sha256": "193e8458e7dad0f6fd15637d4e64375413d9bc4e455f24f54726e8d4d1e5ca1e",
+      "task_count": 10
+    },
+    {
+      "path": "outputs/grpo_readiness/ten_by_four_20260723/tasks.jsonl",
+      "row_count": 10,
+      "sha256": "2f5af09ce11233233b79a984344bfc4a4a263d47d02b08e0f7a4401f29f3ae83",
+      "task_count": 10
+    },
+    {
+      "path": "outputs/grpo_reward_v3_fresh_v1_probe/archive/pre-context-status-fix-e01e1aa/raw-90-context-errors.jsonl",
+      "row_count": 90,
+      "sha256": "fbf6132245efdc7e4650ab59c8b33433c788f661486c1c50438f30ebceb28830",
+      "task_count": 90
+    },
+    {
+      "path": "outputs/grpo_reward_v3_fresh_v1_probe/archive/pre-slot-lease-fix-6192cdc/raw-39-contaminated.jsonl",
+      "row_count": 39,
+      "sha256": "9d4b6b61fde583494cf08ed4ab94bb47f30280db99be6c48c1a3ad24a2c4a990",
+      "task_count": 39
+    },
+    {
+      "path": "outputs/grpo_reward_v3_fresh_v1_probe/raw.jsonl",
+      "row_count": 2000,
+      "sha256": "0c1598cbc9534997387086e01a6896cc85bf8f20128f8ecbaa6b80034225ac5d",
+      "task_count": 2000
+    },
+    {
+      "path": "outputs/grpo_signal_smoke/task_21934_twice.jsonl",
+      "row_count": 2,
+      "sha256": "808674595c53db326e6a443ed070a7612bc2bcede442c0bb19791af8467905cd",
+      "task_count": 1
+    },
+    {
+      "path": "outputs/sft_runs/qwen35_2b_lora_v1/train.jsonl",
+      "row_count": 361,
+      "sha256": "6e27111b39baf10a2b4e01e81f47329eef97113d649cb6b3d2abb82b77cb0253",
+      "task_count": 361
+    },
+    {
+      "path": "outputs/sft_runs/qwen35_2b_lora_v1/validation.jsonl",
+      "row_count": 19,
+      "sha256": "cc46861485eaf44d21d5d55e128e2b0361d7e43a6b8cc04252a524d520c05eea",
+      "task_count": 19
+    },
+    {
+      "path": "outputs/sft_v3_combined/old_rebuilt/accepted.jsonl",
+      "row_count": 380,
+      "sha256": "334c196f79306127f4597c05741b0d43675a4827d08c763575d70a580c1a591e",
+      "task_count": 380
+    },
+    {
+      "path": "outputs/sft_v3_combined/old_rebuilt/raw.jsonl",
+      "row_count": 757,
+      "sha256": "b044a7c99c0c24be75ecff3dfc6fd27fdff06418855393c1d53eb9a2f14b8246",
+      "task_count": 757
+    },
+    {
+      "path": "outputs/sft_v3_combined/old_rebuilt/rejected.jsonl",
+      "row_count": 377,
+      "sha256": "f6fb7dd2472aa6ab5ce873f35ebeb8ebba15a6dac771231168859417ef67a201",
+      "task_count": 377
+    },
+    {
+      "path": "outputs/sft_v3_combined/old_rebuilt/sft_action_only.jsonl",
+      "row_count": 380,
+      "sha256": "7e716ec5cb2513c3ac2c5a72597bf92aa3e907ecef2682060114aedef8d2d411",
+      "task_count": 380
+    },
+    {
+      "path": "outputs/sft_v3_combined/sft_all.jsonl",
+      "row_count": 480,
+      "sha256": "8de67f5c7a50a8e14131bfcf283ad5cd3b96173a7a82cc1aaba5264ff00a229f",
+      "task_count": 480
+    },
+    {
+      "path": "outputs/sft_v3_combined/train.jsonl",
+      "row_count": 456,
+      "sha256": "01731d59e0abfae376bd71ec5c7fc3edee816bb991418393534011554ca51c3d",
+      "task_count": 456
+    },
+    {
+      "path": "outputs/sft_v3_combined/validation.jsonl",
+      "row_count": 24,
+      "sha256": "1a970d83c3a7942f9a98a4bd864e54f25d6f5944a6f7645afd6c9b77b82262bd",
+      "task_count": 24
+    },
+    {
+      "path": "outputs/sft_v3_projected_448/sft_all.jsonl",
+      "row_count": 480,
+      "sha256": "d24460837f7a8e4faaae24fa6c8307b4c774f4fc72571070be3dbb6b4c4ed89b",
+      "task_count": 480
+    },
+    {
+      "path": "outputs/sft_v3_projected_448/train.jsonl",
+      "row_count": 456,
+      "sha256": "64382ac2866602cf040cfa23ed99374f2a06c64c99619c1a7723afe1750330a5",
+      "task_count": 456
+    },
+    {
+      "path": "outputs/sft_v3_projected_448/validation.jsonl",
+      "row_count": 24,
+      "sha256": "5419ba1e7bf823009ffba6251e01a3c55e8c5b6caba91aa2ea4abc53fc87e98b",
+      "task_count": 24
+    },
+    {
+      "path": "outputs/sft_v3_projected_v1/sft_all.jsonl",
+      "row_count": 480,
+      "sha256": "acab7f9a49590f6314197cbbe73f8e6b061291d69a4b2d7ec3c1d7b351826e96",
+      "task_count": 480
+    },
+    {
+      "path": "outputs/sft_v3_projected_v1/train.jsonl",
+      "row_count": 456,
+      "sha256": "56c7610a737871a690b740261d16d6a6f13db27da3d637e55d280c1be5fab90a",
+      "task_count": 456
+    },
+    {
+      "path": "outputs/sft_v3_projected_v1/validation.jsonl",
+      "row_count": 24,
+      "sha256": "d21961c34f2e4e7c931c8f89fa0789d0cc72949f92e58e9a94f3b832ac8df311",
+      "task_count": 24
+    },
+    {
+      "path": "outputs/sft_v3_short_100_retry/accepted.jsonl",
+      "row_count": 100,
+      "sha256": "83fc35e61a546050785ccb7fe95cdaaed8eecc768a3a3997e4b2074e23ab5359",
+      "task_count": 100
+    },
+    {
+      "path": "outputs/sft_v3_short_100_retry/raw.jsonl.gz",
+      "row_count": 317,
+      "sha256": "a39fb2738d62ef2f5f80adcae1aa2312615fce320f7cafe4b1e692dcd136adb0",
+      "task_count": 317
+    },
+    {
+      "path": "outputs/sft_v3_short_100_retry/rejected.jsonl",
+      "row_count": 217,
+      "sha256": "811cbb5b74606a8faafbd955724d01dae6d01362024db9bd2df4acf56a6e8b45",
+      "task_count": 217
+    },
+    {
+      "path": "outputs/sft_v3_short_100_retry/sft.jsonl",
+      "row_count": 100,
+      "sha256": "2cc5f11ec8e5526ac07503275f4175aadfc674d7f19b21e48f203150131ea21b",
+      "task_count": 100
+    }
+  ],
+  "exclusions": "data/benchmarks/shop_benchmark_reward_v3_final_200.exclusions.jsonl",
+  "exclusions_sha256": "00030db1042a75c7c988c878bd957cfe39478e369beec1e9e41a03c52b2e9e88",
+  "output_sha256": "2c4ff070e13ddc30796d38e85170210e7d3c211992425a62090f2419fe8e0208",
+  "planned_evaluation_protocol": {
+    "attempts_per_task": 1,
+    "checkpoint_selection_uses_final_test": false,
+    "max_steps": 35,
+    "paired_sft_grpo_evaluation": true,
+    "reward_contract": "shopsimulator-reward-v3",
+    "temperature": 0.0,
+    "top_p": 1.0
+  },
+  "reward_version": "shopsimulator-reward-v3",
+  "seed": 20260728,
+  "selection": "deterministic_random_without_replacement",
+  "selection_uses_model_rollout": false,
+  "shopping_grpo_commit": "c3cf36852c0d77d8f2a8ece3d9a4cc8bb31006aa",
+  "source_row_count": 23421,
+  "source_task_count": 23421,
+  "source_tasks": "data/shop_tasks.jsonl",
+  "source_tasks_sha256": "35a5978bba829a6b4196f0e4ce65d5f7d366cc0704469e3b7f8a6d02f50a9dea",
+  "task_count": 200
+}

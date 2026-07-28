@@ -97,6 +97,27 @@ parquet 只包含 system prompt、用户可见 instruction 和 task_id，不包�
 
 精确 SHA256 记录在 `data/splits/README.md` 以及每个相邻 metadata 文件中。
 
+## 盲测 final test
+
+Reward v3 / fresh-v1 的最终测试集固定为
+`data/benchmarks/shop_benchmark_reward_v3_final_200.jsonl`。它从 23,421 个任务
+全集中排除本机历史及当前所有已出现的 6,720 个 task 后，在剩余 16,701 个候选中
+按种子 `20260728` 确定性随机无放回抽取 200 条。该选择不使用模型 rollout 或
+reward：
+
+- final test SHA256：
+  `2c4ff070e13ddc30796d38e85170210e7d3c211992425a62090f2419fe8e0208`；
+- exclusions SHA256：
+  `00030db1042a75c7c988c878bd957cfe39478e369beec1e9e41a03c52b2e9e88`；
+- metadata SHA256：
+  `42d7adc26ed48430da3def670453f44ee8a69f8ac7bbe5729a5cefa7bbd47b1b`。
+
+冻结时 `evaluated=false`。在 GRPO 训练和 validation checkpoint 选择完成前，
+禁止让 fresh merged SFT、GRPO checkpoint 或其他模型在该集合上运行。最终只用
+validation 选定 checkpoint，再以相同 temperature=0、top_p=1、max_steps=35 协议
+分别运行 fresh merged SFT 和 GRPO，进行一次配对比较。旧
+`shop_benchmark_v2_50` 继续作为开发/回归集，不替代这份盲测集。
+
 ## 正式启动边界
 
 正式启动只允许使用：

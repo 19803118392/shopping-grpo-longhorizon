@@ -72,11 +72,24 @@ terminal_result.over == true
 - launcher：`scripts/run_grpo_reward_v3_fresh_v1.sh`；
 - environment manifest：
   `data/manifests/environment_v2_1_reward_v3_fresh_v1.json`。
+- blind final test：
+  `data/benchmarks/shop_benchmark_reward_v3_final_200.jsonl`。
 
 候选池必须排除 fresh-v1 全部 604 个 raw task、固定 benchmark、历史 Teacher
 task 和历史 GRPO probe task。probe 必须由 fresh merged SFT 在 Environment
 v2.1 / Reward v3 上重新执行；不得用旧 policy 的轨迹长度替代。train/validation
 只按 fresh policy 的实际执行步数做确定性比例分层，不按 reward 或成功与否挑题。
+
+Reward v3 final test 固定为 200 条全新 task。它必须排除 fresh SFT、完整 fresh
+GRPO probe、历史 Teacher/GRPO task 和所有旧 benchmark；不得用于训练、validation、
+checkpoint 选择或超参数选择。冻结后先不运行模型，最终由 validation 选定 GRPO
+checkpoint，再与 fresh merged SFT 在同一 200 条上各执行一次配对评测。
+当前冻结 final test SHA256 是
+`2c4ff070e13ddc30796d38e85170210e7d3c211992425a62090f2419fe8e0208`，
+exclusions SHA256 是
+`00030db1042a75c7c988c878bd957cfe39478e369beec1e9e41a03c52b2e9e88`；
+冻结 metadata 必须保持 `evaluated=false`，直到 GRPO checkpoint 已由 validation
+独立选定。
 
 `scripts/run_vanilla_grpo.sh`、`grpo_*_v1.jsonl` 和
 `data/verl/grpo_*_v1.parquet` 已归入 legacy v1/v2 世代，默认禁止启动或作为本世代
