@@ -627,7 +627,8 @@ GRPO 训练期间允许开发不被训练代码 import、也不依赖训练运�
 - 四部分单任务结果和固定任务全集分母汇总；
 - Base/SFT/GRPO 按 task_id 的分栏配对比较；
 - 固定的主要/次要错误 taxonomy；
-- 原子离线 artifact、重复键校验和盲测文件名保护；
+- 原子离线 artifact、重复键校验，以及基于 guard manifest、内容 SHA256 和
+  final task ID 集合的盲测保护；
 - 纯离线预处理、Judge 请求生成、结果拼装和比较 CLI；
 - TaskFacts 环境映射与独立导出入口；
 - Flash/Pro OpenAI-compatible JSON 客户端及严格结构校验；

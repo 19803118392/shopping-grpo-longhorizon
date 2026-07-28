@@ -14,6 +14,7 @@ from shopping_grpo.evaluation.artifacts import (
     index_jsonl,
     iter_jsonl,
 )
+from shopping_grpo.evaluation.blind_guard import guard_blind_final
 from shopping_grpo.evaluation.contracts import (
     validate_rubric_bundle,
     validate_judge_result,
@@ -34,15 +35,8 @@ from shopping_grpo.evaluation.rubric import (
 )
 
 
-FINAL_BLIND_ASSET = "shop_benchmark_reward_v3_final_200"
-
-
 def _guard_blind_final(paths: list[Path], *, allowed: bool) -> None:
-    if not allowed and any(FINAL_BLIND_ASSET in str(path) for path in paths):
-        raise ArtifactError(
-            "refusing to call models for the frozen final blind asset without "
-            "--allow-blind-final"
-        )
+    guard_blind_final(paths, allowed=allowed)
 
 
 def _client(args: argparse.Namespace):

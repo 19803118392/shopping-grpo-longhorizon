@@ -37,6 +37,11 @@
 `shop_benchmark_reward_v3_final_200.jsonl` 是 Reward v3 / fresh-v1 世代的盲测集。
 它包含 200 个 task_id，不是训练 parquet，也不进入 GRPO validation。
 
+相邻的 `shop_benchmark_reward_v3_final_200.guard.json` 是独立保护契约，冻结了
+asset ID、split role、task/metadata SHA256、task 数量和 metadata 必需字段。离线
+评测会进一步比较输入 artifact 的 task ID；因此复制、重命名或重新格式化 final
+文件不能绕过保护。正式评测前不得传 `--allow-blind-final`。
+
 生成时排除了本机所有带 task_id 的历史输出、fresh SFT、完整 Reward v3 probe、
 历史 GRPO split/probe 和旧 benchmark。完整排除 task 快照保存在相邻
 `shop_benchmark_reward_v3_final_200.exclusions.jsonl`，来源文件及 SHA256 保存在

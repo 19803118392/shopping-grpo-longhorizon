@@ -1,0 +1,17 @@
+- name: shopping_tool_agent
+  _target_: shopping_grpo.verl_adapter.agent_loop.ShoppingToolAgentLoop
+  base_url: ${oc.env:SHOPSIM_BASE_URL,http://127.0.0.1:5700}
+  timeout: 60
+  max_steps: 35
+  required_environment_version: shopsimulator-environment-v2.1
+  reward_mode: ${oc.env:SHOPPING_REWARD_MODE,native}
+  context_window_tokens: 8192
+  context_generation_reserve_tokens: 512
+  context_safety_margin_tokens: 512
+  context_input_budget_tokens: 7168
+  context_preserve_recent_groups: 1
+  context_compaction_enable: false
+  observation_token_budget: 1024
+  observation_detail_token_budget: 2048
+  observation_generic_token_budget: 512
+  observation_search_top_k: 20

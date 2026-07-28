@@ -1,12 +1,14 @@
 """Tests for the isolated, offline trajectory evaluation package."""
 
-from copy import deepcopy
 import json
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from copy import deepcopy
+from pathlib import Path
+from unittest.mock import patch
+from urllib.error import HTTPError
 
 from shopping_grpo.evaluation.artifacts import (
     ArtifactError,
@@ -16,6 +18,11 @@ from shopping_grpo.evaluation.artifacts import (
     write_json_atomic,
     write_jsonl_atomic,
 )
+from shopping_grpo.evaluation.blind_guard import (
+    guard_blind_final,
+    validate_canonical_blind_asset,
+)
+from shopping_grpo.evaluation.comparison import compare_evaluation_runs
 from shopping_grpo.evaluation.contracts import (
     JUDGE_DIMENSIONS,
     JUDGE_SCHEMA_VERSION,
@@ -23,7 +30,6 @@ from shopping_grpo.evaluation.contracts import (
     validate_curator_response,
     validate_judge_result,
 )
-from shopping_grpo.evaluation.comparison import compare_evaluation_runs
 from shopping_grpo.evaluation.manifest import build_run_manifest
 from shopping_grpo.evaluation.metrics import compute_deterministic_metrics
 from shopping_grpo.evaluation.model_client import (
@@ -980,6 +986,40 @@ class ArtifactAndCliTest(unittest.TestCase):
                 failed.stderr,
             )
 
+    def test_blind_guard_uses_content_and_task_ids_not_filename(self):
+        guard, task_ids = validate_canonical_blind_asset()
+        self.assertEqual(guard["split_role"], "blind_final_test")
+        self.assertEqual(len(task_ids), 200)
+
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "data"
+            / "benchmarks"
+            / "shop_benchmark_reward_v3_final_200.jsonl"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            renamed = Path(directory) / "innocent_name.jsonl"
+            renamed.write_bytes(source.read_bytes())
+            with self.assertRaisesRegex(
+                ArtifactError,
+                "frozen blind-final tasks",
+            ):
+                guard_blind_final([renamed], allowed=False)
+            guard_blind_final([renamed], allowed=True)
+
+            reserialized = Path(directory) / "unrelated_tasks.txt"
+            rows = list(iter_jsonl(source))
+            write_jsonl_atomic(reserialized, reversed(rows), force=True)
+            self.assertNotEqual(
+                reserialized.read_bytes(),
+                source.read_bytes(),
+            )
+            with self.assertRaisesRegex(
+                ArtifactError,
+                "frozen blind-final tasks",
+            ):
+                guard_blind_final([reserialized], allowed=False)
+
 
 class ModelClientTest(unittest.TestCase):
     def test_json_client_is_deterministic_and_does_not_return_credentials(self):
@@ -1049,6 +1089,103 @@ class ModelClientTest(unittest.TestCase):
             client.complete_json(
                 [{"role": "user", "content": "return json"}]
             )
+
+    def test_json_client_retries_429_and_records_retry_audit(self):
+        calls = []
+
+        def transport(url, payload, headers, timeout):
+            del payload, headers, timeout
+            calls.append(url)
+            if len(calls) == 1:
+                raise HTTPError(
+                    url,
+                    429,
+                    "rate limited",
+                    {"Retry-After": "0"},
+                    None,
+                )
+            return {
+                "id": "request-after-retry",
+                "choices": [{"message": {"content": "{}"}}],
+            }
+
+        client = OpenAIJSONClient(
+            model="deepseek-v4-pro",
+            base_url="https://provider.example/v1",
+            api_key="private-key",
+            retries=2,
+            retry_delay_seconds=0,
+            transport=transport,
+        )
+        response = client.complete_json(
+            [{"role": "user", "content": "return json"}]
+        )
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(response["metadata"]["attempts"], 2)
+        self.assertEqual(
+            response["metadata"]["retry_http_statuses"],
+            [429],
+        )
+
+    def test_json_client_fails_fast_for_nonretryable_http_status(self):
+        calls = []
+
+        def transport(url, payload, headers, timeout):
+            del payload, headers, timeout
+            calls.append(url)
+            raise HTTPError(url, 401, "unauthorized", {}, None)
+
+        client = OpenAIJSONClient(
+            model="deepseek-v4-pro",
+            base_url="https://provider.example/v1",
+            api_key="private-key",
+            retries=3,
+            retry_delay_seconds=0,
+            transport=transport,
+        )
+        with self.assertRaises(HTTPError):
+            client.complete_json(
+                [{"role": "user", "content": "return json"}]
+            )
+        self.assertEqual(len(calls), 1)
+
+    def test_json_client_respects_retry_after_for_503(self):
+        calls = []
+
+        def transport(url, payload, headers, timeout):
+            del payload, headers, timeout
+            calls.append(url)
+            if len(calls) == 1:
+                raise HTTPError(
+                    url,
+                    503,
+                    "unavailable",
+                    {"Retry-After": "3"},
+                    None,
+                )
+            return {"choices": [{"message": {"content": "{}"}}]}
+
+        client = OpenAIJSONClient(
+            model="deepseek-v4-pro",
+            base_url="https://provider.example/v1",
+            api_key="private-key",
+            retries=1,
+            retry_delay_seconds=1,
+            transport=transport,
+        )
+        with patch(
+            "shopping_grpo.evaluation.model_client.time.sleep"
+        ) as sleep:
+            response = client.complete_json(
+                [{"role": "user", "content": "return json"}]
+            )
+
+        sleep.assert_called_once_with(3.0)
+        self.assertEqual(
+            response["metadata"]["retry_wait_seconds"],
+            3.0,
+        )
 
 
 if __name__ == "__main__":

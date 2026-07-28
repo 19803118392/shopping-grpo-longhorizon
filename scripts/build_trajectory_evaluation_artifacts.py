@@ -16,6 +16,7 @@ from shopping_grpo.evaluation.artifacts import (
     load_json,
     write_json_atomic,
 )
+from shopping_grpo.evaluation.blind_guard import guard_blind_final
 from shopping_grpo.evaluation.comparison import compare_evaluation_runs
 from shopping_grpo.evaluation.metrics import compute_deterministic_metrics
 from shopping_grpo.evaluation.model_client import DEFAULT_PRO_MODEL
@@ -35,24 +36,12 @@ from shopping_grpo.evaluation.rubric import (
 from shopping_grpo.evaluation.trajectory import normalize_trajectory
 
 
-FINAL_BLIND_ASSET = "shop_benchmark_reward_v3_final_200"
 PREPROCESSED_SCHEMA = "shopping-preprocessed-trajectory-v1"
 JUDGE_REQUEST_SCHEMA = "shopping-judge-request-v2"
 
 
 def _guard_blind_final(paths: Iterable[Path], *, allowed: bool) -> None:
-    if allowed:
-        return
-    blocked = [
-        str(path)
-        for path in paths
-        if FINAL_BLIND_ASSET in str(path)
-    ]
-    if blocked:
-        raise ArtifactError(
-            "refusing to consume the frozen final blind asset without "
-            f"--allow-blind-final: {blocked}"
-        )
+    guard_blind_final(paths, allowed=allowed)
 
 
 def _task_ids(path: Path) -> list[int]:

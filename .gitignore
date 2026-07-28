@@ -5,6 +5,7 @@ __pycache__/
 .DS_Store
 .venv/
 venv/
+*.egg-info/
 .env
 
 # 发布当前正式采集批次的完整产物；其他临时 output 仍不入库。

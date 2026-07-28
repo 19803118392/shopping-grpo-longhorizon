@@ -2,22 +2,48 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
-from copy import deepcopy
 import json
 import os
-from http.client import RemoteDisconnected
 import time
+from collections.abc import Callable, Mapping
+from copy import deepcopy
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from http.client import RemoteDisconnected
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-
 DEFAULT_FLASH_MODEL = "deepseek-v4-flash"
 DEFAULT_PRO_MODEL = "deepseek-v4-pro"
+RETRYABLE_HTTP_STATUSES = frozenset(
+    {408, 409, 429, 500, 502, 503, 504}
+)
 
 
 class ModelResponseError(ValueError):
     """Raised when a provider response cannot satisfy the JSON contract."""
+
+
+def _retry_after_seconds(
+    error: HTTPError,
+    *,
+    now: datetime | None = None,
+) -> float | None:
+    value = error.headers.get("Retry-After") if error.headers else None
+    if not value:
+        return None
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        pass
+    try:
+        retry_at = parsedate_to_datetime(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if retry_at.tzinfo is None:
+        retry_at = retry_at.replace(tzinfo=timezone.utc)
+    current = now or datetime.now(timezone.utc)
+    return max(0.0, (retry_at - current).total_seconds())
 
 
 class OpenAIJSONClient:
@@ -85,6 +111,8 @@ class OpenAIJSONClient:
         started = time.monotonic()
         response = None
         attempts = 0
+        retry_http_statuses = []
+        retry_wait_seconds = 0.0
         for attempt in range(self.retries + 1):
             attempts = attempt + 1
             try:
@@ -105,13 +133,27 @@ class OpenAIJSONClient:
                     with urlopen(request, timeout=self.timeout) as raw:
                         response = json.loads(raw.read().decode("utf-8"))
                 break
-            except HTTPError:
-                raise
+            except HTTPError as exc:
+                status = int(exc.code)
+                if (
+                    status not in RETRYABLE_HTTP_STATUSES
+                    or attempt >= self.retries
+                ):
+                    raise
+                retry_http_statuses.append(status)
+                exponential = self.retry_delay_seconds * (2**attempt)
+                retry_after = _retry_after_seconds(exc)
+                delay = max(exponential, retry_after or 0.0)
+                retry_wait_seconds += delay
+                if delay > 0:
+                    time.sleep(delay)
             except (RemoteDisconnected, TimeoutError, URLError):
                 if attempt >= self.retries:
                     raise
-                if self.retry_delay_seconds > 0:
-                    time.sleep(self.retry_delay_seconds * (attempt + 1))
+                delay = self.retry_delay_seconds * (2**attempt)
+                retry_wait_seconds += delay
+                if delay > 0:
+                    time.sleep(delay)
         latency = time.monotonic() - started
         if not isinstance(response, Mapping):
             raise ModelResponseError("provider response must be an object")
@@ -144,6 +186,8 @@ class OpenAIJSONClient:
                 "provider_model": response.get("model") or self.model,
                 "requested_model": self.model,
                 "attempts": attempts,
+                "retry_http_statuses": retry_http_statuses,
+                "retry_wait_seconds": retry_wait_seconds,
                 "latency_seconds": latency,
                 "usage": usage,
             },

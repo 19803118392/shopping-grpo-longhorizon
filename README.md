@@ -31,8 +31,10 @@ ShopSimulator Environment v2.1
 
 - `environments/ShopSimulator/`：Environment v2.1、Reward v3、商品数据和测试；
 - `src/shopping_grpo/`：Collector、工具协议、veRL 适配和离线评测模块；
-- `configs/verl/vanilla_grpo_reward_v3_fresh_v1.yaml`：当前 GRPO 配置；
-- `scripts/run_grpo_reward_v3_fresh_v1.sh`：当前正式 GRPO 启动入口；
+- `configs/examples/grpo_2b_single_node.yaml`：参数化的公共单机 GRPO 示例；
+- `configs/verl/vanilla_grpo_reward_v3_fresh_v1.yaml`：冻结 research 配置；
+- `scripts/train_grpo.py`：公共参数化 GRPO 入口；
+- `scripts/run_grpo_reward_v3_fresh_v1.sh`：本项目严格 research 复现入口；
 - `scripts/build_trajectory_evaluation_artifacts.py`：纯离线评测 artifact 构建；
 - `scripts/run_trajectory_evaluation_models.py`：Rubric Flash 与轨迹 Pro Judge；
 - `data/splits/grpo_reward_v3_fresh_v1_*`：当前冻结 train/validation；
@@ -40,20 +42,60 @@ ShopSimulator Environment v2.1
 - `docs/grpo-reward-v3-fresh-v1.md`：当前训练实验契约；
 - `docs/plans/2026-07-28-shopping-trajectory-evaluation-pipeline.md`：评测契约与阶段计划。
 
-## 安装与环境
+## 三级上手路径
 
-基础数据处理环境：
+### Level 0：CPU smoke
+
+不需要模型、GPU、ShopSimulator、API key 或在线日志平台：
 
 ```bash
-python3 -m pip install -r requirements.txt
+uv sync --extra dev --extra eval
+uv run shopping-grpo smoke
+```
+
+它会验证动作 schema、轨迹规范化、Reward v3 样例、SFT label mask、Judge 信息
+隔离、动态采样分组和评测结果拼装。
+
+### Level 1：离线样例
+
+仓库提供三条脱敏轨迹，不启动模型或环境：
+
+```bash
+uv run shopping-grpo evaluate examples/trajectories.jsonl
+```
+
+需要保存规范化轨迹和确定性指标时添加：
+
+```bash
+uv run shopping-grpo evaluate examples/trajectories.jsonl \
+  --output outputs/example/preprocessed.jsonl
+```
+
+### Level 2：完整训练
+
+SFT 和 GRPO 使用独立可选依赖：
+
+```bash
+uv sync --extra sft
+uv sync --extra grpo
+```
+
+GRPO 的 CUDA、veRL/vLLM 组合仍应先按运行文档核验。不要在已有实验虚拟环境中直接
+执行 `uv sync`；新建环境，避免改变正在运行或已经冻结的依赖。
+
+Teacher 与 Judge 需要本地环境配置：
+
+```bash
 cp .env.example .env
 set -a
 . ./.env
 set +a
 ```
 
-`.env` 不会被 Python 自动加载，也不得提交到 Git。Teacher 与 Judge 的 endpoint 和
-API key 均从环境变量读取。
+`.env` 不会被 Python 自动加载，也不得提交到 Git。endpoint 和 API key 均从环境
+变量读取。
+
+## ShopSimulator
 
 首次准备内嵌 ShopSimulator：
 
@@ -111,9 +153,41 @@ LoRA SFT 使用 `scripts/split_sft_data.py`、`scripts/inspect_sft_data.py` 和
 `checkpoint-141` 合并模型；精确数据 hash 和模型边界记录在
 [`docs/grpo-reward-v3-fresh-v1.md`](docs/grpo-reward-v3-fresh-v1.md)。
 
-## Reward v3 / fresh-v1 GRPO
+SFT 精度使用显式 `--dtype auto|bf16|fp16|fp32`。默认 `auto` 在 CUDA 上优先
+BF16，其次 FP16，CPU 使用 FP32；不要通过删除精度参数来隐式回退 FP32：
 
-当前正式入口只有：
+```bash
+uv run --extra sft python scripts/train_lora_sft.py \
+  --model /path/to/model \
+  --train /path/to/train.jsonl \
+  --validation /path/to/validation.jsonl \
+  --output /path/to/adapter \
+  --dtype auto --gradient-checkpointing
+```
+
+## 公共 GRPO 入口
+
+公共入口不要求固定模型目录、项目私有 venv 或 SwanLab。模型目录同时支持单文件和
+sharded safetensors：
+
+```bash
+uv run --extra grpo python scripts/train_grpo.py \
+  --model /path/to/model \
+  --train-data /path/to/train.parquet \
+  --val-data /path/to/val.parquet \
+  --env-url http://127.0.0.1:5700 \
+  --output outputs/grpo-example \
+  --logger console \
+  --dry-run
+```
+
+确认打印出的 model、数据、环境和 Hydra 参数后去掉 `--dry-run`。省略
+`--val-data` 时只适合 smoke：入口会关闭 validation，并用 train parquet 满足
+veRL 数据装载契约。
+
+## Reward v3 / fresh-v1 research GRPO
+
+下面的入口是本项目内部冻结实验，不是公共默认命令：
 
 ```bash
 bash scripts/run_grpo_reward_v3_fresh_v1.sh a0 --dry-run
@@ -167,15 +241,18 @@ data/benchmarks/shop_benchmark_reward_v3_final_200.jsonl
 ```
 
 它在 checkpoint、Prompt 和 Judge 版本冻结前不得用于调试、校准或模型选择。
+保护逻辑会校验独立 guard manifest、canonical metadata、内容 SHA256 和 final
+task ID 集合；复制、改名或重新格式化文件不能绕过保护。只有正式评测阶段才能显式
+使用 `--allow-blind-final`。
 
 ## 测试
 
-离线评测模块不启动模型、环境或 GPU：
+完整 CPU 公共回归：
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src \
   python -m unittest discover -s tests \
-  -p 'test_trajectory_evaluation.py' -v
+  -p 'test_public_entrypoints.py' -v
 ```
 
 其余环境、Reward、Collector 和 GRPO 测试按对应文档的固定 Python 环境运行。

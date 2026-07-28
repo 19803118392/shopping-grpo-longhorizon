@@ -135,7 +135,7 @@ PYTHONPATH=src python3 scripts/train_lora_sft.py \
   --train outputs/flash_accepted_500_parallel/train.jsonl \
   --validation outputs/flash_accepted_500_parallel/validation.jsonl \
   --output checkpoints/qwen35-2b-shopping-lora \
-  --bf16 --gradient-checkpointing \
+  --dtype auto --gradient-checkpointing \
   --swanlab --swanlab-project shopping-grpo \
   --swanlab-run-name qwen35-2b-shopping-lora-v1
 ```

@@ -1,17 +1,18 @@
 """验证 LoRA SFT 入口的关键默认值。"""
 
+import os
 import sys
 import unittest
-import os
 from pathlib import Path
 from unittest.mock import patch
 
 from scripts.train_lora_sft import (
     DEFAULT_TARGET_MODULES,
+    _load_preprocessing_components,
     _loss_only_eval_trainer_class,
     _model_load_kwargs,
     _prepare_model_for_training,
-    _load_preprocessing_components,
+    _resolve_dtype,
     _swanlab_config,
     parse_args,
 )
@@ -107,6 +108,8 @@ class TrainLoraSftCliTest(unittest.TestCase):
         self.assertEqual(args.lora_r, 16)
         self.assertEqual(args.lora_alpha, 32)
         self.assertEqual(args.gradient_accumulation_steps, 8)
+        self.assertEqual(args.dtype, "auto")
+        self.assertFalse(args.bf16)
         self.assertFalse(args.swanlab)
         self.assertEqual(args.swanlab_project, "shopping-grpo")
 
@@ -203,6 +206,62 @@ class TrainLoraSftCliTest(unittest.TestCase):
         self.assertIsInstance(kwargs["quantization_config"], _FakeBitsAndBytesConfig)
         self.assertEqual(kwargs["quantization_config"].kwargs["bnb_4bit_quant_type"], "nf4")
         self.assertEqual(kwargs["quantization_config"].kwargs["bnb_4bit_compute_dtype"], "bf16")
+
+    def test_dtype_auto_prefers_bf16_then_fp16_and_cpu_fp32(self):
+        class FakeCuda:
+            available = True
+            bf16_supported = True
+
+            @classmethod
+            def is_available(cls):
+                return cls.available
+
+            @classmethod
+            def is_bf16_supported(cls):
+                return cls.bf16_supported
+
+        fake_torch = type(
+            "FakeTorch",
+            (),
+            {
+                "cuda": FakeCuda,
+                "bfloat16": "bf16",
+                "float16": "fp16",
+                "float32": "fp32",
+            },
+        )
+        args = type("Args", (), {"dtype": "auto", "bf16": False})()
+
+        self.assertEqual(_resolve_dtype(args, fake_torch), ("bf16", "bf16"))
+        FakeCuda.bf16_supported = False
+        self.assertEqual(_resolve_dtype(args, fake_torch), ("fp16", "fp16"))
+        FakeCuda.available = False
+        self.assertEqual(_resolve_dtype(args, fake_torch), ("fp32", "fp32"))
+
+    def test_model_revision_is_forwarded_to_loader(self):
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "train_lora_sft.py",
+                "--model",
+                "Qwen/Qwen3.5-2B",
+                "--train",
+                "outputs/train.jsonl",
+                "--output",
+                "outputs/adapter",
+                "--revision",
+                "frozen-revision",
+            ],
+        ):
+            args = parse_args()
+
+        kwargs = _model_load_kwargs(
+            args,
+            dtype="bf16",
+            bits_and_bytes_config=_FakeBitsAndBytesConfig,
+        )
+        self.assertEqual(kwargs["revision"], "frozen-revision")
 
     def test_qlora_prepares_model_before_lora_and_keeps_gradient_checkpointing_compatible(self):
         """量化基座必须先做 PEFT 标准预处理，再由后续 LoRA 注入 adapter。"""

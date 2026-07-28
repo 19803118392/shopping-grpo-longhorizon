@@ -3,13 +3,11 @@
 
 import argparse
 import json
-import os
 import time as _time
 from functools import partial
 from pathlib import Path
 
 from shopping_grpo.sft_training import load_supervised_examples
-
 
 DEFAULT_TARGET_MODULES = (
     "q_proj",
@@ -46,7 +44,22 @@ def parse_args():
     parser.add_argument("--lora-alpha", type=int, default=32)
     parser.add_argument("--lora-dropout", type=float, default=0.05)
     parser.add_argument("--target-modules", nargs="+", default=DEFAULT_TARGET_MODULES)
-    parser.add_argument("--bf16", action="store_true", help="使用 bf16；支持的 CUDA GPU 建议开启")
+    parser.add_argument(
+        "--dtype",
+        choices=("auto", "bf16", "fp16", "fp32"),
+        default="auto",
+        help="模型与训练精度；auto 在 CUDA 上优先 bf16，其次 fp16，CPU 使用 fp32。",
+    )
+    parser.add_argument(
+        "--bf16",
+        action="store_true",
+        help="兼容旧命令；等价于 --dtype bf16，不能与其他 --dtype 同时使用。",
+    )
+    parser.add_argument(
+        "--revision",
+        default=None,
+        help="可选模型 revision；本地路径通常不需要。",
+    )
     parser.add_argument("--liger-kernel", action="store_true", help="启用 Liger 融合 loss，避免全序列 logits 常驻")
     parser.add_argument(
         "--attention-implementation",
@@ -111,6 +124,8 @@ def _training_dependencies():
 def _model_load_kwargs(args, dtype, bits_and_bytes_config):
     """构造可审计的模型加载参数；加速功能必须显式开启。"""
     kwargs = {"torch_dtype": dtype, "trust_remote_code": True}
+    if args.revision:
+        kwargs["revision"] = args.revision
     if args.attention_implementation != "auto":
         kwargs["attn_implementation"] = args.attention_implementation
     if args.qlora:
@@ -148,6 +163,31 @@ def _validate_optional_training_dependencies(args):
             import liger_kernel  # noqa: F401
         except ImportError as exc:
             raise SystemExit("--liger-kernel 需要 liger-kernel；请安装 requirements-sft-accelerated.txt") from exc
+
+
+def _resolve_dtype(args, torch):
+    """Resolve one explicit dtype for model loading and TrainingArguments."""
+
+    requested = args.dtype
+    if args.bf16:
+        if requested not in {"auto", "bf16"}:
+            raise SystemExit("--bf16 cannot be combined with a non-bf16 --dtype")
+        requested = "bf16"
+    if requested == "auto":
+        if torch.cuda.is_available():
+            requested = (
+                "bf16"
+                if torch.cuda.is_bf16_supported()
+                else "fp16"
+            )
+        else:
+            requested = "fp32"
+    mapping = {
+        "bf16": torch.bfloat16,
+        "fp16": torch.float16,
+        "fp32": torch.float32,
+    }
+    return requested, mapping[requested]
 
 
 def _swanlab_config(args):
@@ -200,19 +240,28 @@ def _loss_only_eval_trainer_class(trainer_base, enable_skip_logits):
     return LossOnlyEvalTrainer
 
 
-def _load_preprocessing_components(model_name, auto_config, auto_tokenizer, auto_processor):
+def _load_preprocessing_components(
+    model_name,
+    auto_config,
+    auto_tokenizer,
+    auto_processor,
+    revision=None,
+):
     """按模型配置选择 chat template 的持有者。
 
     Qwen3.5 是带视觉编码器的条件生成模型，官方模板由 processor 提供；本项目
     当前数据仅含文本和工具调用，因此 labels 仍用 processor.tokenizer 的 token id。
     其他纯文本因果模型保持原来的 tokenizer 路径。
     """
-    config = auto_config.from_pretrained(model_name, trust_remote_code=True)
+    load_kwargs = {"trust_remote_code": True}
+    if revision:
+        load_kwargs["revision"] = revision
+    config = auto_config.from_pretrained(model_name, **load_kwargs)
     is_multimodal = str(getattr(config, "model_type", "")).startswith("qwen3_5")
     if is_multimodal:
-        processor = auto_processor.from_pretrained(model_name, trust_remote_code=True)
+        processor = auto_processor.from_pretrained(model_name, **load_kwargs)
         return processor.tokenizer, processor, True
-    tokenizer = auto_tokenizer.from_pretrained(model_name, trust_remote_code=True)
+    tokenizer = auto_tokenizer.from_pretrained(model_name, **load_kwargs)
     return tokenizer, tokenizer, False
 
 
@@ -306,6 +355,7 @@ def main():
         auto_config=AutoConfig,
         auto_tokenizer=AutoTokenizer,
         auto_processor=AutoProcessor,
+        revision=args.revision,
     )
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -336,13 +386,20 @@ def main():
         if not validation_examples:
             raise SystemExit("验证集没有可用样本；请调整划分或 --max-length")
 
-    dtype = torch.bfloat16 if args.bf16 else torch.float32
+    dtype_name, dtype = _resolve_dtype(args, torch)
     model_class = AutoModelForMultimodalLM if is_multimodal else AutoModelForCausalLM
 
     # ---- Phase 2: 加载模型 + LoRA ----
     print(f"\n{'='*60}")
-    print(f"  Phase 2/3: 加载模型 Qwen/Qwen3.5-2B + LoRA (r={args.lora_r})")
+    print("  Phase 2/3: 加载模型与 LoRA")
     print(f"{'='*60}")
+    print(f"  model={args.model}")
+    print(f"  revision={args.revision or 'default/local'}")
+    print(f"  dtype={dtype_name}")
+    print(f"  attention_implementation={args.attention_implementation}")
+    print(f"  qlora={args.qlora}")
+    print(f"  lora_r={args.lora_r} lora_alpha={args.lora_alpha}")
+    print(f"  lora_targets={','.join(args.target_modules)}")
     model = model_class.from_pretrained(
         args.model,
         **_model_load_kwargs(
@@ -388,7 +445,8 @@ def main():
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         learning_rate=args.learning_rate,
         warmup_ratio=args.warmup_ratio,
-        bf16=args.bf16,
+        bf16=dtype_name == "bf16",
+        fp16=dtype_name == "fp16",
         gradient_checkpointing=args.gradient_checkpointing,
         use_liger_kernel=args.liger_kernel,
         logging_steps=args.logging_steps,
@@ -435,6 +493,7 @@ def main():
             "mode": args.swanlab_mode if args.swanlab else None,
         },
         "acceleration": {
+            "dtype": dtype_name,
             "liger_kernel": args.liger_kernel,
             "attention_implementation": args.attention_implementation,
             "qlora": args.qlora,
@@ -443,7 +502,7 @@ def main():
     }
 
     print(f"\n{'='*60}")
-    print(f"  训练完成")
+    print("  训练完成")
     print(f"  train_loss={result.training_loss:.4f}")
     print(f"  eval_loss={result.metrics.get('eval_loss', 'N/A')}")
     print(f"  peak_gpu={gpu_peak:.1f} GiB")
