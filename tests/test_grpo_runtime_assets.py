@@ -168,6 +168,7 @@ class GrpoRuntimeAssetsTest(unittest.TestCase):
         )
         self.assertIn("tensordict==0.10.0", requirements)
         self.assertIn("numpy==2.2.6", requirements)
+        self.assertIn("swanlab==0.9.1", requirements)
         override = (ROOT / "requirements-grpo-overrides.txt").read_text(encoding="utf-8")
         self.assertEqual(override.strip(), "numpy==2.2.6")
 

@@ -9,3 +9,4 @@ transformers @ git+https://github.com/huggingface/transformers.git@7ea2320c76117
 ray[default]==2.56.1
 tensordict==0.10.0
 numpy==2.2.6
+swanlab==0.9.1

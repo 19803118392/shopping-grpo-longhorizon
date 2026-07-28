@@ -137,5 +137,11 @@ bash scripts/run_grpo_reward_v3_fresh_v1.sh a0
 - 固定 `.venv-grpo-v080`；
 - 新 checkpoint 目录。
 
+正式 GRPO 监控只允许 SwanLab，不使用 W&B。启动终端必须安全设置
+`SWANLAB_API_KEY`；launcher 固定 `SWANLAB_MODE=online`，项目名为
+`shopping-grpo`，日志写入新 checkpoint 目录下的 `swanlab/`。日志和汇报只能显示
+key 是否存在，不得输出 key 内容。SwanLab 初始化后必须从日志确认 online，并向
+用户提供 run URL。
+
 旧 `scripts/run_vanilla_grpo.sh` 默认拒绝启动。未经用户明确授权，不执行上述正式
 GRPO 命令。

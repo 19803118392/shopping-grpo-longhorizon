@@ -95,6 +95,11 @@ exclusions SHA256 是
 `data/verl/grpo_*_v1.parquet` 已归入 legacy v1/v2 世代，默认禁止启动或作为本世代
 输入。
 
+Reward v3 正式 GRPO 的 logger 固定为 `[console, swanlab]`，项目名
+`shopping-grpo`、mode 固定 `online`，禁止 W&B。`SWANLAB_API_KEY` 只允许由启动
+终端环境提供，禁止写入命令参数、日志、聊天或仓库文件；启动后必须确认 online
+状态并记录 SwanLab run URL。
+
 ## 运行规则
 
 - 未经用户明确授权，不启动正式训练、GRPO、benchmark 重跑或模型合并。

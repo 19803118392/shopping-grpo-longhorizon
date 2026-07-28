@@ -69,6 +69,13 @@ if [[ "$DRY_RUN" == true ]]; then
   echo "config=$GRPO_CONFIG_NAME"
   echo "experiment=$EXPERIMENT"
   echo "reward_mode=$SHOPPING_REWARD_MODE"
+  echo "logger=console,swanlab"
+  echo "swanlab_mode=online"
+  if [[ -n "${SWANLAB_API_KEY:-}" ]]; then
+    echo "swanlab_api_key=present"
+  else
+    echo "swanlab_api_key=absent"
+  fi
   echo "model=$GRPO_MODEL_PATH"
   echo "train=$GRPO_TRAIN_FILE"
   echo "validation=$GRPO_VAL_FILE"
@@ -81,6 +88,7 @@ if [[ "$DRY_RUN" == true ]]; then
 fi
 
 : "${GRPO_OUTPUT_DIR:?set GRPO_OUTPUT_DIR to a new Reward v3 checkpoint directory}"
+: "${SWANLAB_API_KEY:?set SWANLAB_API_KEY securely in the launching terminal}"
 if [[ ! -x "$PYTHON_BIN" ]]; then
   echo "missing GRPO Python: $PYTHON_BIN" >&2
   exit 1
@@ -102,9 +110,10 @@ if [[ -e "$GRPO_OUTPUT_DIR/latest_checkpointed_iteration.txt" ]]; then
   exit 1
 fi
 
-export WANDB_MODE="${WANDB_MODE:-online}"
-export WANDB_DIR="${WANDB_DIR:-$GRPO_OUTPUT_DIR/wandb}"
-mkdir -p "$WANDB_DIR"
+export SWANLAB_MODE=online
+export SWANLAB_LOG_DIR="${SWANLAB_LOG_DIR:-$GRPO_OUTPUT_DIR/swanlab}"
+unset WANDB_MODE WANDB_DIR WANDB_PROJECT WANDB_ENTITY WANDB_API_KEY || true
+mkdir -p "$SWANLAB_LOG_DIR"
 
 cd "$PROJECT_ROOT"
 "$PYTHON_BIN" scripts/check_grpo_runtime.py "${EXPERIMENT_OVERRIDES[@]}" "$@"

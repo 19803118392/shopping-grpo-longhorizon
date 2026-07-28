@@ -19,6 +19,7 @@ EXPECTED_VERSIONS = {
     "ray": "2.56.1",
     "tensordict": "0.10.0",
     "numpy": "2.2.6",
+    "swanlab": "0.9.1",
 }
 EXPECTED_TRANSFORMERS_REVISION = "7ea2320c76117e6742364808a666ef6f2fb40a67"
 PATCH_MARKER = "SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V3"
@@ -247,6 +248,50 @@ def validate_dynamic_sampling(config, verl_source: Path, installed):
     )
 
 
+def validate_swanlab_tracking(config):
+    """Require online SwanLab and reject W&B for the formal Reward v3 run."""
+    logger_backends = list(config.trainer.get("logger", []))
+    if "swanlab" not in logger_backends:
+        raise SystemExit("Reward v3 GRPO requires trainer.logger to include swanlab")
+    forbidden = {"wandb", "tracking", "vemlp_wandb"} & set(logger_backends)
+    if forbidden:
+        raise SystemExit(
+            "Reward v3 GRPO forbids W&B logger backends: "
+            + ", ".join(sorted(forbidden))
+        )
+    if os.environ.get("SWANLAB_MODE") != "online":
+        raise SystemExit("Reward v3 GRPO requires SWANLAB_MODE=online")
+    if not os.environ.get("SWANLAB_API_KEY"):
+        raise SystemExit(
+            "Reward v3 GRPO requires SWANLAB_API_KEY in the launching environment"
+        )
+    log_dir = os.environ.get("SWANLAB_LOG_DIR")
+    if not log_dir:
+        raise SystemExit("Reward v3 GRPO requires SWANLAB_LOG_DIR")
+    resolved_log_dir = Path(log_dir).resolve()
+    data_root = Path("/root/autodl-tmp").resolve()
+    if not resolved_log_dir.is_relative_to(data_root):
+        raise SystemExit(
+            "Reward v3 GRPO SwanLab logs must stay on /root/autodl-tmp"
+        )
+    if str(config.trainer.get("project_name")) != "shopping-grpo":
+        raise SystemExit("Reward v3 GRPO SwanLab project must be shopping-grpo")
+    print(
+        "SwanLab online preflight passed: "
+        + json.dumps(
+            {
+                "api_key": "present",
+                "logger": logger_backends,
+                "log_dir": str(resolved_log_dir),
+                "mode": "online",
+                "project": str(config.trainer.project_name),
+                "run_name": str(config.trainer.experiment_name),
+            },
+            sort_keys=True,
+        )
+    )
+
+
 def validate_training_memory_budget(config):
     prompt_length = int(config.data.max_prompt_length)
     response_length = int(config.data.max_response_length)
@@ -357,6 +402,7 @@ def main():
         from shopping_grpo.verl_adapter.tools import ShopSimulatorTool
         from shopping_grpo.verl_compat import install_torch_padding_fallback
         from verl.tools.base_tool import BaseTool
+        from verl.utils.tracking import Tracking
     except ImportError as exc:
         raise SystemExit(
             "incompatible veRL 0.8 install: required AgentLoop/Tool APIs are unavailable; "
@@ -377,7 +423,11 @@ def main():
         raise SystemExit("incompatible veRL ToolAgentLoop lifecycle API")
     if "qwen3_coder" not in ToolParser._registry:
         raise SystemExit("veRL 0.8 built-in qwen3_coder parser is unavailable")
+    if "swanlab" not in Tracking.supported_backend:
+        raise SystemExit("veRL 0.8 SwanLab tracking backend is unavailable")
     validate_dynamic_sampling(config, verl_source, installed)
+    if os.environ.get("GRPO_CONFIG_NAME") == "vanilla_grpo_reward_v3_fresh_v1":
+        validate_swanlab_tracking(config)
     install_torch_padding_fallback()
     print(
         "GRPO runtime preflight passed: "

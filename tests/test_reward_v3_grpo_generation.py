@@ -117,6 +117,9 @@ class RewardV3GrpoGenerationTest(unittest.TestCase):
 
     def test_reward_v3_launcher_isolated_assets(self):
         launcher = ROOT / "scripts/run_grpo_reward_v3_fresh_v1.sh"
+        config = (
+            ROOT / "configs/verl/vanilla_grpo_reward_v3_fresh_v1.yaml"
+        ).read_text(encoding="utf-8")
         result = subprocess.run(
             ["bash", str(launcher), "a1", "--dry-run"],
             cwd=ROOT,
@@ -130,7 +133,17 @@ class RewardV3GrpoGenerationTest(unittest.TestCase):
         self.assertIn("shop_tools_v2.json", result.stdout)
         self.assertIn("grpo_reward_v3_fresh_v1_train.parquet", result.stdout)
         self.assertNotIn("grpo_train_v1.parquet", result.stdout)
-        self.assertIn("export OMP_NUM_THREADS=1", launcher.read_text(encoding="utf-8"))
+        self.assertIn("logger=console,swanlab", result.stdout)
+        self.assertIn("swanlab_mode=online", result.stdout)
+        self.assertIn("swanlab_api_key=", result.stdout)
+        launcher_text = launcher.read_text(encoding="utf-8")
+        self.assertIn("export OMP_NUM_THREADS=1", launcher_text)
+        self.assertIn("export SWANLAB_MODE=online", launcher_text)
+        self.assertIn("SWANLAB_API_KEY:?", launcher_text)
+        self.assertIn('unset WANDB_MODE WANDB_DIR', launcher_text)
+        self.assertNotIn("export WANDB_MODE=", launcher_text)
+        self.assertIn("logger: [console, swanlab]", config)
+        self.assertNotIn("logger: [console, wandb]", config)
 
     def test_legacy_launcher_is_refused_by_default(self):
         result = subprocess.run(
