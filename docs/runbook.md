@@ -79,7 +79,7 @@ PYTHONPATH=src python3 scripts/build_sft_data.py \
 
 先启动 ShopSimulator 结构化服务；评测器只通过 `/api/shop_agent` 操作环境，不读取 HTML reward。仓库中的 `data/benchmarks/shop_benchmark_v1.jsonl` 是 200 条固定 held-out task，和当前 SFT 的 380 条 task 无重叠。不得用这 200 条 task 继续采集训练轨迹。
 
-所有对比实验必须保持下列设置不变：task 清单、工具 schema、system prompt、temperature=0、max_steps=35、max_tokens=512、每 task 一次 rollout。`max_tokens` 是单次模型生成上限，避免未调用工具时持续生成纯文本；它不是模型上下文长度。严格成功率以全部 200 条 task 为分母，要求购买后环境确认结束，且 `r_type`、`r_att`、`r_option`、`r_price` 均为 1。
+所有当前及后续对比实验必须保持下列设置不变：task 清单、工具 schema、system prompt、temperature=0、max_steps=35、max_tokens=512、每 task 一次 rollout，并声明 `reward_contract=shopsimulator-reward-v3`。`max_tokens` 是单次模型生成上限，避免未调用工具时持续生成纯文本；它不是模型上下文长度。严格成功率以固定 benchmark 全部 task 为分母，要求 Environment v2.1 正常终局且 Reward v3 的 `reward_type=gold_purchase`、`reward_valid=true`、`purchase_success=true`、`termination_reason=gold_purchase`。禁止使用旧 Reward v2 的 `r_type`、`r_att`、`r_option`、`r_price` 字段汇总当前实验。
 
 启动 GPU 模型服务后，Base、SFT adapter 和 GRPO checkpoint 分别仅替换 `--model`、`--llm-base-url` 与输出目录，运行相同命令：
 
@@ -95,7 +95,7 @@ PYTHONPATH=src python3 scripts/evaluate_shop_benchmark.py \
   --api-key EMPTY
 ```
 
-`raw.jsonl` 支持断点续跑；`summary.json` 记录严格成功率、四项分量、平均步数、状态和动作守卫原因。先保存 Base 结果，再进行 SFT 与 GRPO，避免事后改变评测协议。
+`raw.jsonl` 支持断点续跑；`summary.json` 记录 Reward v3 严格成功率、购买成功率、reward type 分布、终局奖励均值、平均步数、状态和动作守卫原因。先保存 Base 结果，再进行 SFT 与 GRPO，避免事后改变评测协议。
 
 ## LoRA SFT 冷启动
 

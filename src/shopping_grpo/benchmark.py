@@ -4,7 +4,18 @@ import random
 from collections import Counter
 
 
-REWARD_KEYS = ("r_type", "r_att", "r_option", "r_price")
+REWARD_V3 = "shopsimulator-reward-v3"
+REWARD_V3_TYPES = (
+    "gold_purchase",
+    "valid_alternative_purchase",
+    "partial_alternative_purchase",
+    "wrong_purchase",
+    "graceful_stop",
+    "early_abstain",
+    "repeat_loop",
+    "max_steps",
+    "reward_unverifiable",
+)
 
 
 def build_benchmark_manifest(all_task_ids, excluded_task_ids, size, seed):
@@ -33,10 +44,34 @@ def summarize_trajectories(expected_task_ids, trajectories):
     missing_ids = sorted(expected_set - set(completed_ids))
     strict_successes = [task_id for task_id, item in by_task.items() if _is_strict_success(item)]
     done_tasks = [task_id for task_id, item in by_task.items() if item.get("done")]
-    component_successes = {
-        key: sum(_reward_detail(item).get(key) == 1 or _reward_detail(item).get(key) is True for item in by_task.values())
-        for key in REWARD_KEYS
-    }
+    reward_details = [_reward_detail(item) for item in by_task.values()]
+    reward_type_counts = Counter(
+        detail.get("reward_type", "unknown") for detail in reward_details
+    )
+    reward_version_counts = Counter(
+        detail.get("reward_version", "unknown") for detail in reward_details
+    )
+    purchase_successes = sum(
+        detail.get("purchase_success") is True for detail in reward_details
+    )
+    gold_purchases = sum(
+        detail.get("reward_version") == REWARD_V3
+        and detail.get("reward_type") == "gold_purchase"
+        for detail in reward_details
+    )
+    reward_valid_tasks = sum(
+        detail.get("reward_version") == REWARD_V3
+        and detail.get("reward_valid") is True
+        for detail in reward_details
+    )
+    final_rewards = [float(item.get("final_reward", 0.0)) for item in by_task.values()]
+    terminal_utilities = [
+        float(detail.get("terminal_utility", item.get("final_reward", 0.0)))
+        for item, detail in zip(by_task.values(), reward_details)
+    ]
+    weighted_scores = [
+        float(detail.get("weighted_score", 0.0)) for detail in reward_details
+    ]
     steps = [len(item.get("steps") or []) for item in by_task.values()]
     guard_reasons = Counter(
         blocked.get("reason", "unknown")
@@ -86,13 +121,35 @@ def summarize_trajectories(expected_task_ids, trajectories):
         "strict_successes": len(strict_successes),
         "strict_success_task_ids": sorted(strict_successes),
         "strict_success_rate": len(strict_successes) / denominator if denominator else 0.0,
-        "reward_component_rates": {
-            key: component_successes[key] / denominator if denominator else 0.0
-            for key in REWARD_KEYS
+        "reward_contract": REWARD_V3,
+        "reward_version_counts": dict(sorted(reward_version_counts.items())),
+        "reward_type_counts": dict(sorted(reward_type_counts.items())),
+        "reward_type_rates": {
+            reward_type: reward_type_counts.get(reward_type, 0) / denominator
+            if denominator
+            else 0.0
+            for reward_type in REWARD_V3_TYPES
         },
+        "purchase_successes": purchase_successes,
+        "purchase_success_rate": purchase_successes / denominator if denominator else 0.0,
+        "gold_purchases": gold_purchases,
+        "gold_purchase_rate": gold_purchases / denominator if denominator else 0.0,
+        "reward_valid_tasks": reward_valid_tasks,
+        "reward_valid_rate": reward_valid_tasks / denominator if denominator else 0.0,
+        "total_final_reward": sum(final_rewards),
         "mean_final_reward": (
-            sum(float(item.get("final_reward", 0.0)) for item in by_task.values()) / len(by_task)
+            sum(final_rewards) / len(by_task)
             if by_task
+            else 0.0
+        ),
+        "mean_terminal_utility": (
+            sum(terminal_utilities) / len(terminal_utilities)
+            if terminal_utilities
+            else 0.0
+        ),
+        "mean_weighted_score": (
+            sum(weighted_scores) / len(weighted_scores)
+            if weighted_scores
             else 0.0
         ),
         "average_steps": sum(steps) / len(steps) if steps else 0.0,
@@ -169,9 +226,13 @@ def _is_strict_success(trajectory):
     terminal = trajectory.get("terminal_result") or {}
     detail = _reward_detail(trajectory)
     return (
-        trajectory.get("status") == "done"
+        detail.get("reward_version") == REWARD_V3
+        and trajectory.get("status") == "done"
         and trajectory.get("done") is True
         and terminal.get("done") is True
         and terminal.get("over") is True
-        and all(detail.get(key) == 1 or detail.get(key) is True for key in REWARD_KEYS)
+        and detail.get("reward_type") == "gold_purchase"
+        and detail.get("reward_valid") is True
+        and detail.get("purchase_success") is True
+        and detail.get("termination_reason") == "gold_purchase"
     )

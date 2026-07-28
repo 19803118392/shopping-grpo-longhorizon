@@ -88,6 +88,7 @@ def main():
     summary["protocol"] = {
         "benchmark": str(args.benchmark),
         "model": args.model,
+        "reward_contract": "shopsimulator-reward-v3",
         "max_steps": args.max_steps,
         "max_tokens": args.max_tokens,
         "temperature": args.temperature,

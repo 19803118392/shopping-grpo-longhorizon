@@ -1,4 +1,19 @@
-# GRPO task split v1
+# GRPO task generations
+
+## Current: Reward v3 / fresh-v1
+
+当前正式世代统一使用 `grpo_reward_v3_fresh_v1_*`：
+
+- `grpo_reward_v3_fresh_v1_probe_pool.jsonl`：全新候选池；
+- `grpo_reward_v3_fresh_v1_train.jsonl`：fresh merged SFT probe 后冻结的在线训练 task；
+- `grpo_reward_v3_fresh_v1_val.jsonl`：同一 probe pool 中与 train 隔离的验证 task。
+
+候选池排除 Environment v2.1 fresh-v1 的全部 604 个 raw task、两个固定
+benchmark、历史 Teacher raw task 和历史 GRPO probe pool。train/validation
+按 fresh merged policy 的实际工具步数分布做确定性比例分层，不按 reward 选题。
+对应 veRL 输入使用 `data/verl/grpo_reward_v3_fresh_v1_{train,val}.parquet`。
+
+## Archived: GRPO task split v1
 
 这里的清单不是离线 RL 轨迹数据。它们只保存 `task_id`，实际训练时由当前 policy 在线进入 ShopSimulator rollout。
 
@@ -18,3 +33,6 @@ parquet 只含用户可见 instruction 和 task_id，不含隐藏 goal、标准�
 `reward_detail`。
 
 如果在已发布 raw snapshot 之外又新增并**冻结**了一批 SFT 数据，生成候选池时额外传入 `--exclude-sft path/to/sft.jsonl`。不要把仍在采集中的本地输出写进正式 manifest。
+
+以上 `grpo_*_v1` 资产是旧 SFT v3 / Reward v1-v2 历史世代，只用于复现实验记录，
+不得进入 Reward v3 / fresh-v1 正式训练。

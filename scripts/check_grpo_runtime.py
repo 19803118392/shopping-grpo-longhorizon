@@ -7,7 +7,7 @@ import json
 import math
 import os
 import sys
-from importlib.metadata import PackageNotFoundError, version
+from importlib.metadata import PackageNotFoundError, distribution, version
 from pathlib import Path
 
 
@@ -15,11 +15,12 @@ EXPECTED_VERSIONS = {
     "verl": "0.8.0",
     "vllm": "0.25.1",
     "torch": "2.11.0",
-    "transformers": "5.11.0",
+    "transformers": "5.15.0.dev0",
     "ray": "2.56.1",
     "tensordict": "0.10.0",
     "numpy": "2.2.6",
 }
+EXPECTED_TRANSFORMERS_REVISION = "7ea2320c76117e6742364808a666ef6f2fb40a67"
 PATCH_MARKER = "SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V3"
 MAX_SAFE_RESPONSE_LENGTH = 20480
 MAX_SAFE_SEQUENCE_LENGTH = 24576
@@ -98,8 +99,30 @@ def compose_runtime_config(overrides):
 
     GlobalHydra.instance().clear()
     config_dir = Path(__file__).resolve().parents[1] / "configs" / "verl"
+    config_name = os.environ.get("GRPO_CONFIG_NAME", "vanilla_grpo")
     with initialize_config_dir(version_base=None, config_dir=str(config_dir)):
-        return compose(config_name="vanilla_grpo", overrides=list(overrides))
+        return compose(config_name=config_name, overrides=list(overrides))
+
+
+def validate_transformers_revision():
+    """The Qwen3.5 runtime uses one pinned upstream Transformers revision."""
+    dist = distribution("transformers")
+    direct_url = Path(dist.locate_file("transformers-5.15.0.dev0.dist-info/direct_url.json"))
+    if not direct_url.is_file():
+        raise SystemExit(
+            "cannot verify pinned Transformers revision: direct_url.json is missing"
+        )
+    try:
+        metadata = json.loads(direct_url.read_text(encoding="utf-8"))
+        revision = metadata["vcs_info"]["commit_id"]
+    except (OSError, KeyError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"invalid Transformers direct_url.json: {exc}") from exc
+    if revision != EXPECTED_TRANSFORMERS_REVISION:
+        raise SystemExit(
+            "incompatible Transformers revision: expected "
+            f"{EXPECTED_TRANSFORMERS_REVISION}, got {revision}"
+        )
+    print(f"pinned Transformers revision preflight passed: {revision}")
 
 
 def validate_dynamic_sampling(config, verl_source: Path, installed):
@@ -285,6 +308,7 @@ def main():
             raise SystemExit(
                 f"incompatible GRPO dependency: expected {package}=={expected}, got {installed[package]}"
             )
+    validate_transformers_revision()
 
     try:
         import torch

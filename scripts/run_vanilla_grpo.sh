@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "${ALLOW_LEGACY_GRPO:-0}" != "1" ]]; then
+  echo "This launcher is archived with the v1/v2 GRPO generation." >&2
+  echo "Use scripts/run_grpo_reward_v3_fresh_v1.sh for current experiments." >&2
+  exit 2
+fi
+
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 EXPERIMENT="${SHOPPING_GRPO_EXPERIMENT:-legacy}"

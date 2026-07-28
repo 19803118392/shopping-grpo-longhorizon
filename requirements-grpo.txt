@@ -4,7 +4,8 @@ vllm==0.25.1
 torch==2.11.0
 torchvision==0.26.0
 torchaudio==2.11.0
-transformers==5.11.0
+# Qwen3.5 support used by the frozen fresh-v1 SFT/merge runtime.
+transformers @ git+https://github.com/huggingface/transformers.git@7ea2320c76117e6742364808a666ef6f2fb40a67
 ray[default]==2.56.1
 tensordict==0.10.0
 numpy==2.2.6

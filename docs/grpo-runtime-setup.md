@@ -1,4 +1,8 @@
-# Vanilla GRPO 服务器执行手册（veRL 0.8）
+# Vanilla GRPO 服务器执行手册（veRL 0.8，历史 v1/v2）
+
+> 当前正式 Reward v3 / fresh-v1 实验请使用
+> `docs/grpo-reward-v3-fresh-v1.md`。本文保留用于解释历史 A0/A1 运行时证据，
+> 其中旧 split、旧 merged SFT 和旧 launcher 不得进入当前实验。
 
 这份文档用于在 GPU 服务器上建立一套**全新的 GRPO 环境**并完成 1 个更新步的 smoke。不要继续修补 `.venv-sft`、`.venv-infer` 或半成品 `.venv-grpo`；它们曾被 reference veRL fork 的 editable install 和手工 Transformers patch 污染。
 
@@ -10,7 +14,7 @@
 | veRL | 0.8.0 | 已有 AgentLoop、Qwen3.5 actor patch 和内置 `qwen3_coder` parser |
 | vLLM | 0.25.1 | Qwen3.5 需要新版 vLLM |
 | PyTorch | 2.11.0 | vLLM 0.25.1 的正式 wheel 固定依赖 |
-| Transformers | 5.11.0 | 支持 Qwen3.5，同时避开 veRL 后续已标记的不兼容版本 |
+| Transformers | pinned revision `7ea2320c...` (`5.15.0.dev0`) | 与 fresh-v1 SFT、merge 和 Qwen3.5 本地推理运行时一致 |
 | Ray | 2.56.1 | 满足 veRL 0.8，固定当前稳定版本 |
 | TensorDict | 0.10.0 | veRL 0.8 支持范围的最高版本 |
 | NumPy | 2.2.6 | vLLM 0.25.1 的 OpenCV 依赖要求 NumPy 2 |
@@ -70,7 +74,7 @@ PY
 verl=0.8.0
 vllm=0.25.1
 torch=2.11.0
-transformers=5.11.0
+transformers=5.15.0.dev0
 ray=2.56.1
 tensordict=0.10.0
 numpy=2.2.6

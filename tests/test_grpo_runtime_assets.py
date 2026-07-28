@@ -82,6 +82,7 @@ class GrpoRuntimeAssetsTest(unittest.TestCase):
             text=True,
             capture_output=True,
             check=False,
+            env={"ALLOW_LEGACY_GRPO": "1", "PATH": "/usr/bin:/bin"},
         )
         a1 = subprocess.run(
             ["bash", str(launcher), "a1", "--dry-run"],
@@ -89,6 +90,7 @@ class GrpoRuntimeAssetsTest(unittest.TestCase):
             text=True,
             capture_output=True,
             check=False,
+            env={"ALLOW_LEGACY_GRPO": "1", "PATH": "/usr/bin:/bin"},
         )
 
         self.assertEqual(a0.returncode, 0, a0.stderr)
@@ -159,7 +161,11 @@ class GrpoRuntimeAssetsTest(unittest.TestCase):
         requirements = (ROOT / "requirements-grpo.txt").read_text(encoding="utf-8")
         self.assertIn("verl==0.8.0", requirements)
         self.assertIn("vllm==0.25.1", requirements)
-        self.assertIn("transformers==5.11.0", requirements)
+        self.assertIn(
+            "transformers @ git+https://github.com/huggingface/transformers.git@"
+            "7ea2320c76117e6742364808a666ef6f2fb40a67",
+            requirements,
+        )
         self.assertIn("tensordict==0.10.0", requirements)
         self.assertIn("numpy==2.2.6", requirements)
         override = (ROOT / "requirements-grpo-overrides.txt").read_text(encoding="utf-8")
