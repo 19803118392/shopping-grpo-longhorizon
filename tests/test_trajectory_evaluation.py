@@ -27,12 +27,16 @@ from shopping_grpo.evaluation.comparison import compare_evaluation_runs
 from shopping_grpo.evaluation.manifest import build_run_manifest
 from shopping_grpo.evaluation.metrics import compute_deterministic_metrics
 from shopping_grpo.evaluation.model_client import (
+    DEFAULT_PRO_MODEL,
     ModelResponseError,
     OpenAIJSONClient,
 )
 from shopping_grpo.evaluation.prompts import (
+    TRAJECTORY_JUDGE_PROMPT_VERSION,
     actor_visible_trajectory,
     build_trajectory_judge_messages,
+    judge_visible_metrics,
+    sanitize_terminal_for_judge,
 )
 from shopping_grpo.evaluation.results import (
     assemble_task_evaluation,
@@ -43,6 +47,7 @@ from shopping_grpo.evaluation.rubric import (
     extract_price_candidates,
     extract_rubric_candidates,
     materialize_rubric_bundle,
+    stable_hash,
 )
 from shopping_grpo.evaluation.task_facts import task_facts_from_environment
 from shopping_grpo.evaluation.trajectory import normalize_trajectory
@@ -90,6 +95,24 @@ def _raw_trajectory():
         "termination_reason": "gold_purchase",
         "terminal_utility": 1.0,
         "weighted_score": 1.0,
+        "hard_gates": {
+            "brand": {
+                "required": "HIDDEN_REWARD_TARGET_BRAND",
+                "actual": "actor-visible-brand",
+            }
+        },
+        "dimension_scores": {
+            "preference": {
+                "evidence": "HIDDEN_REWARD_PREFERENCE_EVIDENCE"
+            }
+        },
+        "evidence": {
+            "target_asin_match": "HIDDEN_REWARD_TARGET_ASIN",
+            "preference_scoring": {
+                "expected": "HIDDEN_REWARD_EXPECTED_FEATURE"
+            },
+        },
+        "target_asin_match": True,
     }
     return {
         "trajectory_id": "trajectory-1",
@@ -193,6 +216,8 @@ def _raw_trajectory():
                 "asin": "860965673003",
                 "price": 95.0,
                 "options": {"颜色分类": "白色"},
+                "attributes": ["HIDDEN_PURCHASE_PRIVATE_ATTRIBUTE"],
+                "instruction_text": "HIDDEN_PURCHASE_PRIVATE_INSTRUCTION",
             },
             "goal": {"asin": "hidden-gold", "price_upper": None},
         },
@@ -367,6 +392,27 @@ class DeterministicMetricsTest(unittest.TestCase):
         self.assertEqual(metrics["context"]["max_input_tokens"], 1200)
         self.assertIsNone(metrics["timing"]["trajectory_duration_seconds"])
 
+    def test_visible_candidate_count_uses_canonical_8_to_12_digit_ids(self):
+        raw = _raw_trajectory()
+        observation = (
+            "1|12345678|10|八位\n"
+            "2|1234567890|20|十位\n"
+            "3|123456789012|30|十二位\n"
+            "ignore|1234567|七位\n"
+            "ignore|1234567890123|十三位"
+        )
+        raw["steps"][0]["observation"] = observation
+        raw["steps"][1]["observation"] = observation
+
+        metrics = compute_deterministic_metrics(normalize_trajectory(raw))
+
+        self.assertEqual(
+            metrics["actions_and_efficiency"][
+                "visible_search_candidate_count"
+            ],
+            3,
+        )
+
 
 class RubricTest(unittest.TestCase):
     def test_task_facts_mapping_uses_exact_goal_index(self):
@@ -508,7 +554,7 @@ class JudgeAndResultsTest(unittest.TestCase):
                 ],
             )
 
-    def test_judge_prompt_does_not_include_audit_raw_observation(self):
+    def test_judge_prompt_enforces_data_level_reward_isolation(self):
         normalized = normalize_trajectory(
             _raw_trajectory(),
             include_audit_raw_observations=True,
@@ -519,8 +565,92 @@ class JudgeAndResultsTest(unittest.TestCase):
             deterministic_metrics=compute_deterministic_metrics(normalized),
         )
 
-        self.assertNotIn("HIDDEN_RAW_SEARCH_CONTENT", messages[1]["content"])
-        self.assertNotIn("hidden-gold", messages[1]["content"])
+        rendered = messages[1]["content"]
+        payload = json.loads(rendered)
+        self.assertNotIn("HIDDEN_RAW_SEARCH_CONTENT", rendered)
+        self.assertNotIn("hidden-gold", rendered)
+        self.assertNotIn("HIDDEN_REWARD_TARGET_BRAND", rendered)
+        self.assertNotIn("HIDDEN_REWARD_PREFERENCE_EVIDENCE", rendered)
+        self.assertNotIn("HIDDEN_REWARD_TARGET_ASIN", rendered)
+        self.assertNotIn("HIDDEN_REWARD_EXPECTED_FEATURE", rendered)
+        self.assertNotIn("HIDDEN_PURCHASE_PRIVATE_ATTRIBUTE", rendered)
+        self.assertNotIn("HIDDEN_PURCHASE_PRIVATE_INSTRUCTION", rendered)
+        self.assertTrue(
+            all(
+                "reward" not in event
+                for event in payload["actor_visible_trajectory"]["events"]
+            )
+        )
+        self.assertNotIn(
+            "reward_rubric_disagreement",
+            payload["frozen_error_taxonomy"],
+        )
+        self.assertNotIn(
+            "infrastructure_invalid",
+            payload["frozen_error_taxonomy"],
+        )
+        self.assertEqual(
+            set(payload["judge_visible_metrics"]),
+            {
+                "actions_and_efficiency",
+                "repetition",
+                "legality",
+                "context",
+            },
+        )
+        forbidden_keys = {
+            "reward",
+            "reward_detail",
+            "weighted_score",
+            "terminal_utility",
+            "reward_type",
+            "hard_gates",
+            "dimension_scores",
+            "evidence",
+            "target_asin_match",
+            "strict_gold_success",
+            "purchase_success",
+            "final_reward",
+        }
+
+        def collect_keys(value):
+            if isinstance(value, dict):
+                keys = set(value)
+                for child in value.values():
+                    keys.update(collect_keys(child))
+                return keys
+            if isinstance(value, list):
+                keys = set()
+                for child in value:
+                    keys.update(collect_keys(child))
+                return keys
+            return set()
+
+        judge_auxiliary_inputs = {
+            "terminal_state": payload["terminal_state"],
+            "judge_visible_metrics": payload["judge_visible_metrics"],
+        }
+        self.assertFalse(
+            forbidden_keys & collect_keys(judge_auxiliary_inputs)
+        )
+
+    def test_terminal_and_metrics_have_explicit_judge_whitelists(self):
+        normalized = normalize_trajectory(_raw_trajectory())
+        terminal = sanitize_terminal_for_judge(normalized["terminal"])
+        visible_metrics = judge_visible_metrics(
+            compute_deterministic_metrics(normalized)
+        )
+
+        self.assertEqual(
+            set(terminal),
+            {"done", "over", "termination_reason", "purchase"},
+        )
+        self.assertEqual(
+            set(terminal["purchase"]),
+            {"asin", "price", "options"},
+        )
+        self.assertNotIn("reward_and_outcome", visible_metrics)
+        self.assertNotIn("validity", visible_metrics)
 
     def test_assembly_records_reward_rubric_disagreement(self):
         normalized = normalize_trajectory(_raw_trajectory())
@@ -711,6 +841,23 @@ class ArtifactAndCliTest(unittest.TestCase):
             request = next(iter_jsonl(requests))
             rendered = json.dumps(request, ensure_ascii=False)
             self.assertTrue(request["judge_required"])
+            self.assertEqual(request["judge_model"], DEFAULT_PRO_MODEL)
+            self.assertTrue(request["judge_request_hash"])
+            request_material = {
+                key: value
+                for key, value in request.items()
+                if key != "judge_request_hash"
+            }
+            self.assertEqual(
+                request["judge_request_hash"],
+                stable_hash(request_material),
+            )
+            changed_material = deepcopy(request_material)
+            changed_material["messages"][1]["content"] += " "
+            self.assertNotEqual(
+                request["judge_request_hash"],
+                stable_hash(changed_material),
+            )
             self.assertTrue(request["rubric_ids"])
             self.assertEqual(
                 request["allowed_event_ids"],
@@ -718,6 +865,7 @@ class ArtifactAndCliTest(unittest.TestCase):
             )
             self.assertNotIn("HIDDEN_RAW_SEARCH_CONTENT", rendered)
             self.assertNotIn("hidden-gold", rendered)
+            self.assertNotIn("HIDDEN_REWARD_TARGET_BRAND", rendered)
 
             run(
                 "assemble",
@@ -769,18 +917,17 @@ class ArtifactAndCliTest(unittest.TestCase):
                 },
                 "overall_diagnosis": "基础设施无效，未评分。",
             }
-            write_jsonl_atomic(
-                requests,
-                [
-                    {
-                        "schema_version": "shopping-judge-request-v1",
-                        "task_id": 7,
-                        "trajectory_id": "infra-7",
-                        "judge_required": False,
-                        "not_judged_result": not_judged,
-                    }
-                ],
-            )
+            request = {
+                "schema_version": "shopping-judge-request-v2",
+                "task_id": 7,
+                "trajectory_id": "infra-7",
+                "judge_required": False,
+                "prompt_version": TRAJECTORY_JUDGE_PROMPT_VERSION,
+                "judge_model": DEFAULT_PRO_MODEL,
+                "not_judged_result": not_judged,
+            }
+            request["judge_request_hash"] = stable_hash(request)
+            write_jsonl_atomic(requests, [request])
             script = (
                 Path(__file__).resolve().parents[1]
                 / "scripts"
@@ -806,6 +953,32 @@ class ArtifactAndCliTest(unittest.TestCase):
             rows = list(iter_jsonl(output))
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["judge_status"], "not_judged")
+            self.assertEqual(
+                rows[0]["judge_request_hash"],
+                request["judge_request_hash"],
+            )
+
+            changed = deepcopy(request)
+            changed["not_judged_result"]["overall_diagnosis"] = "内容已变化。"
+            changed["judge_request_hash"] = stable_hash(
+                {
+                    key: value
+                    for key, value in changed.items()
+                    if key != "judge_request_hash"
+                }
+            )
+            write_jsonl_atomic(requests, [changed], force=True)
+            failed = subprocess.run(
+                [*command, "--resume"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn(
+                "cached Judge request hash mismatch",
+                failed.stderr,
+            )
 
 
 class ModelClientTest(unittest.TestCase):

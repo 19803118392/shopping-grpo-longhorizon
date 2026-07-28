@@ -10,11 +10,12 @@ import re
 
 from shopping_grpo.evaluation.contracts import CONTRACT_VERSION
 from shopping_grpo.evaluation.trajectory import NORMALIZED_TRAJECTORY_VERSION
+from shopping_grpo.product_id import PRODUCT_ID_CAPTURE
 
 
 DETERMINISTIC_METRICS_VERSION = "shopping-deterministic-metrics-v1"
 REWARD_V3 = "shopsimulator-reward-v3"
-_ASIN = re.compile(r"(?<!\d)\d{11,12}(?!\d)")
+_ASIN = re.compile(rf"(?<!\d){PRODUCT_ID_CAPTURE}(?!\d)")
 _INFRASTRUCTURE_ERROR_TYPES = {
     "ContextBudgetError",
     "RemoteDisconnected",

@@ -78,10 +78,14 @@ Flash 模型只能在代码提取的候选约束中选择、对齐和自然语�
 - 冻结后的需求 Rubric；
 - Actor 当时实际看到的投影后 Observation；
 - Actor 实际输出的文本和工具调用；
-- 当前环境终局状态和 Reward 明细；
-- 代码统计出的确定性指标。
+- 白名单化的终局状态：`done`、`over`、`termination_reason` 和 Actor 可见的购买信息；
+- 代码统计出的行为指标：工具效率、重复、合法性和上下文。
 
 `raw_observation` 仅用于评测系统审计和排查投影问题，不得作为 Actor 行为评分证据。Judge 不能使用 Actor 当时看不到的 Gold 商品私有字段来断言它忽略了某个候选。
+
+Judge 输入在数据层禁止携带 Environment Reward、Reward 分项、成功结论、
+`reward_detail.evidence`、hard gates、weighted score、target ASIN match 和
+infrastructure validity。Reward/终局面板与 Judge 面板只在 Judge 完成后由代码拼装。
 
 ### 2.6 正式模型比较协议
 
@@ -239,15 +243,17 @@ Judge 输入包括：
 - 冻结的需求 Rubric；
 - 固定的五维评分规范；
 - 规范化后的 Actor 可见 Rollout；
-- 当前环境终局状态；
-- Reward v3 及其实际分项；
-- 确定性统计结果。
+- 白名单化的终局状态；
+- 工具效率、重复、合法性和上下文统计。
 
 输入不包括：
 
 - Actor 未看到的 raw Observation 内容；
 - 未经 Rubric 筛选的 Gold 商品完整属性；
 - persona 或其他未提供给 Actor 的私有信息；
+- Reward v3 分数、分项、evidence 和代码判定的成功结论；
+- `strict_gold_success`、`purchase_success`、`reward_type`、
+  `final_reward`、`terminal_utility`、`weighted_score`；
 - 其他模型在相同任务上的结果。
 
 每个模型的轨迹独立评分，避免 Judge 因先看到其他模型结果而产生比较偏差。模型间比较在 Judge 之后由代码完成。
@@ -610,6 +616,8 @@ GRPO 训练期间允许开发不被训练代码 import、也不依赖训练运�
 - raw Rollout 到 Actor 可见事件流的规范化；
 - executed step、Guard rejection 和 action attempt 的稳定 ID；
 - 默认排除 raw Observation、Gold goal 和 persona 的 Judge 可见性边界；
+- 终局 purchase 白名单和仅含效率、重复、合法性、上下文的 Judge 指标白名单；
+- Reward v3 evidence、成功结论与轨迹 Judge 的数据级隔离；
 - Reward/终局、工具效率、重复、合法性、上下文和异常指标；
 - 代码约束的 Rubric 候选及受限 Flash 输出物化；
 - “价格别超100”等 Query 预算候选提取，但不修改 Reward parser；
@@ -623,7 +631,7 @@ GRPO 训练期间允许开发不被训练代码 import、也不依赖训练运�
 - 纯离线预处理、Judge 请求生成、结果拼装和比较 CLI；
 - TaskFacts 环境映射与独立导出入口；
 - Flash/Pro OpenAI-compatible JSON 客户端及严格结构校验；
-- Flash/Pro 结果逐条持久化、版本校验和断点续跑；
+- Flash/Pro 结果逐条持久化、完整 Judge 请求哈希校验和断点续跑；
 - 不允许 API key 等凭据进入 run manifest。
 
 这些模块没有被 GRPO 训练入口、ShopSimulator 或顶层包初始化导入。
@@ -639,7 +647,7 @@ GRPO 训练期间允许开发不被训练代码 import、也不依赖训练运�
   - 平均 12.22 步；
   - Reward type 分布与现有 Reward v3 summary 完全一致。
 
-当前共完成 20 项隔离测试。模型客户端测试使用 mock transport，并在显式移除
+当前共完成 22 项隔离测试。模型客户端测试使用 mock transport，并在显式移除
 `OPENAI_API_KEY`、`OPENAI_BASE_URL` 的环境下通过。验证没有调用 ShopSimulator、
 Ray、GPU、OpenCode Go API 或 final 200。
 

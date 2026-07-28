@@ -18,6 +18,7 @@ from shopping_grpo.evaluation.artifacts import (
 )
 from shopping_grpo.evaluation.comparison import compare_evaluation_runs
 from shopping_grpo.evaluation.metrics import compute_deterministic_metrics
+from shopping_grpo.evaluation.model_client import DEFAULT_PRO_MODEL
 from shopping_grpo.evaluation.prompts import (
     TRAJECTORY_JUDGE_PROMPT_VERSION,
     build_trajectory_judge_messages,
@@ -27,13 +28,16 @@ from shopping_grpo.evaluation.results import (
     build_not_judged_result,
     summarize_evaluations,
 )
-from shopping_grpo.evaluation.rubric import extract_rubric_candidates
+from shopping_grpo.evaluation.rubric import (
+    extract_rubric_candidates,
+    stable_hash,
+)
 from shopping_grpo.evaluation.trajectory import normalize_trajectory
 
 
 FINAL_BLIND_ASSET = "shop_benchmark_reward_v3_final_200"
 PREPROCESSED_SCHEMA = "shopping-preprocessed-trajectory-v1"
-JUDGE_REQUEST_SCHEMA = "shopping-judge-request-v1"
+JUDGE_REQUEST_SCHEMA = "shopping-judge-request-v2"
 
 
 def _guard_blind_final(paths: Iterable[Path], *, allowed: bool) -> None:
@@ -154,39 +158,40 @@ def judge_inputs(args: argparse.Namespace) -> None:
                     trajectory_id=row["trajectory_id"],
                     reason="infrastructure_invalid",
                 )
-                write(
-                    {
-                        "schema_version": JUDGE_REQUEST_SCHEMA,
-                        "task_id": task_id,
-                        "trajectory_id": row["trajectory_id"],
-                        "judge_required": False,
-                        "not_judged_result": judge,
-                    }
-                )
+                request = {
+                    "schema_version": JUDGE_REQUEST_SCHEMA,
+                    "task_id": task_id,
+                    "trajectory_id": row["trajectory_id"],
+                    "judge_required": False,
+                    "prompt_version": TRAJECTORY_JUDGE_PROMPT_VERSION,
+                    "judge_model": args.judge_model,
+                    "not_judged_result": judge,
+                }
             else:
                 messages = build_trajectory_judge_messages(
                     normalized=normalized,
                     rubric_bundle=rubric,
                     deterministic_metrics=metrics,
                 )
-                write(
-                    {
-                        "schema_version": JUDGE_REQUEST_SCHEMA,
-                        "task_id": task_id,
-                        "trajectory_id": row["trajectory_id"],
-                        "judge_required": True,
-                        "prompt_version": TRAJECTORY_JUDGE_PROMPT_VERSION,
-                        "rubric_ids": [
-                            item["rubric_id"] for item in rubric["rubrics"]
-                        ],
-                        "allowed_event_ids": [
-                            event["event_id"]
-                            for event in normalized.get("events") or []
-                            if isinstance(event, dict) and event.get("event_id")
-                        ],
-                        "messages": messages,
-                    }
-                )
+                request = {
+                    "schema_version": JUDGE_REQUEST_SCHEMA,
+                    "task_id": task_id,
+                    "trajectory_id": row["trajectory_id"],
+                    "judge_required": True,
+                    "prompt_version": TRAJECTORY_JUDGE_PROMPT_VERSION,
+                    "judge_model": args.judge_model,
+                    "rubric_ids": [
+                        item["rubric_id"] for item in rubric["rubrics"]
+                    ],
+                    "allowed_event_ids": [
+                        event["event_id"]
+                        for event in normalized.get("events") or []
+                        if isinstance(event, dict) and event.get("event_id")
+                    ],
+                    "messages": messages,
+                }
+            request["judge_request_hash"] = stable_hash(request)
+            write(request)
             written += 1
     print(
         json.dumps(
@@ -358,6 +363,11 @@ def parse_args() -> argparse.Namespace:
     )
     command.add_argument("--preprocessed", type=Path, required=True)
     command.add_argument("--rubrics", type=Path, required=True)
+    command.add_argument(
+        "--judge-model",
+        default=DEFAULT_PRO_MODEL,
+        help="写入请求身份；运行 Judge 时模型必须完全一致",
+    )
     _common_output(command)
     command.set_defaults(handler=judge_inputs)
 

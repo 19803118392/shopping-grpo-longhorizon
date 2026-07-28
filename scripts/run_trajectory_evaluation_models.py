@@ -28,7 +28,10 @@ from shopping_grpo.evaluation.prompts import (
     TRAJECTORY_JUDGE_PROMPT_VERSION,
     build_rubric_curator_messages,
 )
-from shopping_grpo.evaluation.rubric import materialize_rubric_bundle
+from shopping_grpo.evaluation.rubric import (
+    materialize_rubric_bundle,
+    stable_hash,
+)
 
 
 FINAL_BLIND_ASSET = "shop_benchmark_reward_v3_final_200"
@@ -64,6 +67,29 @@ def _existing_output(
             f"output already exists: {args.output}; use --resume or a new path"
         )
     return index_jsonl(args.output, key=key)
+
+
+def _validated_judge_request_hash(
+    request: dict,
+    *,
+    trajectory_id: str,
+) -> str:
+    claimed_hash = request.get("judge_request_hash")
+    if not isinstance(claimed_hash, str) or not claimed_hash:
+        raise ArtifactError(
+            f"Judge request hash missing for {trajectory_id}"
+        )
+    hash_material = {
+        key: value
+        for key, value in request.items()
+        if key != "judge_request_hash"
+    }
+    actual_hash = stable_hash(hash_material)
+    if claimed_hash != actual_hash:
+        raise ArtifactError(
+            f"Judge request content hash mismatch for {trajectory_id}"
+        )
+    return claimed_hash
 
 
 def curate_rubrics(args: argparse.Namespace) -> None:
@@ -154,9 +180,11 @@ def run_judge(args: argparse.Namespace) -> None:
     for trajectory_id, result in existing.items():
         audit = result.get("judge_audit") or {}
         prompt_version = result.get("judge_prompt_version")
-        if result.get("judge_status") == "not_judged":
-            continue
-        if (
+        if not result.get("judge_request_hash"):
+            raise ArtifactError(
+                f"cached Judge request hash missing for {trajectory_id}"
+            )
+        if result.get("judge_status") != "not_judged" and (
             audit.get("requested_model") != args.model
             or prompt_version != TRAJECTORY_JUDGE_PROMPT_VERSION
         ):
@@ -169,8 +197,20 @@ def run_judge(args: argparse.Namespace) -> None:
     for request in iter_jsonl(args.requests):
         task_id = int(request["task_id"])
         trajectory_id = str(request["trajectory_id"])
+        request_hash = _validated_judge_request_hash(
+            request,
+            trajectory_id=trajectory_id,
+        )
+        if request.get("judge_model") != args.model:
+            raise ArtifactError(
+                f"Judge request model mismatch for {trajectory_id}"
+            )
         if trajectory_id in existing:
             cached = existing[trajectory_id]
+            if cached.get("judge_request_hash") != request_hash:
+                raise ArtifactError(
+                    f"cached Judge request hash mismatch for {trajectory_id}"
+                )
             if request.get("judge_required") is False:
                 if cached.get("judge_status") != "not_judged":
                     raise ArtifactError(
@@ -194,6 +234,12 @@ def run_judge(args: argparse.Namespace) -> None:
                 raise ArtifactError(
                     f"missing not_judged_result for {trajectory_id}"
                 )
+            result = deepcopy(result)
+            result["judge_prompt_version"] = (
+                TRAJECTORY_JUDGE_PROMPT_VERSION
+            )
+            result["judge_model"] = args.model
+            result["judge_request_hash"] = request_hash
             append_jsonl_fsync(args.output, result)
             written += 1
             continue
@@ -223,6 +269,8 @@ def run_judge(args: argparse.Namespace) -> None:
             allowed_event_ids=event_ids,
         )
         result["judge_prompt_version"] = TRAJECTORY_JUDGE_PROMPT_VERSION
+        result["judge_model"] = args.model
+        result["judge_request_hash"] = request_hash
         result["judge_audit"] = completion["metadata"]
         result["judge_raw_response"] = deepcopy(completion["result"])
         append_jsonl_fsync(args.output, result)

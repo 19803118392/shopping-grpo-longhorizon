@@ -16,7 +16,11 @@ from shopping_grpo.evaluation.trajectory import NORMALIZED_TRAJECTORY_VERSION
 
 
 RUBRIC_CURATOR_PROMPT_VERSION = "rubric-curator-v1-draft"
-TRAJECTORY_JUDGE_PROMPT_VERSION = "trajectory-judge-v1-draft"
+TRAJECTORY_JUDGE_PROMPT_VERSION = "trajectory-judge-v1-draft-r2"
+_JUDGE_VISIBLE_ERROR_TAXONOMY = ERROR_TAXONOMY - {
+    "reward_rubric_disagreement",
+    "infrastructure_invalid",
+}
 
 RUBRIC_CURATOR_SYSTEM_PROMPT = """\
 你是当前 Shopping Agent 项目的需求 Rubric 整理器，不是自由生成需求的助手。
@@ -48,8 +52,9 @@ TRAJECTORY_JUDGE_SYSTEM_PROMPT = f"""\
 你是当前 Shopping Agent / ShopSimulator 项目的离线轨迹 Judge。
 
 你必须只依据输入中的 actor_visible_trajectory 评价 Actor 的行为。不得假设你能看到
-audit raw_observation、Gold 商品私有字段或未展示给 Actor 的候选。确定性 Reward、
-终局、工具计数、合法性和上下文指标由代码负责，你不能覆盖或改写它们。
+audit raw_observation、Gold 商品私有字段或未展示给 Actor 的候选。输入不会包含
+Environment Reward、Reward 分项或代码判定的任务成功结论；这些结果由独立面板
+负责，不能由你推断、覆盖或改写。
 
 逐条需求状态只能是 satisfied、violated、unknown、not_applicable。没有可见证据时
 使用 unknown。每项判断尽量引用真实 event_id；不得伪造不存在的 event_id。
@@ -95,13 +100,31 @@ def actor_visible_trajectory(normalized: Mapping) -> dict:
     if normalized.get("schema_version") != NORMALIZED_TRAJECTORY_VERSION:
         raise ValueError("unsupported normalized trajectory schema")
     events = []
+    allowed_event_fields = (
+        "event_id",
+        "event_type",
+        "action_attempt_id",
+        "executed_step_id",
+        "assistant_text",
+        "tool_call_id",
+        "tool_name",
+        "parameters",
+        "tool_call_parse_error",
+        "guard_reason",
+        "guard_consecutive_count",
+        "latest_observation_truncated",
+        "env_action",
+        "actor_visible_observation",
+        "done",
+        "step_error",
+    )
     for event_value in normalized.get("events") or []:
         if not isinstance(event_value, Mapping):
             continue
         event = {
-            key: deepcopy(value)
-            for key, value in event_value.items()
-            if key != "audit_only_raw_observation"
+            key: deepcopy(event_value[key])
+            for key in allowed_event_fields
+            if key in event_value
         }
         events.append(event)
     return {
@@ -110,6 +133,57 @@ def actor_visible_trajectory(normalized: Mapping) -> dict:
         "status": normalized.get("status"),
         "done": normalized.get("done"),
         "events": events,
+    }
+
+
+def sanitize_actor_visible_purchase(purchase: object) -> dict:
+    """Return only purchase fields available from the Actor's own action."""
+
+    if not isinstance(purchase, Mapping):
+        return {}
+    allowed_fields = (
+        "asin",
+        "name",
+        "title",
+        "category",
+        "product_category",
+        "price",
+        "options",
+    )
+    return {
+        key: deepcopy(purchase[key])
+        for key in allowed_fields
+        if key in purchase
+    }
+
+
+def sanitize_terminal_for_judge(terminal: Mapping) -> dict:
+    """Apply the sole terminal-state whitelist used by Judge requests."""
+
+    if not isinstance(terminal, Mapping):
+        terminal = {}
+    return {
+        "done": bool(terminal.get("done")),
+        "over": bool(terminal.get("over")),
+        "termination_reason": terminal.get("termination_reason"),
+        "purchase": sanitize_actor_visible_purchase(terminal.get("purchase")),
+    }
+
+
+def judge_visible_metrics(deterministic_metrics: Mapping) -> dict:
+    """Remove Reward/outcome and validity conclusions before LLM judging."""
+
+    if not isinstance(deterministic_metrics, Mapping):
+        deterministic_metrics = {}
+    allowed_sections = (
+        "actions_and_efficiency",
+        "repetition",
+        "legality",
+        "context",
+    )
+    return {
+        section: deepcopy(deterministic_metrics.get(section) or {})
+        for section in allowed_sections
     }
 
 
@@ -135,10 +209,16 @@ def build_trajectory_judge_messages(
         "query": normalized.get("actor_query") or rubric["query"],
         "rubric": rubric["rubrics"],
         "dimension_spec": dimensions,
-        "frozen_error_taxonomy": sorted(ERROR_TAXONOMY),
+        "frozen_error_taxonomy": sorted(
+            _JUDGE_VISIBLE_ERROR_TAXONOMY
+        ),
         "actor_visible_trajectory": actor_visible_trajectory(normalized),
-        "terminal_state": deepcopy(normalized.get("terminal") or {}),
-        "deterministic_metrics": deepcopy(deterministic_metrics),
+        "terminal_state": sanitize_terminal_for_judge(
+            normalized.get("terminal") or {}
+        ),
+        "judge_visible_metrics": judge_visible_metrics(
+            deterministic_metrics
+        ),
         "required_output": {
             "schema_version": JUDGE_SCHEMA_VERSION,
             "task_id": normalized["task_id"],
