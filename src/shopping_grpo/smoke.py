@@ -237,6 +237,7 @@ def run_cpu_smoke() -> dict:
         "MUST_NOT_REACH_JUDGE",
         "PRIVATE_PURCHASE_ATTRIBUTE",
         "PRIVATE_GOLD",
+        "gold_purchase",
     ):
         if secret in rendered:
             raise AssertionError("Judge prompt leaked hidden information")

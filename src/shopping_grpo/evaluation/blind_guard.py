@@ -6,16 +6,22 @@ import gzip
 import hashlib
 import json
 from collections.abc import Iterable, Mapping
+from importlib.resources import files
 from pathlib import Path
 
 from shopping_grpo.evaluation.artifacts import ArtifactError
 
 BLIND_GUARD_SCHEMA = "shopping-blind-asset-guard-v1"
-_ROOT = Path(__file__).resolve().parents[3]
-_GUARD_MANIFEST = (
-    _ROOT
-    / "data/benchmarks/shop_benchmark_reward_v3_final_200.guard.json"
-)
+BLIND_TASK_IDS_SCHEMA = "shopping-blind-task-ids-v1"
+_RESOURCE_PACKAGE = "shopping_grpo.resources"
+_GUARD_RESOURCE = "blind_guard.json"
+_EXPECTED_METADATA = {
+    "asset": "shop_benchmark_reward_v3_final_200",
+    "contract": "environment-v2.1/reward-v3/fresh-v1",
+    "environment_version": "shopsimulator-environment-v2.1",
+    "reward_version": "shopsimulator-reward-v3",
+    "evaluated": False,
+}
 
 
 def _sha256_file(path: Path) -> str:
@@ -26,13 +32,14 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _load_object(path: Path) -> dict:
+def _load_resource_object(name: str) -> dict:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ArtifactError(f"cannot read blind asset manifest: {path}") from exc
+        resource = files(_RESOURCE_PACKAGE).joinpath(name)
+        value = json.loads(resource.read_text(encoding="utf-8"))
+    except (ModuleNotFoundError, OSError, json.JSONDecodeError) as exc:
+        raise ArtifactError(f"cannot read packaged blind resource: {name}") from exc
     if not isinstance(value, dict):
-        raise ArtifactError(f"blind asset manifest must be an object: {path}")
+        raise ArtifactError(f"packaged blind resource must be an object: {name}")
     return value
 
 
@@ -78,46 +85,50 @@ def _jsonl_task_ids(path: Path) -> set[int]:
 
 
 def validate_canonical_blind_asset() -> tuple[dict, set[int]]:
-    """Validate the versioned guard, frozen metadata, content hash, and IDs."""
+    """Validate the wheel-packaged guard contract and frozen task-ID set."""
 
-    guard = _load_object(_GUARD_MANIFEST)
+    guard = _load_resource_object(_GUARD_RESOURCE)
     if guard.get("schema_version") != BLIND_GUARD_SCHEMA:
         raise ArtifactError("unsupported blind guard schema")
     if guard.get("manifest_version") != 1:
         raise ArtifactError("unsupported blind guard manifest version")
     if guard.get("split_role") != "blind_final_test":
         raise ArtifactError("blind guard split_role must be blind_final_test")
-
-    task_path = _ROOT / str(guard.get("task_file") or "")
-    metadata_path = _ROOT / str(guard.get("metadata_file") or "")
-    for path in (task_path, metadata_path):
-        if not path.is_file():
-            raise ArtifactError(f"canonical blind asset is missing: {path}")
-    if _sha256_file(task_path) != guard.get("task_sha256"):
-        raise ArtifactError("canonical blind task SHA256 mismatch")
-    if _sha256_file(metadata_path) != guard.get("metadata_sha256"):
-        raise ArtifactError("canonical blind metadata SHA256 mismatch")
-
-    metadata = _load_object(metadata_path)
     required = guard.get("required_metadata")
     if not isinstance(required, Mapping):
         raise ArtifactError("blind guard required_metadata must be an object")
     mismatches = {
-        key: {"required": expected, "actual": metadata.get(key)}
-        for key, expected in required.items()
-        if metadata.get(key) != expected
+        key: {"required": expected, "actual": required.get(key)}
+        for key, expected in _EXPECTED_METADATA.items()
+        if required.get(key) != expected
     }
     if mismatches:
         raise ArtifactError(
-            "canonical blind metadata contract mismatch: "
+            "packaged blind metadata contract mismatch: "
             + json.dumps(mismatches, ensure_ascii=False, sort_keys=True)
         )
-    if metadata.get("output_sha256") != guard.get("task_sha256"):
-        raise ArtifactError("blind metadata output_sha256 mismatch")
+    for field in ("task_sha256", "metadata_sha256"):
+        digest = guard.get(field)
+        if not isinstance(digest, str) or len(digest) != 64:
+            raise ArtifactError(f"invalid packaged blind {field}")
 
-    task_ids = _jsonl_task_ids(task_path)
+    ids_resource = guard.get("task_ids_resource")
+    if not isinstance(ids_resource, str) or not ids_resource:
+        raise ArtifactError("blind guard task_ids_resource is missing")
+    ids_document = _load_resource_object(ids_resource)
+    if ids_document.get("schema_version") != BLIND_TASK_IDS_SCHEMA:
+        raise ArtifactError("unsupported blind task-ID schema")
+    raw_task_ids = ids_document.get("task_ids")
+    if not isinstance(raw_task_ids, list) or not all(
+        isinstance(value, int) and not isinstance(value, bool)
+        for value in raw_task_ids
+    ):
+        raise ArtifactError("packaged blind task_ids must be integers")
+    task_ids = set(raw_task_ids)
+    if len(task_ids) != len(raw_task_ids):
+        raise ArtifactError("packaged blind task_ids contain duplicates")
     if len(task_ids) != int(guard.get("task_count", -1)):
-        raise ArtifactError("canonical blind task count mismatch")
+        raise ArtifactError("packaged blind task count mismatch")
     return guard, task_ids
 
 

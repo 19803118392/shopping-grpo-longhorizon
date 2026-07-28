@@ -6,6 +6,8 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
+build/
+dist/
 .env
 
 # 发布当前正式采集批次的完整产物；其他临时 output 仍不入库。

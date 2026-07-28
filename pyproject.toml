@@ -36,6 +36,7 @@ grpo = [
   "swanlab==0.9.1",
 ]
 dev = [
+  "build>=1.2,<2",
   "pytest>=8,<10",
   "ruff>=0.9,<1",
   "mypy>=1.14,<2",
@@ -46,6 +47,9 @@ shopping-grpo = "shopping_grpo.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"shopping_grpo.resources" = ["*.json"]
 
 [tool.uv]
 override-dependencies = [

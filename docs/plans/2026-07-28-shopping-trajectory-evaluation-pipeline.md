@@ -78,7 +78,7 @@ Flash 模型只能在代码提取的候选约束中选择、对齐和自然语�
 - 冻结后的需求 Rubric；
 - Actor 当时实际看到的投影后 Observation；
 - Actor 实际输出的文本和工具调用；
-- 白名单化的终局状态：`done`、`over`、`termination_reason` 和 Actor 可见的购买信息；
+- 白名单化的中性终局状态：仅 `done` 和 `over`；终止分类与事后 purchase 真值不进入 Judge；
 - 代码统计出的行为指标：工具效率、重复、合法性和上下文。
 
 `raw_observation` 仅用于评测系统审计和排查投影问题，不得作为 Actor 行为评分证据。Judge 不能使用 Actor 当时看不到的 Gold 商品私有字段来断言它忽略了某个候选。
@@ -616,7 +616,7 @@ GRPO 训练期间允许开发不被训练代码 import、也不依赖训练运�
 - raw Rollout 到 Actor 可见事件流的规范化；
 - executed step、Guard rejection 和 action attempt 的稳定 ID；
 - 默认排除 raw Observation、Gold goal 和 persona 的 Judge 可见性边界；
-- 终局 purchase 白名单和仅含效率、重复、合法性、上下文的 Judge 指标白名单；
+- 仅含 `done`/`over` 的终局白名单，以及仅含效率、重复、合法性、上下文的 Judge 指标白名单；
 - Reward v3 evidence、成功结论与轨迹 Judge 的数据级隔离；
 - Reward/终局、工具效率、重复、合法性、上下文和异常指标；
 - 代码约束的 Rubric 候选及受限 Flash 输出物化；
@@ -627,8 +627,8 @@ GRPO 训练期间允许开发不被训练代码 import、也不依赖训练运�
 - 四部分单任务结果和固定任务全集分母汇总；
 - Base/SFT/GRPO 按 task_id 的分栏配对比较；
 - 固定的主要/次要错误 taxonomy；
-- 原子离线 artifact、重复键校验，以及基于 guard manifest、内容 SHA256 和
-  final task ID 集合的盲测保护；
+- 原子离线 artifact、重复键校验，以及基于 wheel 内置 guard manifest、
+  canonical SHA256 和 final task ID 集合的盲测保护；
 - 纯离线预处理、Judge 请求生成、结果拼装和比较 CLI；
 - TaskFacts 环境映射与独立导出入口；
 - Flash/Pro OpenAI-compatible JSON 客户端及严格结构校验；

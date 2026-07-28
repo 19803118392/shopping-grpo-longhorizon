@@ -241,9 +241,9 @@ data/benchmarks/shop_benchmark_reward_v3_final_200.jsonl
 ```
 
 它在 checkpoint、Prompt 和 Judge 版本冻结前不得用于调试、校准或模型选择。
-保护逻辑会校验独立 guard manifest、canonical metadata、内容 SHA256 和 final
-task ID 集合；复制、改名或重新格式化文件不能绕过保护。只有正式评测阶段才能显式
-使用 `--allow-blind-final`。
+保护逻辑从 wheel 内置资源读取 guard manifest、canonical SHA256、metadata 契约和
+final task ID 集合；普通 wheel 安装不依赖仓库目录。复制、改名或重新格式化文件
+不能绕过保护。只有正式评测阶段才能显式使用 `--allow-blind-final`。
 
 ## 测试
 

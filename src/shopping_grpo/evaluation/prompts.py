@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from copy import deepcopy
-import json
 
 from shopping_grpo.evaluation.contracts import (
     ERROR_TAXONOMY,
@@ -14,9 +14,8 @@ from shopping_grpo.evaluation.contracts import (
 )
 from shopping_grpo.evaluation.trajectory import NORMALIZED_TRAJECTORY_VERSION
 
-
 RUBRIC_CURATOR_PROMPT_VERSION = "rubric-curator-v1-draft"
-TRAJECTORY_JUDGE_PROMPT_VERSION = "trajectory-judge-v1-draft-r2"
+TRAJECTORY_JUDGE_PROMPT_VERSION = "trajectory-judge-v1-draft-r3"
 _JUDGE_VISIBLE_ERROR_TAXONOMY = ERROR_TAXONOMY - {
     "reward_rubric_disagreement",
     "infrastructure_invalid",
@@ -136,37 +135,14 @@ def actor_visible_trajectory(normalized: Mapping) -> dict:
     }
 
 
-def sanitize_actor_visible_purchase(purchase: object) -> dict:
-    """Return only purchase fields available from the Actor's own action."""
-
-    if not isinstance(purchase, Mapping):
-        return {}
-    allowed_fields = (
-        "asin",
-        "name",
-        "title",
-        "category",
-        "product_category",
-        "price",
-        "options",
-    )
-    return {
-        key: deepcopy(purchase[key])
-        for key in allowed_fields
-        if key in purchase
-    }
-
-
 def sanitize_terminal_for_judge(terminal: Mapping) -> dict:
-    """Apply the sole terminal-state whitelist used by Judge requests."""
+    """Expose only neutral lifecycle flags, never Reward-derived conclusions."""
 
     if not isinstance(terminal, Mapping):
         terminal = {}
     return {
         "done": bool(terminal.get("done")),
         "over": bool(terminal.get("over")),
-        "termination_reason": terminal.get("termination_reason"),
-        "purchase": sanitize_actor_visible_purchase(terminal.get("purchase")),
     }
 
 

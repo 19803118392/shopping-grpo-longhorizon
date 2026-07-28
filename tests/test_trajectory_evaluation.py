@@ -639,6 +639,14 @@ class JudgeAndResultsTest(unittest.TestCase):
         self.assertFalse(
             forbidden_keys & collect_keys(judge_auxiliary_inputs)
         )
+        for forbidden_value in (
+            "gold_purchase",
+            "wrong_purchase",
+            "valid_alternative_purchase",
+            "partial_alternative_purchase",
+            "reward_unverifiable",
+        ):
+            self.assertNotIn(forbidden_value, rendered)
 
     def test_terminal_and_metrics_have_explicit_judge_whitelists(self):
         normalized = normalize_trajectory(_raw_trajectory())
@@ -649,11 +657,7 @@ class JudgeAndResultsTest(unittest.TestCase):
 
         self.assertEqual(
             set(terminal),
-            {"done", "over", "termination_reason", "purchase"},
-        )
-        self.assertEqual(
-            set(terminal["purchase"]),
-            {"asin", "price", "options"},
+            {"done", "over"},
         )
         self.assertNotIn("reward_and_outcome", visible_metrics)
         self.assertNotIn("validity", visible_metrics)
