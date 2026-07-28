@@ -1,0 +1,50 @@
+{
+  "asset": "grpo_reward_v3_fresh_v1_probe_pool",
+  "contract": "environment-v2.1/reward-v3/fresh-v1",
+  "environment_version": "shopsimulator-environment-v2.1",
+  "exclusions": [
+    {
+      "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_aggregate_604_20260727/raw.jsonl",
+      "sha256": "b1db9e41673d285da7164e8352fa0a702f537157792fa137c94f7cf200435fa1",
+      "task_count": 604
+    },
+    {
+      "path": "data/benchmarks/shop_benchmark_v1.jsonl",
+      "sha256": "9905ab9f4b8d9bbbc44adfd8cc4de2bce2797a63366dc94950015a5eed86655b",
+      "task_count": 200
+    },
+    {
+      "path": "data/benchmarks/shop_benchmark_v2_50.jsonl",
+      "sha256": "67db75b636bfc15d28ca99df6250db66778e567d53b8205b5f2cbc4955f70328",
+      "task_count": 50
+    },
+    {
+      "path": "outputs/flash_accepted_500_parallel/raw.jsonl.gz",
+      "sha256": "91a0b488dbd7d7c1baf9d3f53460131bed8489e7f3cf7a1cda2c4d330772aed0",
+      "task_count": 757
+    },
+    {
+      "path": "data/splits/grpo_probe_pool_v1.jsonl",
+      "sha256": "5fed28b33b48c29c5f8f818cbfdaf2ef190869dadcbc0e080ca336718c5d477a",
+      "task_count": 2000
+    }
+  ],
+  "fresh_train": {
+    "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_aggregate_604_20260727/train/sft.jsonl",
+    "sha256": "8cd1f72130b3c781d5ffe08fe3e399b2a9e45d204e3f3bd0d8e677d1b51c8ec5",
+    "task_count": 379
+  },
+  "fresh_validation": {
+    "path": "outputs/environment_v2_1_teacher_flash_fresh_v1_aggregate_604_20260727/val/sft.jsonl",
+    "sha256": "f8ae506d0fa9d1526342a9f717da24922c8a55776d076a296698abac4fde05b3",
+    "task_count": 49
+  },
+  "output_sha256": "465ebee87982f23fb1d56b1f50c56a795221e502a04142bc1f32d1cd919bfe9e",
+  "reward_version": "shopsimulator-reward-v3",
+  "seed": 20260728,
+  "selection": "deterministic_random_without_replacement",
+  "shopping_grpo_commit": "79c6b828b04e341c2406f107c673816b2b1212d7",
+  "source_tasks": "data/shop_tasks.jsonl",
+  "source_tasks_sha256": "35a5978bba829a6b4196f0e4ce65d5f7d366cc0704469e3b7f8a6d02f50a9dea",
+  "task_count": 2000
+}
