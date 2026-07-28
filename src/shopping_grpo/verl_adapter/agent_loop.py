@@ -279,69 +279,6 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
                     state["action_attempt_after_truncation_count"]
                 ),
             }
-            output.metrics["shopping_context/compactions"] = int(state["context_compactions"])
-            output.metrics["shopping_context/tokens_removed"] = int(
-                state["context_tokens_removed"]
-            )
-            output.metrics["shopping_context/max_input_tokens"] = int(
-                state["context_max_input_tokens"]
-            )
-            output.metrics["shopping_projection/count"] = int(
-                state["observation_projection_count"]
-            )
-            output.metrics["shopping_projection/truncated_count"] = int(
-                state["observation_truncated_count"]
-            )
-            output.metrics["shopping_projection/raw_tokens"] = int(
-                state["observation_raw_tokens"]
-            )
-            output.metrics["shopping_projection/visible_tokens"] = int(
-                state["observation_visible_tokens"]
-            )
-            output.metrics["shopping_projection/truncation_ratio"] = (
-                state["observation_visible_tokens"] / state["observation_raw_tokens"]
-                if state["observation_raw_tokens"]
-                else 1.0
-            )
-            output.metrics["shopping_projection/visible_asin_count"] = int(
-                state["observation_visible_asin_count"]
-            )
-            output.metrics["shopping_projection/visible_button_count"] = int(
-                state["observation_visible_button_count"]
-            )
-            output.metrics["shopping_projection/footer_failures"] = int(
-                state["observation_footer_failures"]
-            )
-            output.metrics["shopping_projection/guard_rejection_rate"] = (
-                state["guard_rejection_after_truncation_count"]
-                / state["action_attempt_after_truncation_count"]
-                if state["action_attempt_after_truncation_count"]
-                else 0.0
-            )
-            output.metrics["shopping_context/overflow"] = int(
-                state["termination_reason"] == "context_hard_limit_exceeded"
-            )
-            output.metrics["shopping_reward/unverifiable"] = int(
-                state.get("reward_unverifiable", False)
-            )
-            output.metrics["shopping_reward/match_score"] = float(
-                breakdown.get("match_score", 0.0)
-            )
-            output.metrics["shopping_reward/evidence_coverage"] = float(
-                breakdown.get("evidence_coverage", 0.0)
-            )
-            output.metrics["shopping_reward/partial_purchase"] = int(
-                state.get("reward_type") == "partial_alternative_purchase"
-            )
-            output.metrics["shopping_termination/graceful_stop"] = int(
-                state.get("reward_type") == "graceful_stop"
-            )
-            output.metrics["shopping_termination/early_abstain"] = int(
-                state.get("reward_type") == "early_abstain"
-            )
-            output.metrics["shopping_termination/repeat_loop"] = int(
-                state.get("reward_type") == "repeat_loop"
-            )
             return output
         finally:
             await session.close()

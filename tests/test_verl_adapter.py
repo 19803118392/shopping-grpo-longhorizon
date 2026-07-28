@@ -3,7 +3,12 @@
 import asyncio
 import threading
 import unittest
+from unittest.mock import patch
 
+from verl.experimental.agent_loop.agent_loop import AgentLoopMetrics, AgentLoopOutput
+from verl.experimental.agent_loop.tool_agent_loop import ToolAgentLoop
+
+from shopping_grpo.verl_adapter.agent_loop import ShoppingToolAgentLoop
 from shopping_grpo.verl_adapter.runtime import (
     current_environment,
     current_runtime_state,
@@ -35,6 +40,88 @@ def make_tool(name):
 
 
 class VerlAdapterRuntimeTest(unittest.TestCase):
+    def test_agent_loop_preserves_real_verl_metrics_and_exports_shopping_diagnostics(self):
+        created = []
+
+        class FakeEnv:
+            def __init__(self, **kwargs):
+                self.released = False
+                created.append(self)
+
+            def reset(self, task_id):
+                return {
+                    "instruction": f"task {task_id}",
+                    "environment_version": "shopsimulator-environment-v2.1",
+                }
+
+            def release(self):
+                self.released = True
+
+        async def fake_parent_run(_loop, sampling_params, **kwargs):
+            state = current_runtime_state.get()
+            state.update(
+                {
+                    "done": True,
+                    "terminal_result": {"done": True, "over": True},
+                    "termination_reason": "gold_purchase",
+                    "final_reward": 1.0,
+                    "reward_version": "shopsimulator-reward-v3",
+                    "reward_type": "gold_purchase",
+                    "reward_valid": True,
+                    "reward_v3_detail": {
+                        "weighted_score": 1.0,
+                        "evidence_coverage": 1.0,
+                        "dimension_scores": {"key_options": 1.0},
+                        "hard_gates": {
+                            "category": {"passed": True},
+                            "budget": {"passed": True},
+                        },
+                    },
+                }
+            )
+            return AgentLoopOutput(
+                prompt_ids=[1],
+                response_ids=[2],
+                response_mask=[1],
+                reward_score=None,
+                metrics=AgentLoopMetrics(generate_sequences=0.25),
+                extra_fields={},
+            )
+
+        async def run():
+            loop = object.__new__(ShoppingToolAgentLoop)
+            loop.base_url = "http://shop.test"
+            loop.timeout = 60
+            loop.max_steps = 35
+            loop.required_environment_version = "shopsimulator-environment-v2.1"
+            loop.reward_mode = "constraint_aware"
+            loop.env_factory = FakeEnv
+            with patch.object(ToolAgentLoop, "run", fake_parent_run):
+                return await ShoppingToolAgentLoop.run(
+                    loop,
+                    {},
+                    extra_info={"task_id": 42},
+                )
+
+        output = asyncio.run(run())
+        self.assertIsInstance(output.metrics, AgentLoopMetrics)
+        self.assertEqual(
+            output.metrics.model_dump(),
+            {
+                "generate_sequences": 0.25,
+                "tool_calls": 0.0,
+                "compute_score": 0.0,
+                "num_preempted": -1,
+            },
+        )
+        self.assertEqual(output.reward_score, 1.0)
+        self.assertEqual(output.extra_fields["shopping"]["task_id"], 42)
+        self.assertEqual(
+            output.extra_fields["shopping"]["reward"]["terminal_utility"],
+            1.0,
+        )
+        self.assertTrue(created[0].released)
+
     def test_terminal_reward_only_uses_a_normal_environment_completion(self):
         done = make_runtime_state(task_id=1, max_steps=35)
         done.update({"done": True, "terminal_result": {"done": True, "over": True}, "final_reward": 0.75})
