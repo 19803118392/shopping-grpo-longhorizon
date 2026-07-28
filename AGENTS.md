@@ -87,3 +87,4 @@ v2.1 / Reward v3 上重新执行；不得用旧 policy 的轨迹长度替代。t
 - 未经用户明确授权，不启动正式训练、GRPO、benchmark 重跑或模型合并。
 - 只读诊断不得修改模型、数据、依赖或运行中的实验。
 - 发现 OOM、NaN/Inf、CUDA 错误、模板失败、checkpoint 写入失败或 reward contract 不匹配时，停止并报告证据，不自动修复、降 batch 或重跑。
+- Reward v3 probe 的任意 `status=error` 都是停止条件；不得静默过滤后切分。Environment v2.1 slot 只由 trajectory owner 显式释放，服务端 terminal 不自动回收，避免并发 double-release 导致状态串线。

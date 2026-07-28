@@ -54,7 +54,15 @@ PYTHONPATH=src .venv-grpo-v080/bin/python \
 ```
 
 probe 固定 temperature=0、top_p=1、max_steps=35、max_tokens=512，并校验每条
-轨迹的 `environment_version`；所有正常终局必须携带 Reward v3。完成后按实际
+轨迹的 `environment_version`；所有正常终局必须携带 Reward v3。任意
+`status=error` 都必须立即停止本轮 probe，不得把错误轨迹静默过滤后继续切分。
+
+Environment v2.1 的并发 slot 使用显式租约：terminal 只结束任务，不自动回收
+slot；probe 和 veRL AgentLoop 都必须在 `finally` 中调用 `release_one`。禁止同时
+启用服务端 terminal 自动释放和客户端显式释放，否则旧 worker 的延迟释放可能把
+新 worker 正在使用的 slot 错误标为空闲，造成任务状态串线。
+
+probe 完成后按实际
 short/medium/long 分布比例冻结 1,000 train 和 50 validation：
 
 ```bash

@@ -2,12 +2,13 @@ import sys
 import logging
 import os
 import time
-from typing import Dict, Any, Optional, Set, List
+from typing import Dict, Any, Optional, List
 
 from flask import Flask, request, jsonify, Response
 
 sys.path.append("../")
 from shop_agent import shop_agent
+from slot_lease_pool import SlotLeasePool
 from web_agent_site.utils import DEBUG_PROD_SIZE
 from web_agent_site.envs.web_agent_text_env import WebAgentTextEnv
 
@@ -21,8 +22,8 @@ SERVER_PORT = int(os.environ.get("SHOPSIM_PORT", "5000"))
 
 # Global variables
 envs: List[Any] = []
-free_env_index: Set[int] = set()
 env_max_num: int = DEFAULT_ENV_MAX_NUM
+slot_pool = SlotLeasePool(env_max_num)
 
 # Configure logging format
 logging.basicConfig(
@@ -63,17 +64,15 @@ def api_some_function() -> Response:
     try:
         # Release all environments
         if action == 'release_all':
-            for i in range(env_max_num):
-                if i not in free_env_index:
-                    free_env_index.add(i)
+            slot_pool.reset(env_max_num)
             logger.info("[Init] All environments have been initialized")
             return jsonify({'result': {"message": "All environments have been initialized"}})
 
         # Release one environment
         if action == 'release_one':
             if env_idx is not None and isinstance(env_idx, int):
-                if env_idx not in free_env_index:
-                    free_env_index.add(env_idx)
+                was_leased = slot_pool.release(env_idx)
+                if was_leased:
                     logger.info(f"[Release] Environment {env_idx} has been released")
                     return jsonify({'result': {"message": f"Environment {env_idx} has been released"}})
                 else:
@@ -87,8 +86,8 @@ def api_some_function() -> Response:
         if env_idx is None:
             retry_count = 0
             while retry_count < MAX_RETRIES:
-                if len(free_env_index) > 0:
-                    env_idx = free_env_index.pop()
+                env_idx = slot_pool.acquire()
+                if env_idx is not None:
                     break
                 retry_count += 1
                 logger.info(f"[Retry {retry_count}/{MAX_RETRIES}] No available environment index, retrying in {RETRY_DELAY_SECONDS} seconds...")
@@ -101,10 +100,14 @@ def api_some_function() -> Response:
         # Call shop_agent function
         result = shop_agent(envs[env_idx], env_idx, action, idx, response)
 
-        # If task is over, release the environment
+        # The caller owns the lease until release_one.  Auto-releasing here
+        # races with the caller's finally-release: another worker can lease
+        # this slot between the two releases and then have its active lease
+        # accidentally freed by the previous worker.
         if 'over' in result and result['over']:
-            free_env_index.add(env_idx)
-            logger.info(f"[Task Over] Environment {env_idx} has been released")
+            logger.info(
+                f"[Task Over] Environment {env_idx} is awaiting explicit release"
+            )
 
     except Exception as e:
         logger.exception(f"[Exception] Exception occurred while processing request: {str(e)}")
@@ -117,15 +120,14 @@ def initialize_environments() -> None:
     """
     Initialize all environments and add them to the free environment index.
     """
-    global envs, free_env_index, env_max_num
+    global envs, env_max_num
 
     envs = []
-    free_env_index = set()
+    slot_pool.reset(env_max_num)
 
     shared_server = None
     for i in range(env_max_num):
         logger.info(f"Environment {i} is being initialized")
-        free_env_index.add(i)
         env = WebAgentTextEnv(
             observation_mode='text',
             split="train",

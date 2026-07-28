@@ -204,7 +204,13 @@ def collect(args) -> int:
                     validate_trajectory_contract(trajectory)
                 except ValueError as exc:
                     failure = f"Reward v3 contract failure after task {task_id}: {exc}"
-                if _is_infrastructure_failure(trajectory):
+                if trajectory.get("status") == "error":
+                    error = trajectory.get("error") or {}
+                    failure = (
+                        f"probe error after task {task_id}: "
+                        f"{error.get('type', 'unknown')}: {error.get('message', '')}"
+                    )
+                elif _is_infrastructure_failure(trajectory):
                     failure = f"infrastructure failure after task {task_id}"
             print(
                 f"probe_progress={completed_count}/{len(expected_ids)} "
