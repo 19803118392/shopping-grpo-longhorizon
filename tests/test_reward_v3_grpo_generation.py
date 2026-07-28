@@ -10,6 +10,7 @@ from scripts.prepare_grpo_reward_v3_fresh_v1 import (
     proportional_targets,
     validate_probe_contract,
 )
+from scripts.probe_grpo_reward_v3_fresh_v1 import normalize_expected_limit_status
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +39,30 @@ def trajectory(task_id, steps, reward_type="gold_purchase"):
 
 
 class RewardV3GrpoGenerationTest(unittest.TestCase):
+    def test_probe_context_limit_matches_agent_loop_status(self):
+        row = {
+            "status": "error",
+            "error": {
+                "type": "ContextBudgetError",
+                "message": "prompt uses 24057 tokens, above input budget 23552",
+            },
+        }
+        normalized = normalize_expected_limit_status(row)
+        self.assertEqual(normalized["status"], "context_hard_limit_exceeded")
+        self.assertEqual(
+            normalized["termination_reason"],
+            "context_hard_limit_exceeded",
+        )
+        self.assertTrue(normalized["infrastructure_invalid"])
+        self.assertIn("error", normalized)
+
+    def test_probe_does_not_normalize_other_errors(self):
+        row = {
+            "status": "error",
+            "error": {"type": "StructuredObservationError", "message": "bad state"},
+        }
+        self.assertEqual(normalize_expected_limit_status(row)["status"], "error")
+
     def test_proportional_targets_are_exact_and_within_capacity(self):
         targets = proportional_targets(
             {"short": 400, "medium": 600, "long": 1000},

@@ -27,6 +27,7 @@ from shopping_grpo.teacher_rollout import (
 ROOT = Path(__file__).resolve().parents[1]
 ENVIRONMENT_VERSION = "shopsimulator-environment-v2.1"
 REWARD_VERSION = "shopsimulator-reward-v3"
+CONTEXT_HARD_LIMIT_STATUS = "context_hard_limit_exceeded"
 DEFAULT_TASKS = ROOT / "data/splits/grpo_reward_v3_fresh_v1_probe_pool.jsonl"
 DEFAULT_OUTPUT = ROOT / "outputs/grpo_reward_v3_fresh_v1_probe/raw.jsonl"
 
@@ -75,6 +76,19 @@ def validate_trajectory_contract(trajectory: dict) -> None:
         raise ValueError(f"task {task_id}: purchase_success is not boolean")
 
 
+def normalize_expected_limit_status(trajectory: dict) -> dict:
+    """Match the non-compacting veRL AgentLoop's context-limit termination."""
+    error = trajectory.get("error") or {}
+    if (
+        trajectory.get("status") == "error"
+        and error.get("type") == "ContextBudgetError"
+    ):
+        trajectory["status"] = CONTEXT_HARD_LIMIT_STATUS
+        trajectory["termination_reason"] = CONTEXT_HARD_LIMIT_STATUS
+        trajectory["infrastructure_invalid"] = True
+    return trajectory
+
+
 def existing_probe_ids(output: Path, expected: set[int]) -> set[int]:
     if not output.is_file():
         return set()
@@ -113,6 +127,9 @@ def write_probe_metadata(args, expected_ids: set[int]) -> dict:
         "complete": len(rows) == len(expected_ids),
         "raw_sha256": sha256_file(args.output) if args.output.is_file() else None,
         "status_counts": dict(sorted(status_counts.items())),
+        "infrastructure_invalid_count": sum(
+            bool(row.get("infrastructure_invalid")) for row in rows
+        ),
         "reward_type_counts": dict(sorted(reward_types.items())),
         "protocol": {
             "model": args.model,
@@ -125,6 +142,7 @@ def write_probe_metadata(args, expected_ids: set[int]) -> dict:
             "context_window": 24576,
             "context_safety_margin": 512,
             "context_compaction": False,
+            "context_hard_limit_status": CONTEXT_HARD_LIMIT_STATUS,
             "observation_token_budget": 1536,
             "observation_detail_token_budget": 4096,
             "observation_generic_token_budget": 768,
@@ -197,7 +215,7 @@ def collect(args) -> int:
             completed, _ = wait(pending, return_when=FIRST_COMPLETED)
             for future in completed:
                 task_id = pending.pop(future)
-                trajectory = future.result()
+                trajectory = normalize_expected_limit_status(future.result())
                 append_jsonl(args.output, [trajectory])
                 completed_count += 1
                 try:

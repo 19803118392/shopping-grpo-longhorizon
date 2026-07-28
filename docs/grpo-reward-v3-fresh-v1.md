@@ -56,6 +56,10 @@ PYTHONPATH=src .venv-grpo-v080/bin/python \
 probe 固定 temperature=0、top_p=1、max_steps=35、max_tokens=512，并校验每条
 轨迹的 `environment_version`；所有正常终局必须携带 Reward v3。任意
 `status=error` 都必须立即停止本轮 probe，不得把错误轨迹静默过滤后继续切分。
+在关闭历史 token compaction 的正式 Vanilla 口径下，超过 23,552-token 输入预算
+不是 Python error，而是与 veRL AgentLoop 一致地记录为
+`context_hard_limit_exceeded`、`infrastructure_invalid=true`；它会进入 probe 汇总，
+但不得进入 short/medium/long 训练或 validation 抽样桶。
 
 Environment v2.1 的并发 slot 使用显式租约：terminal 只结束任务，不自动回收
 slot；probe 和 veRL AgentLoop 都必须在 `finally` 中调用 `release_one`。禁止同时
