@@ -563,10 +563,6 @@ def materialize_rubric_bundle(
         candidate = by_id[selected["candidate_id"]]
         hardness = selected["hardness"]
         quote_spans = _spans_from_quote(query, selected.get("query_quote", ""))
-        if selected.get("query_quote") and not quote_spans:
-            raise ContractValidationError(
-                f"query_quote for {selected['candidate_id']} is not in Query"
-            )
         rubrics.append(
             {
                 "rubric_id": f"r{len(rubrics) + 1:04d}",
@@ -575,8 +571,12 @@ def materialize_rubric_bundle(
                 "description": selected["description"].strip(),
                 "hardness": hardness,
                 "hardness_source": candidate["hardness_source"],
-                "query_spans": quote_spans
-                or deepcopy(candidate.get("query_spans") or []),
+                # Query spans are code-owned evidence. A curator paraphrase
+                # falls back to the extractor's already validated spans.
+                "query_spans": (
+                    quote_spans
+                    or deepcopy(candidate.get("query_spans") or [])
+                ),
                 "field_path": candidate["field_path"],
                 "operator": candidate["operator"],
                 "expected_value": deepcopy(candidate["expected_value"]),

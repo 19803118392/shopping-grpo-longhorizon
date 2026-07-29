@@ -544,6 +544,37 @@ class RubricTest(unittest.TestCase):
         self.assertEqual(budget["expected_value"]["value"], 100.0)
         self.assertTrue(budget["query_spans"])
 
+    def test_materialized_bundle_falls_back_from_paraphrased_query_quote(self):
+        facts = _task_facts()
+        candidates = extract_rubric_candidates(facts)
+        candidate = next(
+            item
+            for item in candidates["candidates"]
+            if item["query_spans"]
+        )
+        bundle = materialize_rubric_bundle(
+            task_facts=facts,
+            candidates=candidates,
+            curator_response={
+                "selected_constraints": [
+                    {
+                        "candidate_id": candidate["candidate_id"],
+                        "description": "测试约束",
+                        "hardness": "hard",
+                        "query_quote": "模型生成的非逐字转述",
+                        "selection_reason": "Query 明确表达该约束",
+                    }
+                ]
+            },
+            curator_model="deepseek-v4-flash",
+            curator_prompt_version="test",
+            rubric_version="test",
+        )
+        self.assertEqual(
+            bundle["rubrics"][0]["query_spans"],
+            candidate["query_spans"],
+        )
+
 
 class JudgeAndResultsTest(unittest.TestCase):
     def test_judge_rejects_fabricated_event_reference_and_total_score(self):
