@@ -5,8 +5,8 @@ import argparse
 import json
 from pathlib import Path
 
-from shopping_grpo.benchmark import summarize_trajectories
-from shopping_grpo.teacher_rollout import OpenAIChatClient, collect_tasks, load_tasks
+from shopping_grpo.evaluation.summary import summarize_trajectories
+from shopping_grpo.evaluation.rollout import OpenAIChatClient, collect_tasks, load_tasks
 
 
 def parse_args():
@@ -28,6 +28,17 @@ def parse_args():
         default=512,
         help="单次模型生成上限；防止未调用工具时耗尽完整上下文。",
     )
+    parser.add_argument("--context-window", type=int, default=24576)
+    parser.add_argument("--context-safety-margin", type=int, default=512)
+    parser.add_argument(
+        "--context-compaction",
+        action="store_true",
+        help="上下文接近上限时压缩较早的交互；默认关闭。",
+    )
+    parser.add_argument("--observation-token-budget", type=int, default=1536)
+    parser.add_argument("--observation-detail-token-budget", type=int, default=4096)
+    parser.add_argument("--observation-generic-token-budget", type=int, default=768)
+    parser.add_argument("--observation-search-top-k", type=int, default=20)
     return parser.parse_args()
 
 
@@ -45,6 +56,8 @@ def main():
         raise SystemExit("--max-steps 必须为正数")
     if args.max_tokens < 1:
         raise SystemExit("--max-tokens 必须为正数")
+    if args.context_window <= args.max_tokens + args.context_safety_margin:
+        raise SystemExit("--context-window 必须大于 --max-tokens 与安全余量之和")
     tasks = load_tasks(args.benchmark)
     client = OpenAIChatClient(
         model=args.model,
@@ -54,6 +67,13 @@ def main():
         top_p=args.top_p,
         timeout=args.timeout,
         max_tokens=args.max_tokens,
+        context_window=args.context_window,
+        context_safety_margin=args.context_safety_margin,
+        context_compaction_enable=args.context_compaction,
+        observation_token_budget=args.observation_token_budget,
+        observation_detail_token_budget=args.observation_detail_token_budget,
+        observation_generic_token_budget=args.observation_generic_token_budget,
+        observation_search_top_k=args.observation_search_top_k,
     )
     collect_tasks(
         tasks,
@@ -68,10 +88,18 @@ def main():
     summary["protocol"] = {
         "benchmark": str(args.benchmark),
         "model": args.model,
+        "reward_contract": "shopsimulator-reward-v3",
         "max_steps": args.max_steps,
         "max_tokens": args.max_tokens,
         "temperature": args.temperature,
         "top_p": args.top_p,
+        "context_window": args.context_window,
+        "context_safety_margin": args.context_safety_margin,
+        "context_compaction": args.context_compaction,
+        "observation_token_budget": args.observation_token_budget,
+        "observation_detail_token_budget": args.observation_detail_token_budget,
+        "observation_generic_token_budget": args.observation_generic_token_budget,
+        "observation_search_top_k": args.observation_search_top_k,
     }
     args.summary.parent.mkdir(parents=True, exist_ok=True)
     args.summary.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

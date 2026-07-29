@@ -1,7 +1,13 @@
-# 公开数据说明
+# Data
 
-`shop_tasks.jsonl` 是从 ShopSimulator 导出的 23,421 个公开 task_id 清单，用于确定性选择采集任务；每行只有一个 `task_id`，不含用户画像、奖励或商品库隐藏答案。
+Only the datasets used by the tutorial are kept here.
 
-- SHA-256：`35a5978bba829a6b4196f0e4ce65d5f7d366cc0704469e3b7f8a6d02f50a9dea`
+| Stage | Files | Rows |
+|---|---|---:|
+| SFT | `sft/train.jsonl`, `sft/validation.jsonl` | 379 / 49 |
+| GRPO | `grpo/train.parquet`, `grpo/validation.parquet` | 1000 / 50 |
+| Evaluation | `evaluation/tasks.jsonl` | 200 |
 
-可训练的已验收轨迹快照位于 [../outputs/flash_accepted_500_parallel/sft.jsonl](../outputs/flash_accepted_500_parallel/sft.jsonl)，其格式和数据隔离规则见同目录 README。
+Adjacent `metadata.json` files record SHA256 checksums. Training and evaluation
+task IDs do not overlap. Generated trajectories belong under `outputs/`, never
+under `data/`.

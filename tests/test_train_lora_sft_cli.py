@@ -1,16 +1,18 @@
 """验证 LoRA SFT 入口的关键默认值。"""
 
+import os
 import sys
 import unittest
-import os
 from pathlib import Path
 from unittest.mock import patch
 
 from scripts.train_lora_sft import (
     DEFAULT_TARGET_MODULES,
+    _load_preprocessing_components,
+    _loss_only_eval_trainer_class,
     _model_load_kwargs,
     _prepare_model_for_training,
-    _load_preprocessing_components,
+    _resolve_dtype,
     _swanlab_config,
     parse_args,
 )
@@ -71,6 +73,17 @@ class _FakeModel:
         self.input_grads_enabled = True
 
 
+class _FakeTrainer:
+    def prediction_step(
+        self,
+        model,
+        inputs,
+        prediction_loss_only,
+        ignore_keys=None,
+    ):
+        return model, inputs, prediction_loss_only, ignore_keys
+
+
 class TrainLoraSftCliTest(unittest.TestCase):
     def test_defaults_are_suitable_for_small_qwen_lora_warmup(self):
         with patch.object(
@@ -95,6 +108,8 @@ class TrainLoraSftCliTest(unittest.TestCase):
         self.assertEqual(args.lora_r, 16)
         self.assertEqual(args.lora_alpha, 32)
         self.assertEqual(args.gradient_accumulation_steps, 8)
+        self.assertEqual(args.dtype, "auto")
+        self.assertFalse(args.bf16)
         self.assertFalse(args.swanlab)
         self.assertEqual(args.swanlab_project, "shopping-grpo")
 
@@ -192,6 +207,62 @@ class TrainLoraSftCliTest(unittest.TestCase):
         self.assertEqual(kwargs["quantization_config"].kwargs["bnb_4bit_quant_type"], "nf4")
         self.assertEqual(kwargs["quantization_config"].kwargs["bnb_4bit_compute_dtype"], "bf16")
 
+    def test_dtype_auto_prefers_bf16_then_fp16_and_cpu_fp32(self):
+        class FakeCuda:
+            available = True
+            bf16_supported = True
+
+            @classmethod
+            def is_available(cls):
+                return cls.available
+
+            @classmethod
+            def is_bf16_supported(cls):
+                return cls.bf16_supported
+
+        fake_torch = type(
+            "FakeTorch",
+            (),
+            {
+                "cuda": FakeCuda,
+                "bfloat16": "bf16",
+                "float16": "fp16",
+                "float32": "fp32",
+            },
+        )
+        args = type("Args", (), {"dtype": "auto", "bf16": False})()
+
+        self.assertEqual(_resolve_dtype(args, fake_torch), ("bf16", "bf16"))
+        FakeCuda.bf16_supported = False
+        self.assertEqual(_resolve_dtype(args, fake_torch), ("fp16", "fp16"))
+        FakeCuda.available = False
+        self.assertEqual(_resolve_dtype(args, fake_torch), ("fp32", "fp32"))
+
+    def test_model_revision_is_forwarded_to_loader(self):
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "train_lora_sft.py",
+                "--model",
+                "Qwen/Qwen3.5-2B",
+                "--train",
+                "outputs/train.jsonl",
+                "--output",
+                "outputs/adapter",
+                "--revision",
+                "frozen-revision",
+            ],
+        ):
+            args = parse_args()
+
+        kwargs = _model_load_kwargs(
+            args,
+            dtype="bf16",
+            bits_and_bytes_config=_FakeBitsAndBytesConfig,
+        )
+        self.assertEqual(kwargs["revision"], "frozen-revision")
+
     def test_qlora_prepares_model_before_lora_and_keeps_gradient_checkpointing_compatible(self):
         """量化基座必须先做 PEFT 标准预处理，再由后续 LoRA 注入 adapter。"""
         with patch.object(
@@ -216,6 +287,56 @@ class TrainLoraSftCliTest(unittest.TestCase):
         self.assertIs(result, prepared)
         prepare.assert_called_once_with(model, use_gradient_checkpointing=True)
         self.assertFalse(result.config.use_cache)
+
+    def test_liger_qwen_loss_only_eval_skips_full_vocabulary_logits(self):
+        """纯 eval_loss 必须显式走 Liger fused loss，避免 20K×248K logits。"""
+        trainer_class = _loss_only_eval_trainer_class(
+            _FakeTrainer,
+            enable_skip_logits=True,
+        )
+        original_inputs = {"input_ids": [1, 2], "labels": [1, 2]}
+
+        _, forwarded_inputs, prediction_loss_only, ignore_keys = trainer_class().prediction_step(
+            model="model",
+            inputs=original_inputs,
+            prediction_loss_only=True,
+            ignore_keys=["past_key_values"],
+        )
+
+        self.assertTrue(forwarded_inputs["skip_logits"])
+        self.assertNotIn("skip_logits", original_inputs)
+        self.assertTrue(prediction_loss_only)
+        self.assertEqual(ignore_keys, ["past_key_values"])
+
+    def test_eval_that_needs_predictions_does_not_skip_logits(self):
+        """若调用方需要 predictions/metrics，则仍必须返回真实 logits。"""
+        trainer_class = _loss_only_eval_trainer_class(
+            _FakeTrainer,
+            enable_skip_logits=True,
+        )
+
+        _, forwarded_inputs, _, _ = trainer_class().prediction_step(
+            model="model",
+            inputs={"input_ids": [1, 2], "labels": [1, 2]},
+            prediction_loss_only=False,
+        )
+
+        self.assertNotIn("skip_logits", forwarded_inputs)
+
+    def test_non_liger_training_keeps_standard_eval_forward(self):
+        """未启用兼容的 Liger Qwen forward 时不能传入专用参数。"""
+        trainer_class = _loss_only_eval_trainer_class(
+            _FakeTrainer,
+            enable_skip_logits=False,
+        )
+
+        _, forwarded_inputs, _, _ = trainer_class().prediction_step(
+            model="model",
+            inputs={"input_ids": [1, 2], "labels": [1, 2]},
+            prediction_loss_only=True,
+        )
+
+        self.assertNotIn("skip_logits", forwarded_inputs)
 
 
 if __name__ == "__main__":  # pragma: no cover

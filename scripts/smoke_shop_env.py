@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from shopping_grpo.shop_http_env import ShopAgentEnv
+from shopping_grpo.environment.client import ShopAgentEnv
 
 
 def write_run_result(output_dir, task_id, base_url, steps, reset=None):
@@ -37,7 +37,7 @@ def run_smoke(base_url, task_id, actions, output_dir, env_factory=ShopAgentEnv):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Smoke test ShopSimulator structured API.")
-    parser.add_argument("--base-url", default="http://127.0.0.1:5000")
+    parser.add_argument("--base-url", default="http://127.0.0.1:5700")
     parser.add_argument("--task-id", type=int, default=0)
     parser.add_argument("--actions", nargs="+", default=["search[乳胶枕]"])
     parser.add_argument("--output-dir", type=Path, default=Path("outputs/smoke"))
