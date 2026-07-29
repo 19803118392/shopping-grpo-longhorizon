@@ -4,16 +4,25 @@
 
 **简体中文** · [English](README.en.md)
 
-面向初学者的 Shopping Agent 完整后训练教程
+<br />
 
-`Qwen3.5-2B Baseline → LoRA SFT → veRL GRPO → 统一评估`
+面向长程购物 Agent 的可复现后训练与评测项目
+
+<br />
+
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![LoRA SFT](https://img.shields.io/badge/Post--training-LoRA%20SFT-7B61FF)](docs/sft.md)
+[![veRL](https://img.shields.io/badge/veRL-0.8.0-0E8A16)](https://github.com/verl-project/verl)
+[![ShopSimulator](https://img.shields.io/badge/Environment-ShopSimulator%20v2.1-4C78A8)](https://arxiv.org/pdf/2601.18225)
+[![Benchmark](https://img.shields.io/badge/Benchmark-Frozen%20200--task-F59E0B)](docs/evaluation.md)
+
+<br />
+
+教师轨迹与 LoRA SFT → veRL 在线 GRPO → 冻结 Benchmark 的可审计对比
 
 </div>
 
-这个仓库只保留一条当前可用的主线：克隆项目、准备环境，然后依次完成
-Baseline、SFT、GRPO 和 Evaluation。ShopSimulator 环境、冻结数据集、veRL
-适配代码、训练配置和评估入口都已经放在仓库中，初学者不需要从历史实验或旧版本中
-猜测“应该运行哪一套”。
+![Shopping GRPO project overview](docs/images/project-overview-pipeline.png)
 
 ## ShopSimulator 是什么？
 
@@ -34,9 +43,7 @@ Agent 不能只生成一句“推荐购买某商品”，而是必须真正与�
 [`environments/ShopSimulator/`](environments/ShopSimulator/)，不需要用户再单独
 克隆或修改一份环境仓库。
 
-> **图片预留 1｜环境概览图。** 左侧展示一条包含预算、品牌和规格要求的中文购物
-> 指令；中间展示 Agent 的“搜索 → 查看 → 对比 → 选择规格 → 购买”交互；右侧展示
-> ShopSimulator 商品库、环境状态与终局 Reward。
+![ShopSimulator 环境概览](docs/images/shopsimulator-overview.png)
 
 ## 项目做了什么？
 
@@ -155,23 +162,34 @@ SFT 带来了主要能力提升，让模型学会合法工具调用、长程搜�
 基础上进一步减少错误购买、循环和非法动作。机器可读的训练配置、结果摘要和限制说明
 位于 [`experiments/`](experiments/)。
 
-## 训练硬件、耗时与成本
+## 训练硬件与耗时
 
-以下是本项目训练时使用的单卡配置。成本为端到端约数，后续可以根据最终训练日志和
-云服务账单调整：
+所有训练均使用单张 NVIDIA RTX 6000（96 GB）完成。
 
-| 阶段 | 使用硬件 | 耗时 | 估算成本 |
-|---|---|---:|---:|
-| SFT | RTX 4090 48 GB | 待根据最终日志填写 | 计入总成本 |
-| GRPO | RTX 6000 96 GB | 待根据最终日志填写 | 计入总成本 |
-| 完整流程 | 教师 API + GPU 训练与评估 | 取决于机器和服务商 | 约 50 美元 |
+### SFT LoRA 训练（448 条训练数据，3 个 epoch）
 
-这里的 4090 是 48 GB 显存配置，并非标准零售版 24 GB。RTX 6000 的具体型号、
-各阶段墙钟时间和费用拆分暂时保留为可调整项，避免在核对日志前给出虚假的精确数字。
+| 阶段 | 耗时 | 峰值显存 |
+|---|---:|---:|
+| 单个 epoch（56 步） | ~62 分钟 | 89 GiB |
+| 完整 3 个 epoch | ~3 小时 | 89 GiB |
 
-> **图片预留 3｜训练时间与成本图。** 用一条时间轴展示数据采集、SFT、GRPO 和
-> Final-200 Evaluation；每个阶段标注 GPU 型号、显存、墙钟时间、API/GPU 成本，
-> 右侧汇总总成本约 50 美元。
+### GRPO 训练（veRL 0.8，8 个环境 worker）
+
+| 步数范围 | 单步耗时 | 累计耗时 |
+|---|---:|---:|
+| step 0–24 | ~140 秒/步（含 Ray 启动开销） | ~56 分钟 |
+| step 20–30 稳定后 | ~73–120 秒/步 | ~2 分钟/步稳定态 |
+| 100 步（报告 checkpoint） | ~110 秒/步均值 | ~3–4 小时 |
+| 完整 500 步 | ~100 秒/步 | ~14 小时 |
+
+### 其他环节
+
+| 环节 | 耗时估算 |
+|---|---:|
+| Teacher 采集（604 条 × 7 批） | ~7–14 小时 |
+| 200 任务评测（Base） | ~20 分钟 |
+| 200 任务评测（SFT/GRPO） | ~40–60 分钟 |
+| LLM Judge 评分 200 条轨迹 | ~30–60 分钟 |
 
 ## 环境要求
 
@@ -277,6 +295,8 @@ Reward v3 是一个确定性的终局 Reward，不依赖另一个大模型进行
 - 错误购买、过早放弃、重复循环和达到最大步数都会获得不同负奖励；
 - 证据不足时标记为 `reward_valid=false`，不会伪装成有效的零分样本。
 
+![Reward V3 decision rules](docs/images/reward-v3-decision-rules.png)
+
 完整公式、终止条件和证据要求见 [Reward v3 设计文档](docs/reward-v3.md)。
 
 ## 仓库结构
@@ -343,6 +363,11 @@ bash scripts/grpo.sh --logger swanlab
 [ShopSimulator 论文](https://arxiv.org/pdf/2601.18225)及其开源环境、
 [veRL](https://github.com/verl-project/verl) 和
 [Qwen](https://github.com/QwenLM/Qwen3) 之上。
+
+评测协议和 Benchmark 构建还参考了
+[VitaBench: Benchmarking LLM Agents with Versatile Interactive Tasks in Real-world Applications](https://arxiv.org/pdf/2509.26490)
+以及
+[EComAgentBench: Benchmarking Shopping Agents on Long-Horizon Tasks with Distributed Hidden Intent](https://arxiv.org/pdf/2606.17698)。
 
 仓库结构和教程呈现参考了
 [qiqihezh/agentic-grpo-longhorizon](https://github.com/qiqihezh/agentic-grpo-longhorizon)。

@@ -4,17 +4,26 @@
 
 **English** · [简体中文](README.md)
 
+<br />
+
+Reproducible post-training and evaluation for long-horizon shopping agents
+
+<br />
+
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![LoRA SFT](https://img.shields.io/badge/Post--training-LoRA%20SFT-7B61FF)](docs/sft.md)
+[![veRL](https://img.shields.io/badge/veRL-0.8.0-0E8A16)](https://github.com/verl-project/verl)
+[![ShopSimulator](https://img.shields.io/badge/Environment-ShopSimulator%20v2.1-4C78A8)](https://arxiv.org/pdf/2601.18225)
+[![Benchmark](https://img.shields.io/badge/Benchmark-Frozen%20200--task-F59E0B)](docs/evaluation.md)
+
+<br />
+
+Teacher rollouts and LoRA SFT → online GRPO with veRL → auditable comparison on
+a frozen benchmark
+
 </div>
 
-An end-to-end, beginner-oriented tutorial for post-training a shopping agent:
-
-```text
-Qwen3.5-2B baseline → LoRA SFT → GRPO with veRL → held-out evaluation
-```
-
-The repository ships one supported workflow, one environment contract and the
-datasets needed to reproduce it. Clone it, follow the commands below in order,
-and compare all three models on the same 200 held-out tasks.
+![Shopping GRPO project overview](docs/images/project-overview-pipeline.png)
 
 ## What is ShopSimulator?
 
@@ -32,9 +41,7 @@ The frozen Environment v2.1 source and product archive are embedded under
 [`environments/ShopSimulator/`](environments/ShopSimulator/), so the tutorial
 does not depend on a separately running third-party repository.
 
-> **Reserved figure — Environment overview.** A Chinese shopping request on
-> the left, the agent's Search → Inspect → Select → Buy interaction in the
-> center, and ShopSimulator's product catalog and terminal reward on the right.
+![ShopSimulator overview](docs/images/shopsimulator-overview.png)
 
 ## The four stages
 
@@ -70,6 +77,17 @@ replayed and filtered them through Reward v3, kept 428 gold-purchase
 trajectories, removed private reasoning and retained only observable actions.
 The final split contains 379 training and 49 validation rows. Dataset hashes
 and the complete audit are in [Data collection](docs/data-collection.md).
+
+### How GRPO is trained
+
+GRPO starts from the merged SFT model. veRL generates four online trajectories
+per prompt in ShopSimulator, while deterministic Reward v3 scores the terminal
+purchase, constraint satisfaction and termination behavior. No additional
+LLM-as-a-Judge reward model is used for training.
+
+The repository pins `verl==0.8.0` instead of copying its source. It keeps only
+the project-specific AgentLoop, tool adapter, runtime compatibility code and a
+small SHA-256-checked patch. See the [GRPO guide](docs/grpo.md) for details.
 
 ### How evaluation works
 
@@ -129,24 +147,34 @@ The complete compact summaries and reproduction settings are in
 [`experiments/`](experiments/). These are reported results, not a promise that
 different hardware or dependency versions will produce bit-identical training.
 
-## Hardware, time and cost
+## Training hardware and time
 
-The reported run used the following single-GPU setup. Cost is a rough
-end-to-end estimate and should be replaced with the final provider invoice.
+All training used a single NVIDIA RTX 6000 with 96 GB of GPU memory.
 
-| Stage | Hardware | Time | Approximate cost |
-|---|---|---:|---:|
-| SFT | RTX 4090 48 GB | To be filled from the final log | Included below |
-| GRPO | RTX 6000 96 GB | To be filled from the final log | Included below |
-| Full workflow | Teacher API + GPU compute | Hardware/provider dependent | about USD 50 |
+### LoRA SFT training (448 training examples, 3 epochs)
 
-The 4090 was a 48 GB configuration rather than a standard retail 24 GB card.
-The exact RTX 6000 model name, elapsed times and per-stage split are deliberately
-left editable until the final billing and training logs are reconciled.
+| Stage | Time | Peak GPU memory |
+|---|---:|---:|
+| One epoch (56 steps) | ~62 min | 89 GiB |
+| Full 3-epoch training | ~3 h | 89 GiB |
 
-> **Reserved figure — Cost and training timeline.** A horizontal timeline for
-> data collection, SFT, GRPO and final evaluation, annotated with GPU type,
-> wall-clock hours and cost for each stage.
+### GRPO training (veRL 0.8, 8 environment workers)
+
+| Step range | Per-step time | Cumulative time |
+|---|---:|---:|
+| steps 0–24 | ~140 s/step, including Ray startup | ~56 min |
+| stable steps 20–30 | ~73–120 s/step | ~2 min/step in the steady state |
+| 100 steps (reported checkpoint) | ~110 s/step on average | ~3–4 h |
+| Full 500 steps | ~100 s/step | ~14 h |
+
+### Other stages
+
+| Stage | Estimated time |
+|---|---:|
+| Teacher collection (604 trajectories × 7 batches) | ~7–14 h |
+| 200-task evaluation (Base) | ~20 min |
+| 200-task evaluation (SFT/GRPO) | ~40–60 min |
+| LLM Judge scoring for 200 trajectories | ~30–60 min |
 
 ## Requirements
 
@@ -243,6 +271,27 @@ bash scripts/evaluate.sh grpo
 Generated checkpoints, rollouts and logs are written under `outputs/`, which is
 ignored by Git.
 
+## Reward V3 overview
+
+Reward v3 is a deterministic terminal reward; it does not rely on another
+language model for subjective judgment:
+
+- category and budget are hard gates;
+- brand, model, core functions and key options use weights of
+  `0.35 / 0.25 / 0.25 / 0.15`;
+- an exact target purchase with full satisfaction receives `1.0`;
+- a fully satisfying alternative item receives `0.55`;
+- partial satisfaction receives a continuous score capped at `0.25`;
+- wrong purchases, premature abstention, repeat loops and maximum-step
+  termination receive distinct negative rewards;
+- insufficient evidence sets `reward_valid=false`, rather than being treated as
+  a valid neutral zero.
+
+![Reward V3 decision rules](docs/images/reward-v3-decision-rules.png)
+
+The complete formula, termination rules and evidence requirements are in the
+[Reward v3 design guide](docs/reward-v3.md).
+
 ## Repository map
 
 ```text
@@ -314,6 +363,11 @@ This tutorial builds on the
 [ShopSimulator paper](https://arxiv.org/pdf/2601.18225) and source project,
 [veRL](https://github.com/verl-project/verl), and
 [Qwen](https://github.com/QwenLM/Qwen3).
+
+The evaluation protocol and Benchmark construction were also informed by
+[VitaBench: Benchmarking LLM Agents with Versatile Interactive Tasks in Real-world Applications](https://arxiv.org/pdf/2509.26490)
+and
+[EComAgentBench: Benchmarking Shopping Agents on Long-Horizon Tasks with Distributed Hidden Intent](https://arxiv.org/pdf/2606.17698).
 
 The repository organization and tutorial presentation were informed by
 [qiqihezh/agentic-grpo-longhorizon](https://github.com/qiqihezh/agentic-grpo-longhorizon).
