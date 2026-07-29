@@ -60,6 +60,8 @@ class OpenAIJSONClient:
         retries: int = 2,
         retry_delay_seconds: float = 2,
         response_format_json: bool = False,
+        thinking: bool = False,
+        reasoning_effort: str = "high",
         transport: Callable | None = None,
     ):
         if not str(model).strip():
@@ -80,6 +82,8 @@ class OpenAIJSONClient:
         self.retries = int(retries)
         self.retry_delay_seconds = float(retry_delay_seconds)
         self.response_format_json = bool(response_format_json)
+        self.thinking = bool(thinking)
+        self.reasoning_effort = str(reasoning_effort)
         self.transport = transport
 
     def _request_payload(self, messages: list[Mapping]) -> dict:
@@ -91,7 +95,13 @@ class OpenAIJSONClient:
             "max_tokens": self.max_tokens,
         }
         if self.model.casefold().startswith("deepseek-v4"):
-            payload["thinking"] = {"type": "disabled"}
+            if self.thinking:
+                payload["thinking"] = {"type": "enabled"}
+                payload["reasoning_effort"] = self.reasoning_effort
+                payload.pop("temperature", None)
+                payload.pop("top_p", None)
+            else:
+                payload["thinking"] = {"type": "disabled"}
         if self.response_format_json:
             payload["response_format"] = {"type": "json_object"}
         return payload
@@ -185,6 +195,10 @@ class OpenAIJSONClient:
                 "provider_request_id": response.get("id"),
                 "provider_model": response.get("model") or self.model,
                 "requested_model": self.model,
+                "requested_thinking": self.thinking,
+                "requested_reasoning_effort": (
+                    self.reasoning_effort if self.thinking else None
+                ),
                 "attempts": attempts,
                 "retry_http_statuses": retry_http_statuses,
                 "retry_wait_seconds": retry_wait_seconds,
@@ -201,6 +215,8 @@ def client_from_environment(
     timeout: float = 120,
     retries: int = 2,
     response_format_json: bool = False,
+    thinking: bool = False,
+    reasoning_effort: str = "high",
 ) -> OpenAIJSONClient:
     """Use the same environment-variable convention as Teacher collection."""
 
@@ -218,4 +234,6 @@ def client_from_environment(
         timeout=timeout,
         retries=retries,
         response_format_json=response_format_json,
+        thinking=thinking,
+        reasoning_effort=reasoning_effort,
     )

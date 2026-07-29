@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from copy import deepcopy
 import hashlib
 import json
 import re
+from collections.abc import Mapping
+from copy import deepcopy
 
 from shopping_grpo.evaluation.contracts import (
     RUBRIC_SCHEMA_VERSION,
@@ -15,10 +15,9 @@ from shopping_grpo.evaluation.contracts import (
     validate_rubric_bundle,
 )
 
-
 TASK_FACTS_VERSION = "shopping-task-facts-v1"
 RUBRIC_CANDIDATE_VERSION = "shopping-rubric-candidates-v1"
-RUBRIC_EXTRACTOR_VERSION = "shopping-rubric-extractor-v1"
+RUBRIC_EXTRACTOR_VERSION = "shopping-rubric-extractor-v3"
 
 _NUMBER = r"(\d+(?:\.\d+)?)\s*(万|千|[kK])?"
 _UPPER_PREFIX = re.compile(
@@ -42,6 +41,17 @@ _RANGE = re.compile(
 )
 _AROUND = re.compile(
     rf"(?:预算|价格)?(?:控制)?在?\s*{_NUMBER}\s*元?\s*(?:左右|上下)"
+)
+_WAN_SHORTHAND = r"(\d+(?:\.\d+)?)\s*万\s*(\d+(?:\.\d+)?)\s*(千)?"
+_WAN_UPPER_PREFIX = re.compile(
+    rf"(?:预算|价格)?\s*"
+    rf"(?:控制在?|要|得|需|需要)?\s*"
+    rf"(?:不超过|不要超过|别超|不能超过|不得超过|不可超过|"
+    rf"不高于|最高|至多|封顶(?:在)?)\s*"
+    rf"{_WAN_SHORTHAND}\s*元?"
+)
+_WAN_UPPER_SUFFIX = re.compile(
+    rf"{_WAN_SHORTHAND}\s*元?\s*(?:以内|以下|之内)"
 )
 
 
@@ -80,6 +90,20 @@ def _scaled(number: str, unit: str | None) -> float:
     return value
 
 
+def _scaled_wan_shorthand(
+    major: str,
+    tail: str,
+    tail_unit: str | None,
+) -> float:
+    """Parse colloquial forms such as ``1万2`` and ``1万2千`` as 12,000."""
+
+    value = float(major) * 10000
+    remainder = float(tail)
+    if tail_unit == "千" or remainder < 10:
+        remainder *= 1000
+    return value + remainder
+
+
 def _span(query: str, start: int, end: int) -> dict:
     return {"text": query[start:end], "start": start, "end": end}
 
@@ -89,7 +113,7 @@ def _exact_spans(query: str, value: str) -> list[dict]:
         return []
     return [
         _span(query, match.start(), match.end())
-        for match in re.finditer(re.escape(value), query, flags=re.I)
+        for match in re.finditer(re.escape(value), query, flags=re.IGNORECASE)
     ]
 
 
@@ -106,6 +130,36 @@ def extract_price_candidates(query: str) -> list[dict]:
             for previous_start, previous_end in occupied
         )
 
+    for pattern in (_WAN_UPPER_PREFIX, _WAN_UPPER_SUFFIX):
+        for match in pattern.finditer(query):
+            if overlaps(match):
+                continue
+            value = _scaled_wan_shorthand(
+                match.group(1),
+                match.group(2),
+                match.group(3),
+            )
+            if value <= 0:
+                continue
+            occupied.append((match.start(), match.end()))
+            candidates.append(
+                {
+                    "constraint_type": "budget_upper",
+                    "description_hint": f"价格不应超过{value:g}元",
+                    "field_path": "purchase.price",
+                    "operator": "lte",
+                    "expected_value": {
+                        "value": value,
+                        "currency": "CNY",
+                    },
+                    "hardness_hint": "hard",
+                    "hardness_source": "explicit_upper_budget_rule",
+                    "query_spans": [
+                        _span(query, match.start(), match.end())
+                    ],
+                    "data_sources": ["query"],
+                }
+            )
     for match in _RANGE.finditer(query):
         low = _scaled(match.group(1), match.group(2))
         high = _scaled(match.group(3), match.group(4))
@@ -295,6 +349,9 @@ def extract_rubric_candidates(task_facts: object) -> dict:
                 "hardness_source": "explicit_category_rule",
                 "query_spans": _exact_spans(query, leaf),
                 "data_sources": ["task.target_product.category", "query"],
+                "selection_guidance": (
+                    "Query 明确请求该商品类型或无歧义同义品类时应选。"
+                ),
             }
         )
 
@@ -310,6 +367,10 @@ def extract_rubric_candidates(task_facts: object) -> dict:
                 "hardness_source": "explicit_brand_rule",
                 "query_spans": _exact_spans(query, value),
                 "data_sources": ["reward_features.expected_brand", "query"],
+                "selection_guidance": (
+                    "仅当 Query 要求所购商品本身属于该品牌时选择；兼容/适用于"
+                    "某品牌、或与品牌值同名的商品品类词都不是品牌要求。"
+                ),
             }
         )
     for value in _clean_list(reward.get("expected_model")):
@@ -343,6 +404,10 @@ def extract_rubric_candidates(task_facts: object) -> dict:
                 "hardness_source": "explicit_core_function_rule",
                 "query_spans": _exact_spans(query, value),
                 "data_sources": ["instruction.attributes", "query"],
+                "selection_guidance": (
+                    "Query 明确表达相同功能、适用人群、使用场景或无歧义同义"
+                    "要求时应选；同一含义有多个候选时只选最具体者。"
+                ),
             }
         )
 
@@ -380,6 +445,11 @@ def extract_rubric_candidates(task_facts: object) -> dict:
                             "target_product.customization_options",
                             "query",
                         ],
+                        "selection_guidance": (
+                            "Query 明确要求该选项或其中组合规格时选择；如果值引入"
+                            "用户未要求的品牌、型号、数量或实质规格则拒绝。纯营销"
+                            "标签可忽略，但其余内容必须能唯一承载 Query 的组合要求。"
+                        ),
                     }
                 )
     else:
@@ -492,12 +562,6 @@ def materialize_rubric_bundle(
     for selected in response["selected_constraints"]:
         candidate = by_id[selected["candidate_id"]]
         hardness = selected["hardness"]
-        hint = candidate.get("hardness_hint")
-        if hint in {"hard", "soft"} and hardness not in {hint, "needs_review"}:
-            raise ContractValidationError(
-                f"candidate {selected['candidate_id']} has deterministic "
-                f"hardness {hint!r}, but curator returned {hardness!r}"
-            )
         quote_spans = _spans_from_quote(query, selected.get("query_quote", ""))
         if selected.get("query_quote") and not quote_spans:
             raise ContractValidationError(

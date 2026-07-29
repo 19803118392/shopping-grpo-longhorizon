@@ -281,6 +281,11 @@ def _rubric_bundle():
                 if candidate["query_spans"]
                 else ""
             )
+            if not quote:
+                if candidate["constraint_type"] == "category":
+                    quote = "洁牙机"
+                else:
+                    quote = str(candidate["expected_value"])
             selected.append(
                 {
                     "candidate_id": candidate["candidate_id"],
@@ -295,7 +300,7 @@ def _rubric_bundle():
         candidates=candidates,
         curator_response={"selected_constraints": selected},
         curator_model="deepseek-v4-flash",
-        curator_prompt_version="rubric-curator-v1-draft",
+        curator_prompt_version="rubric-curator-v1-draft-r4",
         rubric_version="task-rubric-v1",
     )
 
@@ -478,6 +483,22 @@ class RubricTest(unittest.TestCase):
         self.assertEqual(len(candidates), 1)
         self.assertEqual(candidates[0]["operator"], "gte")
         self.assertEqual(candidates[0]["expected_value"]["value"], 300.0)
+
+    def test_price_parser_understands_colloquial_wan_upper_budget(self):
+        for query in (
+            "预算1万2以内",
+            "预算1万2千以内",
+            "预算1万2000以内",
+            "预算不超过1万2",
+        ):
+            with self.subTest(query=query):
+                candidates = extract_price_candidates(query)
+                self.assertEqual(len(candidates), 1)
+                self.assertEqual(candidates[0]["operator"], "lte")
+                self.assertEqual(
+                    candidates[0]["expected_value"]["value"],
+                    12000.0,
+                )
 
     def test_candidate_extractor_resolves_option_without_creating_fields(self):
         candidates = extract_rubric_candidates(_task_facts())["candidates"]
@@ -1075,6 +1096,38 @@ class ModelClientTest(unittest.TestCase):
         )
         self.assertEqual(response["metadata"]["usage"]["total_tokens"], 12)
         self.assertNotIn("private-key", json.dumps(response))
+
+    def test_json_client_can_enable_audited_deepseek_thinking(self):
+        captured = {}
+
+        def transport(url, payload, headers, timeout):
+            del url, headers, timeout
+            captured.update(payload)
+            return {
+                "choices": [{"message": {"content": "{}"}}],
+            }
+
+        client = OpenAIJSONClient(
+            model="deepseek-v4-flash",
+            base_url="https://provider.example/v1",
+            api_key="private-key",
+            thinking=True,
+            reasoning_effort="high",
+            transport=transport,
+        )
+        response = client.complete_json(
+            [{"role": "user", "content": "return json"}]
+        )
+
+        self.assertEqual(captured["thinking"], {"type": "enabled"})
+        self.assertEqual(captured["reasoning_effort"], "high")
+        self.assertNotIn("temperature", captured)
+        self.assertNotIn("top_p", captured)
+        self.assertTrue(response["metadata"]["requested_thinking"])
+        self.assertEqual(
+            response["metadata"]["requested_reasoning_effort"],
+            "high",
+        )
 
     def test_json_client_rejects_markdown_or_non_json_content(self):
         client = OpenAIJSONClient(

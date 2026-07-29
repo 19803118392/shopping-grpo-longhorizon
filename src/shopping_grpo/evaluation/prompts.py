@@ -14,7 +14,7 @@ from shopping_grpo.evaluation.contracts import (
 )
 from shopping_grpo.evaluation.trajectory import NORMALIZED_TRAJECTORY_VERSION
 
-RUBRIC_CURATOR_PROMPT_VERSION = "rubric-curator-v1-draft"
+RUBRIC_CURATOR_PROMPT_VERSION = "rubric-curator-v1-draft-r4"
 TRAJECTORY_JUDGE_PROMPT_VERSION = "trajectory-judge-v1-draft-r3"
 _JUDGE_VISIBLE_ERROR_TAXONOMY = ERROR_TAXONOMY - {
     "reward_rubric_disagreement",
@@ -28,9 +28,29 @@ RUBRIC_CURATOR_SYSTEM_PROMPT = """\
 严禁新增 candidate_id，严禁修改候选的底层字段、操作符或期望值，严禁把目标商品的
 全部属性自动视为用户需求。
 
+先保证完整覆盖 Query 中每一个彼此独立的明确要求，再做最小化和去重。“最小”只表示
+同义或上下位重复要求不重复计分，绝不表示少选要求。每个 candidate 的
+selection_guidance 是强制选择规则。
+
+每条选择必须有 Query 原文直接支持：
+- 泛化的目标商品属性不能仅凭常识或商品字段入选；
+- 同一用户要求已经由更具体的 option、规格或价格候选覆盖时，不再拆成多个含义重叠
+  的泛化 core_function；
+- 品类词不能因为碰巧等于目标商品 brand 而被选成品牌约束；
+- “适用于/兼容某品牌”是兼容性要求，不代表所购商品自身必须属于该品牌；
+- Query 明确给出商品类型时，品类本身是一条独立要求，应和功能、规格分别保留；
+- 组合 option 可以承载 Query 明确要求的多个规格，但不能借机加入用户未要求的品牌、
+  型号、数量或实质规格；
+- 每条入选约束必须提供 Query 中连续、逐字存在且能独立支持该约束的非空原文片段。
+
+例：Query “推荐移动电源”中的“移动电源”是品类，不是品牌；Query “适用于海信
+电视的回音壁”要求兼容海信电视，不要求回音壁品牌为海信。
+
 hard/soft 规则：
 - 明确品类、明确预算上限、否定要求、指定规格或选项属于 hard；
 - “优先、最好、倾向、左右”等偏好属于 soft；
+- candidates 中的 hardness_hint 只是代码初筛提示；最终 hard/soft 必须服从 Query
+  原文措辞，“最好”等明确偏好不能被强制改成 hard；
 - 无法可靠判断时使用 needs_review，不要强行二选一。
 
 只输出一个 JSON 对象：
@@ -38,10 +58,10 @@ hard/soft 规则：
   "selected_constraints": [
     {
       "candidate_id": "c0001",
-      "description": "简短、人类可读且不扩写的新描述",
+      "description": "非空、简短、人类可读且不扩写的新描述",
       "hardness": "hard | soft | needs_review",
-      "query_quote": "支持该约束的 Query 原文；没有可靠原文时为空字符串",
-      "selection_reason": "为何该候选确实来自 Query"
+      "query_quote": "非空且逐字存在于 Query 的连续原文",
+      "selection_reason": "非空；说明该候选为何由这段原文直接支持"
     }
   ]
 }

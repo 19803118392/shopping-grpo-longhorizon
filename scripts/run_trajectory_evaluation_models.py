@@ -4,8 +4,8 @@
 from __future__ import annotations
 
 import argparse
-from copy import deepcopy
 import json
+from copy import deepcopy
 from pathlib import Path
 
 from shopping_grpo.evaluation.artifacts import (
@@ -16,8 +16,9 @@ from shopping_grpo.evaluation.artifacts import (
 )
 from shopping_grpo.evaluation.blind_guard import guard_blind_final
 from shopping_grpo.evaluation.contracts import (
-    validate_rubric_bundle,
+    ContractValidationError,
     validate_judge_result,
+    validate_rubric_bundle,
 )
 from shopping_grpo.evaluation.model_client import (
     DEFAULT_FLASH_MODEL,
@@ -46,7 +47,47 @@ def _client(args: argparse.Namespace):
         timeout=args.timeout,
         retries=args.retries,
         response_format_json=args.response_format_json,
+        thinking=args.thinking,
+        reasoning_effort=args.reasoning_effort,
     )
+
+
+def _repair_messages(
+    original_messages: list[dict],
+    invalid_result: dict,
+    error: ContractValidationError,
+) -> list[dict]:
+    """Ask for one schema-only repair without relaxing the frozen contract."""
+
+    return [
+        *deepcopy(original_messages),
+        {
+            "role": "assistant",
+            "content": json.dumps(
+                invalid_result,
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                "上一个 JSON 未通过固定 schema 校验："
+                f"{error}。请严格遵守原始任务和 schema，只输出修正后的完整 JSON；"
+                "不要解释，不要添加原 schema 之外的字段。"
+            ),
+        },
+    ]
+
+
+def _audit_with_validation_retries(
+    metadata: dict,
+    failures: list[dict],
+) -> dict:
+    audit = deepcopy(metadata)
+    audit["validation_attempts"] = len(failures) + 1
+    audit["validation_failures"] = failures
+    return audit
 
 
 def _existing_output(
@@ -104,6 +145,7 @@ def curate_rubrics(args: argparse.Namespace) -> None:
             expected_task_id=int(task_id),
         )
         generation = validated["generation"]
+        audit = validated.get("curator_audit") or {}
         if (
             generation["curator_model"] != args.model
             or generation["curator_prompt_version"]
@@ -115,6 +157,9 @@ def curate_rubrics(args: argparse.Namespace) -> None:
             != str(task_facts[task_id]["query_hash"])
             or generation["extractor_version"]
             != str(candidates[task_id]["extractor_version"])
+            or audit.get("requested_thinking") is not args.thinking
+            or audit.get("requested_reasoning_effort")
+            != (args.reasoning_effort if args.thinking else None)
         ):
             raise ArtifactError(
                 f"cached Rubric version mismatch for task_id={task_id}"
@@ -137,16 +182,44 @@ def curate_rubrics(args: argparse.Namespace) -> None:
         )
         if client is None:
             client = _client(args)
-        completion = client.complete_json(messages)
-        bundle = materialize_rubric_bundle(
-            task_facts=facts,
-            candidates=candidate_bundle,
-            curator_response=completion["result"],
-            curator_model=args.model,
-            curator_prompt_version=RUBRIC_CURATOR_PROMPT_VERSION,
-            rubric_version=args.rubric_version,
+        request_messages = messages
+        validation_failures = []
+        for validation_attempt in range(args.validation_retries + 1):
+            completion = client.complete_json(request_messages)
+            try:
+                bundle = materialize_rubric_bundle(
+                    task_facts=facts,
+                    candidates=candidate_bundle,
+                    curator_response=completion["result"],
+                    curator_model=args.model,
+                    curator_prompt_version=RUBRIC_CURATOR_PROMPT_VERSION,
+                    rubric_version=args.rubric_version,
+                )
+                break
+            except ContractValidationError as exc:
+                validation_failures.append(
+                    {
+                        "attempt": validation_attempt + 1,
+                        "error": str(exc),
+                        "response_hash": stable_hash(
+                            completion["result"]
+                        ),
+                        "provider_request_id": completion[
+                            "metadata"
+                        ].get("provider_request_id"),
+                    }
+                )
+                if validation_attempt >= args.validation_retries:
+                    raise
+                request_messages = _repair_messages(
+                    messages,
+                    completion["result"],
+                    exc,
+                )
+        bundle["curator_audit"] = _audit_with_validation_retries(
+            completion["metadata"],
+            validation_failures,
         )
-        bundle["curator_audit"] = completion["metadata"]
         bundle["curator_raw_response"] = deepcopy(completion["result"])
         append_jsonl_fsync(args.output, bundle)
         written += 1
@@ -181,6 +254,9 @@ def run_judge(args: argparse.Namespace) -> None:
         if result.get("judge_status") != "not_judged" and (
             audit.get("requested_model") != args.model
             or prompt_version != TRAJECTORY_JUDGE_PROMPT_VERSION
+            or audit.get("requested_thinking") is not args.thinking
+            or audit.get("requested_reasoning_effort")
+            != (args.reasoning_effort if args.thinking else None)
         ):
             raise ArtifactError(
                 f"cached Judge version mismatch for {trajectory_id}"
@@ -254,18 +330,46 @@ def run_judge(args: argparse.Namespace) -> None:
             )
         if client is None:
             client = _client(args)
-        completion = client.complete_json(messages)
-        result = validate_judge_result(
-            completion["result"],
-            rubric_ids=rubric_ids,
-            expected_task_id=task_id,
-            expected_trajectory_id=trajectory_id,
-            allowed_event_ids=event_ids,
-        )
+        request_messages = messages
+        validation_failures = []
+        for validation_attempt in range(args.validation_retries + 1):
+            completion = client.complete_json(request_messages)
+            try:
+                result = validate_judge_result(
+                    completion["result"],
+                    rubric_ids=rubric_ids,
+                    expected_task_id=task_id,
+                    expected_trajectory_id=trajectory_id,
+                    allowed_event_ids=event_ids,
+                )
+                break
+            except ContractValidationError as exc:
+                validation_failures.append(
+                    {
+                        "attempt": validation_attempt + 1,
+                        "error": str(exc),
+                        "response_hash": stable_hash(
+                            completion["result"]
+                        ),
+                        "provider_request_id": completion[
+                            "metadata"
+                        ].get("provider_request_id"),
+                    }
+                )
+                if validation_attempt >= args.validation_retries:
+                    raise
+                request_messages = _repair_messages(
+                    messages,
+                    completion["result"],
+                    exc,
+                )
         result["judge_prompt_version"] = TRAJECTORY_JUDGE_PROMPT_VERSION
         result["judge_model"] = args.model
         result["judge_request_hash"] = request_hash
-        result["judge_audit"] = completion["metadata"]
+        result["judge_audit"] = _audit_with_validation_retries(
+            completion["metadata"],
+            validation_failures,
+        )
         result["judge_raw_response"] = deepcopy(completion["result"])
         append_jsonl_fsync(args.output, result)
         written += 1
@@ -294,7 +398,19 @@ def _model_arguments(
     parser.add_argument("--max-tokens", type=int, default=default_max_tokens)
     parser.add_argument("--timeout", type=float, default=120)
     parser.add_argument("--retries", type=int, default=2)
+    parser.add_argument(
+        "--validation-retries",
+        type=int,
+        default=2,
+        help="JSON 已解析但未通过固定 schema 时的有限修复次数",
+    )
     parser.add_argument("--response-format-json", action="store_true")
+    parser.add_argument(
+        "--thinking",
+        action="store_true",
+        help="为 DeepSeek V4 显式启用 thinking",
+    )
+    parser.add_argument("--reasoning-effort", default="high")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
@@ -339,6 +455,8 @@ def main() -> None:
         raise SystemExit("--max-tokens must be positive")
     if args.retries < 0:
         raise SystemExit("--retries cannot be negative")
+    if args.validation_retries < 0:
+        raise SystemExit("--validation-retries cannot be negative")
     if args.limit is not None and args.limit < 1:
         raise SystemExit("--limit must be positive")
     args.handler(args)

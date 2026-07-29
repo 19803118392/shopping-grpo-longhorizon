@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
 
-
 CONTRACT_VERSION = "shopping-trajectory-evaluation-v1"
 RUBRIC_SCHEMA_VERSION = "shopping-requirement-rubric-v1"
 JUDGE_SCHEMA_VERSION = "shopping-trajectory-judge-v1"
@@ -219,9 +218,7 @@ def validate_curator_response(
             raise ContractValidationError(
                 f"{path}.hardness must be one of {sorted(RUBRIC_HARDNESS)}"
             )
-        quote = item.get("query_quote")
-        if quote is not None and not isinstance(quote, str):
-            raise ContractValidationError(f"{path}.query_quote must be a string")
+        _nonempty_text(item.get("query_quote"), f"{path}.query_quote")
         _nonempty_text(
             item.get("selection_reason"), f"{path}.selection_reason"
         )
