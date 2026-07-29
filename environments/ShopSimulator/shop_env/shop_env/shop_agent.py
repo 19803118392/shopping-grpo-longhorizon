@@ -44,11 +44,10 @@ def _handle_reset_action(env: Any, env_idx: int, task_idx: Optional[int]) -> Dic
         'environment_version': getattr(
             env.server,
             "environment_version",
-            "shopsimulator-environment-v1",
+            "shopsimulator-environment-v2.1",
         ),
+        "observation_state": env.structured_observation(),
     }
-    if getattr(env, "environment_v2", False):
-        return_info["observation_state"] = env.structured_observation()
     if hasattr(env, 'user_persona') and env.user_persona is not None:
         return_info['user_persona'] = env.user_persona
         return_info['reason_key'] = env.reason_key
@@ -148,10 +147,9 @@ def _handle_interact_action(
         "reward_detail": reward_detail,
         "purchase": purchase,
         "goal": goal,
-        "over": len(env.history) > MAX_HISTORY_LENGTH or done
+        "over": len(env.history) > MAX_HISTORY_LENGTH or done,
+        "observation_state": env.structured_observation(),
     }
-    if getattr(env, "environment_v2", False):
-        return_info["observation_state"] = env.structured_observation()
     if done:
         return_info["termination_reason"] = status.get(
             "termination_reason", "environment_done"

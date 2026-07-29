@@ -4,7 +4,7 @@ from typing import Optional, Any
 
 
 # API endpoint URL
-API_URL = "http://127.0.0.1:5000/api/shop_agent"
+API_URL = "http://127.0.0.1:5700/api/shop_agent"
 
 def init_shop_env(
     action: str,

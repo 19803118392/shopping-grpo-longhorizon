@@ -41,7 +41,7 @@ def _schema(name, description, properties=None, required=None):
     }
 
 
-SHOP_TOOL_SCHEMAS = [
+_INTERACTION_TOOL_SCHEMAS = [
     _schema(
         "search_products",
         "仅当最新 observation 显示“搜索功能是否可用: True”时搜索。query 应简洁，包含品类和最有区分度的品牌、型号、功能或规格；不得重复相同查询或机械复制整段需求。",
@@ -79,7 +79,7 @@ SHOP_TOOL_SCHEMAS = [
     ),
 ]
 
-FINISH_WITHOUT_PURCHASE_SCHEMA = _schema(
+_FINISH_WITHOUT_PURCHASE_SCHEMA = _schema(
     "finish_without_purchase",
     "主动结束且不购买，这不是成功。经过多次有实质差异的搜索和多个候选核验，仍没有可接受商品，并且当前没有明显值得继续核验的候选时调用；是否达到资格由环境判断。",
     {
@@ -90,8 +90,8 @@ FINISH_WITHOUT_PURCHASE_SCHEMA = _schema(
     },
     ["reason"],
 )
-SHOP_TOOL_SCHEMAS_V2 = [
-    *SHOP_TOOL_SCHEMAS[:-1],
-    FINISH_WITHOUT_PURCHASE_SCHEMA,
-    SHOP_TOOL_SCHEMAS[-1],
+SHOP_TOOL_SCHEMAS = [
+    *_INTERACTION_TOOL_SCHEMAS[:-1],
+    _FINISH_WITHOUT_PURCHASE_SCHEMA,
+    _INTERACTION_TOOL_SCHEMAS[-1],
 ]

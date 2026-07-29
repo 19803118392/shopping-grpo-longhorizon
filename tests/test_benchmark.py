@@ -1,8 +1,8 @@
-"""验证固定 benchmark 的划分与统计口径。"""
+"""验证固定评测集的统计口径。"""
 
 import unittest
 
-from shopping_grpo.benchmark import build_benchmark_manifest, summarize_trajectories
+from shopping_grpo.evaluation.summary import summarize_trajectories
 
 
 def _trajectory(task_id, strict=False, steps=3, status="done", blocked=None):
@@ -27,19 +27,6 @@ def _trajectory(task_id, strict=False, steps=3, status="done", blocked=None):
 
 
 class BenchmarkTest(unittest.TestCase):
-    def test_manifest_is_deterministic_and_excludes_sft_tasks(self):
-        """benchmark task 必须固定，且不能与冷启动 SFT task 泄漏重合。"""
-        first = build_benchmark_manifest(
-            all_task_ids=range(20), excluded_task_ids={1, 3, 5}, size=8, seed=20260720
-        )
-        second = build_benchmark_manifest(
-            all_task_ids=range(20), excluded_task_ids={1, 3, 5}, size=8, seed=20260720
-        )
-
-        self.assertEqual(first, second)
-        self.assertEqual(len(first), 8)
-        self.assertFalse({row["task_id"] for row in first} & {1, 3, 5})
-
     def test_summary_uses_expected_tasks_as_v3_strict_success_denominator(self):
         """缺失或非严格成功 task 都计入失败，避免只统计已跑完的容易样本。"""
         summary = summarize_trajectories(

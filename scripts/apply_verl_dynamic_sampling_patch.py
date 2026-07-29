@@ -15,8 +15,6 @@ from pathlib import Path
 
 EXPECTED_VERL_VERSION = "0.8.0"
 EXPECTED_ORIGINAL_SHA256 = "de58d295cf86656a28196b0718168d4a11666f3e30957b7e166914496c2a6d66"
-LEGACY_PATCHED_SHA256 = "0df3d063eb4404ee9ad97b00706b22a15bbc933ecdf6f65f15a2a2e033bd84d8"
-V2_PATCHED_SHA256 = "c46d6ef87127c35750ad25352d8162edbf2442874d15de1cfe5ced6a59130c7d"
 EXPECTED_PATCHED_SHA256 = "5e09b68adb1084b5cb621ef895fc3ba8e2bd463258a3333a45c9bdbb177a1d90"
 PATCH_MARKER = "SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V3"
 BACKUP_SUFFIX = ".shopping-grpo-dynamic-sampling.orig"
@@ -42,11 +40,9 @@ def resolve_installed_ray_trainer() -> Path:
     import verl
 
     verl_source = Path(verl.__file__).resolve()
-    source_text = str(verl_source)
-    if ".venv-grpo-v080" not in verl_source.parts:
-        raise RuntimeError(f"verl.__file__ is not from .venv-grpo-v080: {verl_source}")
-    if "agentic-grpo-longhorizon" in source_text:
-        raise RuntimeError(f"reference veRL fork is not allowed: {verl_source}")
+    expected_environment = (PROJECT_ROOT / ".venv").resolve()
+    if not verl_source.is_relative_to(expected_environment):
+        raise RuntimeError(f"verl.__file__ is not from the project environment: {verl_source}")
 
     target = verl_source.parent / "trainer" / "ppo" / "ray_trainer.py"
     if not target.is_file():
@@ -82,11 +78,7 @@ def apply_patch(target: Path) -> None:
         verify_patched(target)
         print(f"veRL dynamic-sampling patch already applied: {target}")
         return
-    upgrading_existing_patch = target_hash in {
-        LEGACY_PATCHED_SHA256,
-        V2_PATCHED_SHA256,
-    }
-    if target_hash != EXPECTED_ORIGINAL_SHA256 and not upgrading_existing_patch:
+    if target_hash != EXPECTED_ORIGINAL_SHA256:
         raise RuntimeError(
             "refusing to patch unknown ray_trainer.py: "
             f"expected original SHA256 {EXPECTED_ORIGINAL_SHA256}, got {target_hash}"
@@ -102,19 +94,9 @@ def apply_patch(target: Path) -> None:
     if backup.exists() and sha256(backup) != EXPECTED_ORIGINAL_SHA256:
         raise RuntimeError(f"refusing to overwrite invalid backup: {backup}")
     if not backup.exists():
-        if upgrading_existing_patch:
-            raise RuntimeError(
-                "cannot upgrade an older dynamic-sampling patch without its "
-                f"verified original backup: {backup}"
-            )
         shutil.copy2(target, backup)
 
     rollback_source = backup
-    legacy_temp = target.with_name(target.name + ".shopping-grpo-legacy.tmp")
-    if upgrading_existing_patch:
-        shutil.copy2(target, legacy_temp)
-        shutil.copy2(backup, target)
-        rollback_source = legacy_temp
 
     try:
         subprocess.run(
@@ -126,9 +108,6 @@ def apply_patch(target: Path) -> None:
     except Exception:
         shutil.copy2(rollback_source, target)
         raise
-    finally:
-        if legacy_temp.exists():
-            legacy_temp.unlink()
 
     print(f"applied veRL dynamic-sampling patch: {target}")
     print(f"backup: {backup}")

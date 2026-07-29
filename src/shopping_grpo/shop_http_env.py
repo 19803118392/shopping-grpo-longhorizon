@@ -4,6 +4,8 @@ import json
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from shopping_grpo import __version__
+
 
 class ShopHttpError(RuntimeError):
     """The HTTP request did not reach a usable ShopSimulator response."""
@@ -24,7 +26,7 @@ class ShopEnvironmentStateError(RuntimeError):
 class ShopAgentEnv:
     """One trajectory's exclusive ShopSimulator API lease."""
 
-    def __init__(self, base_url="http://127.0.0.1:5000", timeout=60, transport=None):
+    def __init__(self, base_url="http://127.0.0.1:5700", timeout=60, transport=None):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.transport = transport
@@ -104,7 +106,10 @@ class ShopAgentEnv:
         request = Request(
             endpoint,
             data=body,
-            headers={"Content-Type": "application/json", "User-Agent": "shopping-grpo/0.2"},
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": f"shopping-grpo/{__version__}",
+            },
             method="POST",
         )
         with urlopen(request, timeout=self.timeout) as response:

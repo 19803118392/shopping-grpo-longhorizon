@@ -25,29 +25,29 @@ EXPECTED_TRANSFORMERS_REVISION = "7ea2320c76117e6742364808a666ef6f2fb40a67"
 PATCH_MARKER = "SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V3"
 MAX_SAFE_RESPONSE_LENGTH = 20480
 MAX_SAFE_SEQUENCE_LENGTH = 24576
-REWARD_V3_RUNTIME_FILES = {
-    "observation_v2.py": "environments/ShopSimulator/shop_env/web_agent_site/engine/observation_v2.py",
+CURRENT_RUNTIME_FILES = {
+    "observation.py": "environments/ShopSimulator/shop_env/web_agent_site/engine/observation.py",
     "pack_api.py": "environments/ShopSimulator/shop_env/shop_env/pack_api.py",
-    "reward_v3.py": "environments/ShopSimulator/shop_env/web_agent_site/engine/reward_v3.py",
+    "reward.py": "environments/ShopSimulator/shop_env/web_agent_site/engine/reward.py",
     "slot_lease_pool.py": "environments/ShopSimulator/shop_env/shop_env/slot_lease_pool.py",
     "web_agent_text_env.py": "environments/ShopSimulator/shop_env/web_agent_site/envs/web_agent_text_env.py",
 }
 
 
-def validate_reward_v3_runtime_files(manifest, root):
+def validate_reward_runtime_files(manifest, root):
     if manifest.get("lease_contract") != "explicit-client-release-v1":
         raise SystemExit(
             "Environment v2.1 manifest must select explicit-client-release-v1"
         )
     expected = manifest.get("runtime_files_sha256")
-    if not isinstance(expected, dict) or set(expected) != set(REWARD_V3_RUNTIME_FILES):
+    if not isinstance(expected, dict) or set(expected) != set(CURRENT_RUNTIME_FILES):
         raise SystemExit(
             "Environment v2.1 manifest runtime_files_sha256 is missing or incomplete"
         )
     from shopping_grpo.environment_manifest import sha256_file
 
     mismatches = {}
-    for name, relative_path in REWARD_V3_RUNTIME_FILES.items():
+    for name, relative_path in CURRENT_RUNTIME_FILES.items():
         actual = sha256_file(Path(root) / relative_path)
         if actual != expected[name]:
             mismatches[name] = {"expected": expected[name], "actual": actual}
@@ -61,13 +61,12 @@ def validate_reward_v3_runtime_files(manifest, root):
 def validate_environment_contract():
     required_version = os.environ.get(
         "SHOPPING_ENVIRONMENT_VERSION",
-        "shopsimulator-environment-v1",
-    )
-    if required_version not in {
-        "shopsimulator-environment-v2",
         "shopsimulator-environment-v2.1",
-    }:
-        return
+    )
+    if required_version != "shopsimulator-environment-v2.1":
+        raise SystemExit(
+            "this repository supports only shopsimulator-environment-v2.1"
+        )
     manifest_path = os.environ.get("SHOPPING_ENV_MANIFEST")
     if not manifest_path or not Path(manifest_path).is_file():
         raise SystemExit(
@@ -83,7 +82,7 @@ def validate_environment_contract():
         raise SystemExit(f"invalid {required_version} manifest: {exc}") from exc
     actual_environment_version = manifest.get(
         "environment_version",
-        "shopsimulator-environment-v2",
+        "shopsimulator-environment-v2.1",
     )
     if actual_environment_version != required_version:
         raise SystemExit(
@@ -94,7 +93,7 @@ def validate_environment_contract():
         os.environ.get(
             "SHOPPING_TOOL_CONFIG",
             Path(__file__).resolve().parents[1]
-            / "configs/verl/shop_tools_v2.json",
+            / "configs/tools.json",
         )
     )
     tools = json.loads(tools_path.read_text(encoding="utf-8")).get("tools", [])
@@ -106,18 +105,16 @@ def validate_environment_contract():
         raise SystemExit("Environment v2 tool config is missing finish_without_purchase")
     if int(manifest["max_steps"]) != 35:
         raise SystemExit("Environment v2 GRPO contract requires max_steps=35")
-    if required_version == "shopsimulator-environment-v2.1":
-        validate_reward_v3_runtime_files(
-            manifest,
-            Path(__file__).resolve().parents[1],
-        )
+    validate_reward_runtime_files(
+        manifest,
+        Path(__file__).resolve().parents[1],
+    )
     print(
         f"{required_version} manifest preflight passed: "
         + json.dumps(
             {
                 "manifest": str(Path(manifest_path).resolve()),
                 "shopsimulator_commit": manifest["shopsimulator_commit"],
-                "shopping_grpo_commit": manifest["shopping_grpo_commit"],
                 "observation_version": manifest["observation_version"],
                 "reward_version": manifest["reward"]["version"],
                 "search_version": manifest["search"]["version"],
@@ -137,8 +134,8 @@ def compose_runtime_config(overrides):
         raise SystemExit(f"cannot parse GRPO config before preflight: {exc}") from exc
 
     GlobalHydra.instance().clear()
-    config_dir = Path(__file__).resolve().parents[1] / "configs" / "verl"
-    config_name = os.environ.get("GRPO_CONFIG_NAME", "vanilla_grpo")
+    config_dir = Path(__file__).resolve().parents[1] / "configs"
+    config_name = os.environ.get("GRPO_CONFIG_NAME", "grpo")
     with initialize_config_dir(version_base=None, config_dir=str(config_dir)):
         return compose(config_name=config_name, overrides=list(overrides))
 
@@ -249,10 +246,10 @@ def validate_dynamic_sampling(config, verl_source: Path, installed):
 
 
 def validate_swanlab_tracking(config):
-    """Require online SwanLab and reject W&B for the formal Reward v3 run."""
+    """Validate SwanLab only when the user explicitly enables it."""
     logger_backends = list(config.trainer.get("logger", []))
     if "swanlab" not in logger_backends:
-        raise SystemExit("Reward v3 GRPO requires trainer.logger to include swanlab")
+        return
     forbidden = {"wandb", "tracking", "vemlp_wandb"} & set(logger_backends)
     if forbidden:
         raise SystemExit(
@@ -269,11 +266,6 @@ def validate_swanlab_tracking(config):
     if not log_dir:
         raise SystemExit("Reward v3 GRPO requires SWANLAB_LOG_DIR")
     resolved_log_dir = Path(log_dir).resolve()
-    data_root = Path("/root/autodl-tmp").resolve()
-    if not resolved_log_dir.is_relative_to(data_root):
-        raise SystemExit(
-            "Reward v3 GRPO SwanLab logs must stay on /root/autodl-tmp"
-        )
     if str(config.trainer.get("project_name")) != "shopping-grpo":
         raise SystemExit("Reward v3 GRPO SwanLab project must be shopping-grpo")
     print(
@@ -410,8 +402,6 @@ def main():
         ) from exc
 
     verl_source = Path(verl.__file__).resolve()
-    if "agentic-grpo-longhorizon" in str(verl_source):
-        raise SystemExit(f"reference veRL fork is shadowing pip veRL 0.8: {verl_source}")
     if not torch.cuda.is_available():
         raise SystemExit("CUDA is unavailable in the GRPO environment")
     if (
@@ -426,8 +416,7 @@ def main():
     if "swanlab" not in Tracking.supported_backend:
         raise SystemExit("veRL 0.8 SwanLab tracking backend is unavailable")
     validate_dynamic_sampling(config, verl_source, installed)
-    if os.environ.get("GRPO_CONFIG_NAME") == "vanilla_grpo_reward_v3_fresh_v1":
-        validate_swanlab_tracking(config)
+    validate_swanlab_tracking(config)
     install_torch_padding_fallback()
     print(
         "GRPO runtime preflight passed: "

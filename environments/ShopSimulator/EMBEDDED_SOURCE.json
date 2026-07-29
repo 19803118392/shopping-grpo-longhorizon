@@ -1,8 +1,8 @@
 {
   "upstream_repository": "https://github.com/ShopAgent-Team/ShopSimulator",
   "upstream_base_commit": "51bb26012cee31aea7ac26177c5ffe807026ac07",
-  "environment_v2_commit": "9ecba272963960ab4a10e1a781bd05cd7634ce20",
-  "embedded_scope": "Environment v2 runtime, tests, templates, static assets, and compressed product data",
+  "source_commit": "9ecba272963960ab4a10e1a781bd05cd7634ce20",
+  "embedded_scope": "current runtime, tests, templates, static assets, and compressed product data",
   "excluded": [
     "Git metadata",
     "virtual environments",

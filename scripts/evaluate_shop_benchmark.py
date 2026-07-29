@@ -5,8 +5,8 @@ import argparse
 import json
 from pathlib import Path
 
-from shopping_grpo.benchmark import summarize_trajectories
-from shopping_grpo.teacher_rollout import OpenAIChatClient, collect_tasks, load_tasks
+from shopping_grpo.evaluation.summary import summarize_trajectories
+from shopping_grpo.rollout import OpenAIChatClient, collect_tasks, load_tasks
 
 
 def parse_args():
@@ -33,7 +33,7 @@ def parse_args():
     parser.add_argument(
         "--context-compaction",
         action="store_true",
-        help="应急启用旧历史删除；正式 Vanilla 评测默认关闭。",
+        help="上下文接近上限时压缩较早的交互；默认关闭。",
     )
     parser.add_argument("--observation-token-budget", type=int, default=1536)
     parser.add_argument("--observation-detail-token-budget", type=int, default=4096)

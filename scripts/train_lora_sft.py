@@ -102,7 +102,7 @@ def _training_dependencies():
             TrainingArguments,
         )
     except ImportError as exc:
-        raise SystemExit("缺少训练依赖。请执行：uv pip install -r requirements-sft.txt") from exc
+        raise SystemExit("缺少训练依赖。请执行：uv sync --extra sft") from exc
     return (
         torch,
         LoraConfig,
@@ -157,12 +157,18 @@ def _validate_optional_training_dependencies(args):
         try:
             import bitsandbytes  # noqa: F401
         except ImportError as exc:
-            raise SystemExit("--qlora 需要 bitsandbytes；请安装 requirements-sft-accelerated.txt") from exc
+            raise SystemExit(
+                "--qlora 需要 bitsandbytes；请执行："
+                "uv sync --extra sft --extra sft-accelerated"
+            ) from exc
     if args.liger_kernel:
         try:
             import liger_kernel  # noqa: F401
         except ImportError as exc:
-            raise SystemExit("--liger-kernel 需要 liger-kernel；请安装 requirements-sft-accelerated.txt") from exc
+            raise SystemExit(
+                "--liger-kernel 需要 liger-kernel；请执行："
+                "uv sync --extra sft --extra sft-accelerated"
+            ) from exc
 
 
 def _resolve_dtype(args, torch):
@@ -197,7 +203,7 @@ def _swanlab_config(args):
     try:
         import swanlab  # noqa: F401 - 仅验证可选依赖存在。
     except ImportError as exc:
-        raise SystemExit("缺少 SwanLab。请执行：uv pip install -r requirements-sft.txt") from exc
+        raise SystemExit("缺少 SwanLab。请执行：uv sync --extra sft") from exc
 
     run_name = args.swanlab_run_name or (
         f"lora-r{args.lora_r}-bs{args.per_device_train_batch_size}"
@@ -373,7 +379,7 @@ def main():
     )
     print("train_data=", train_stats)
     if not train_examples:
-        raise SystemExit("训练集没有可用样本；先运行 inspect_sft_data.py 排查")
+        raise SystemExit("训练集没有可用样本；请检查 data/sft/ 中的 JSONL 格式")
     validation_examples = []
     if args.validation:
         validation_examples, validation_stats = load_supervised_examples(

@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""Parameterized public single-node GRPO launcher.
-
-The strict Reward-v3/fresh-v1 research launcher remains separate and unchanged.
-"""
+"""Run the repository's single supported Shopping Agent GRPO recipe."""
 
 from __future__ import annotations
 
@@ -14,9 +11,13 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CONFIG = ROOT / "configs/examples/grpo_2b_single_node.yaml"
-DEFAULT_AGENT_CONFIG = ROOT / "configs/examples/shop_agent_loop_v2_1.yaml"
-DEFAULT_TOOL_CONFIG = ROOT / "configs/verl/shop_tools_v2.json"
+DEFAULT_CONFIG = ROOT / "configs/grpo.yaml"
+DEFAULT_AGENT_CONFIG = ROOT / "configs/agent_loop.yaml"
+DEFAULT_TOOL_CONFIG = ROOT / "configs/tools.json"
+DEFAULT_MANIFEST = ROOT / "data/environment.json"
+DEFAULT_MODEL = ROOT / "outputs/models/sft-merged"
+DEFAULT_TRAIN_DATA = ROOT / "data/grpo/train.parquet"
+DEFAULT_VAL_DATA = ROOT / "data/grpo/validation.parquet"
 
 
 def _model_has_weights(path: Path) -> bool:
@@ -31,18 +32,17 @@ def _model_has_weights(path: Path) -> bool:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model", type=Path, required=True)
-    parser.add_argument("--train-data", type=Path, required=True)
-    parser.add_argument("--val-data", type=Path)
+    parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
+    parser.add_argument("--train-data", type=Path, default=DEFAULT_TRAIN_DATA)
+    parser.add_argument("--val-data", type=Path, default=DEFAULT_VAL_DATA)
     parser.add_argument("--env-url", default="http://127.0.0.1:5700")
-    parser.add_argument("--output", type=Path, default=Path("outputs/grpo-example"))
+    parser.add_argument("--output", type=Path, default=Path("outputs/models/grpo"))
     parser.add_argument(
         "--logger",
         choices=("console", "swanlab"),
         default="console",
     )
-    parser.add_argument("--experiment-name", default="shopping-grpo-example")
-    parser.add_argument("--reward-mode", choices=("native", "constraint_aware"), default="native")
+    parser.add_argument("--experiment-name", default="shopping-agent-grpo")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
@@ -70,11 +70,7 @@ def build_command(args: argparse.Namespace) -> tuple[list[str], dict[str, str]]:
             f"{model}"
         )
     train_data = _validated_path(args.train_data, "train parquet")
-    val_data = (
-        _validated_path(args.val_data, "validation parquet")
-        if args.val_data
-        else train_data
-    )
+    val_data = _validated_path(args.val_data, "validation parquet")
     config = _validated_path(args.config, "GRPO example config")
     output = args.output.expanduser().resolve()
     if output.exists():
@@ -90,16 +86,25 @@ def build_command(args: argparse.Namespace) -> tuple[list[str], dict[str, str]]:
         {
             "PYTHONPATH": str(ROOT / "src"),
             "SHOPPING_GRPO_ROOT": str(ROOT),
+            "SHOPPING_ENVIRONMENT_VERSION": "shopsimulator-environment-v2.1",
+            "SHOPPING_ENV_MANIFEST": str(DEFAULT_MANIFEST),
             "GRPO_MODEL_PATH": str(model),
             "GRPO_TRAIN_FILE": str(train_data),
             "GRPO_VAL_FILE": str(val_data),
             "GRPO_OUTPUT_DIR": str(output),
             "SHOPSIM_BASE_URL": str(args.env_url),
-            "SHOPPING_REWARD_MODE": args.reward_mode,
             "SHOPPING_AGENT_LOOP_CONFIG": str(DEFAULT_AGENT_CONFIG),
             "SHOPPING_TOOL_CONFIG": str(DEFAULT_TOOL_CONFIG),
+            "GRPO_CONFIG_NAME": config.stem,
         }
     )
+    if args.logger == "swanlab":
+        environment.update(
+            {
+                "SWANLAB_MODE": "online",
+                "SWANLAB_LOG_DIR": str(output / "swanlab"),
+            }
+        )
     logger_override = (
         "trainer.logger=[console,swanlab]"
         if args.logger == "swanlab"
@@ -109,13 +114,6 @@ def build_command(args: argparse.Namespace) -> tuple[list[str], dict[str, str]]:
         logger_override,
         f"trainer.experiment_name={args.experiment_name}",
     ]
-    if args.val_data is None:
-        overrides.extend(
-            [
-                "trainer.val_before_train=false",
-                "trainer.test_freq=-1",
-            ]
-        )
     extra = list(args.hydra_overrides)
     if extra[:1] == ["--"]:
         extra = extra[1:]
@@ -148,6 +146,15 @@ def main() -> None:
     if args.dry_run:
         return
     Path(environment["GRPO_OUTPUT_DIR"]).mkdir(parents=True, exist_ok=True)
+    preflight = [
+        sys.executable,
+        str(ROOT / "scripts/check_grpo_runtime.py"),
+        *overrides,
+        *extra,
+    ]
+    preflight_status = subprocess.call(preflight, cwd=ROOT, env=environment)
+    if preflight_status:
+        raise SystemExit(preflight_status)
     raise SystemExit(subprocess.call(command, cwd=ROOT, env=environment))
 
 

@@ -8,14 +8,12 @@ from collections import Counter
 from pathlib import Path
 
 from shopping_grpo.evaluation.artifacts import iter_jsonl, write_jsonl_atomic
-from shopping_grpo.evaluation.blind_guard import guard_blind_final
 from shopping_grpo.evaluation.metrics import compute_deterministic_metrics
 from shopping_grpo.evaluation.trajectory import normalize_trajectory
 from shopping_grpo.smoke import run_cpu_smoke
 
 
 def _offline_evaluate(args: argparse.Namespace) -> None:
-    guard_blind_final([args.trajectories], allowed=args.allow_blind_final)
     rows = []
     reward_types = Counter()
     strict_successes = 0
@@ -85,7 +83,6 @@ def parse_args() -> argparse.Namespace:
     command.add_argument("trajectories", type=Path)
     command.add_argument("--output", type=Path)
     command.add_argument("--force", action="store_true")
-    command.add_argument("--allow-blind-final", action="store_true")
     command.set_defaults(handler=_offline_evaluate)
     return parser.parse_args()
 

@@ -11,10 +11,10 @@ from collections.abc import Mapping
 
 current_environment: ContextVar = ContextVar("shopsimulator_environment", default=None)
 current_runtime_state: ContextVar = ContextVar("shopsimulator_runtime_state", default=None)
-REWARD_COMPONENT_NAMES = ("r_type", "r_att", "r_option", "r_price")
-REWARD_V2_TYPES = {
+REWARD_V3_TYPES = {
     "gold_purchase",
     "valid_alternative_purchase",
+    "partial_alternative_purchase",
     "graceful_stop",
     "early_abstain",
     "wrong_purchase",
@@ -22,7 +22,6 @@ REWARD_V2_TYPES = {
     "max_steps",
     "reward_unverifiable",
 }
-REWARD_V3_TYPES = REWARD_V2_TYPES | {"partial_alternative_purchase"}
 
 
 def make_runtime_state(task_id: int, max_steps: int) -> dict:
@@ -40,13 +39,11 @@ def make_runtime_state(task_id: int, max_steps: int) -> dict:
         "recent_action_signatures": [],
         "terminal_result": {},
         "final_reward": 0.0,
-        "reward_components": None,
         "reward_version": None,
         "reward_type": None,
         "reward_valid": True,
         "reward_unverifiable": False,
-        "reward_v2_detail": None,
-        "reward_v3_detail": None,
+        "reward_detail": None,
         "infrastructure_invalid": False,
         "error": None,
         "context_compactions": 0,
@@ -112,77 +109,7 @@ def record_action_attempt(state: dict, tool_name: str, parameters: dict, observa
     del recent[:-3]
 
 
-def validate_reward_components(raw_components: object) -> dict[str, float]:
-    """校验并复制 ShopSimulator 终局评分，不保留其他隐藏字段。"""
-    if not isinstance(raw_components, Mapping):
-        raise ValueError("reward_detail must be an object")
-    missing = [name for name in REWARD_COMPONENT_NAMES if name not in raw_components]
-    if missing:
-        raise ValueError("reward_detail missing components: " + ", ".join(missing))
-
-    components = {}
-    for name in REWARD_COMPONENT_NAMES:
-        try:
-            value = float(raw_components[name])
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"reward_detail {name} must be numeric") from exc
-        if not math.isfinite(value):
-            raise ValueError(f"reward_detail {name} must be finite")
-        if not 0.0 <= value <= 1.0:
-            raise ValueError(f"reward_detail {name} must be in [0, 1]")
-        components[name] = value
-    return components
-
-
-def validate_reward_v2(raw_detail: object) -> dict:
-    """Validate and retain only public Environment v2 terminal diagnostics."""
-    if not isinstance(raw_detail, Mapping):
-        raise ValueError("reward_detail must be an object")
-    if raw_detail.get("reward_version") != "shopsimulator-reward-v2":
-        raise ValueError("reward_detail has an unsupported reward_version")
-    reward_type = str(raw_detail.get("reward_type", ""))
-    if reward_type not in REWARD_V2_TYPES:
-        raise ValueError(f"unknown Environment v2 reward_type: {reward_type!r}")
-    if raw_detail.get("termination_reason") != reward_type:
-        raise ValueError("termination_reason must equal reward_type")
-    reward_valid = raw_detail.get("reward_valid")
-    if not isinstance(reward_valid, bool):
-        raise ValueError("reward_valid must be boolean")
-    if (reward_type == "reward_unverifiable") != (not reward_valid):
-        raise ValueError("only reward_unverifiable may set reward_valid=false")
-    hard_gates = raw_detail.get("hard_gates")
-    if not isinstance(hard_gates, Mapping):
-        raise ValueError("hard_gates must be an object")
-    public_gates = {}
-    for name, raw_gate in hard_gates.items():
-        if not isinstance(raw_gate, Mapping):
-            raise ValueError(f"hard gate {name!r} must be an object")
-        if not isinstance(raw_gate.get("passed"), bool):
-            raise ValueError(f"hard gate {name!r} is missing boolean passed")
-        if not isinstance(raw_gate.get("verifiable"), bool):
-            raise ValueError(f"hard gate {name!r} is missing boolean verifiable")
-        public_gates[str(name)] = {
-            "passed": raw_gate["passed"],
-            "verifiable": raw_gate["verifiable"],
-        }
-    try:
-        weighted_score = float(raw_detail.get("weighted_score", 0.0))
-    except (TypeError, ValueError) as exc:
-        raise ValueError("weighted_score must be numeric") from exc
-    if not math.isfinite(weighted_score) or not 0.0 <= weighted_score <= 1.0:
-        raise ValueError("weighted_score must be finite and in [0, 1]")
-    return {
-        "reward_version": "shopsimulator-reward-v2",
-        "reward_type": reward_type,
-        "reward_valid": reward_valid,
-        "termination_reason": reward_type,
-        "target_asin_match": bool(raw_detail.get("target_asin_match")),
-        "hard_gates": public_gates,
-        "weighted_score": weighted_score,
-    }
-
-
-def validate_reward_v3(raw_detail: object) -> dict:
+def validate_reward(raw_detail: object) -> dict:
     """Validate and minimize public Environment v2.1 / Reward v3 diagnostics."""
     if not isinstance(raw_detail, Mapping):
         raise ValueError("reward_detail must be an object")
@@ -296,16 +223,8 @@ def reward_breakdown(state: dict) -> dict[str, float | bool]:
         invalid = True
         native = 0.0
 
-    if state.get("reward_version") in {
-        "shopsimulator-reward-v2",
-        "shopsimulator-reward-v3",
-    }:
-        is_v3 = state.get("reward_version") == "shopsimulator-reward-v3"
-        detail = (
-            state.get("reward_v3_detail")
-            if is_v3
-            else state.get("reward_v2_detail")
-        ) or {}
+    if state.get("reward_version") == "shopsimulator-reward-v3":
+        detail = state.get("reward_detail") or {}
         reward_valid = bool(state.get("reward_valid", True))
         invalid_reward = not reward_valid
         gates = detail.get("hard_gates") or {}
@@ -320,28 +239,14 @@ def reward_breakdown(state: dict) -> dict[str, float | bool]:
         terminal_utility = (
             native if normal_terminal and not invalid and not invalid_reward else 0.0
         )
-        semantic = (
-            float(purchase_success)
-            if is_v3
-            else native + 0.7
-            if normal_terminal and not invalid_reward
-            else 0.0
-        )
+        semantic = float(purchase_success)
         return {
             "r_type": component("category"),
             "r_att": float(detail.get("weighted_score", 0.0)),
-            "r_option": (
-                float(dimension_scores.get("key_options", 0.0))
-                if is_v3
-                else component("key_options")
-            ),
+            "r_option": float(dimension_scores.get("key_options", 0.0)),
             "r_price": component("budget"),
             "match_score": float(detail.get("weighted_score", 0.0)),
-            "evidence_coverage": (
-                float(detail.get("evidence_coverage", 0.0))
-                if is_v3
-                else 0.0
-            ),
+            "evidence_coverage": float(detail.get("evidence_coverage", 0.0)),
             "brand_score": float(dimension_scores.get("brand", 0.0)),
             "model_score": float(dimension_scores.get("model", 0.0)),
             "core_function_score": float(
@@ -370,74 +275,34 @@ def reward_breakdown(state: dict) -> dict[str, float | bool]:
             "reward_unverifiable": invalid_reward,
         }
 
-    raw_components = state.get("reward_components")
-    if normal_terminal and raw_components is None:
-        invalid = True
-    if raw_components is None:
-        components = {name: 0.0 for name in REWARD_COMPONENT_NAMES}
-    else:
-        try:
-            components = validate_reward_components(raw_components)
-        except ValueError:
-            invalid = True
-            components = {name: 0.0 for name in REWARD_COMPONENT_NAMES}
     action_attempts = max(int(state.get("action_attempt_count", 0)), 1)
     repeat_action_rate = int(state.get("repeat_action_count", 0)) / action_attempts
-
-    if invalid:
-        return {
-            **components,
-            "full": 0.0,
-            "strict": 0.0,
-            "native": native,
-            "semantic": 0.0,
-            "efficiency": 0.0,
-            "penalty_overlong": 0.0,
-            "penalty_unfinished": 0.0,
-            "penalty_repeat": 0.0,
-            "repeat_action_rate": repeat_action_rate,
-            "total": 0.0,
-            "terminal_utility": 0.0,
-            "purchase_success": 0.0,
-            "sampling_invalid": True,
-            "infrastructure_invalid": True,
-        }
-
-    full = float(all(components[name] == 1.0 for name in REWARD_COMPONENT_NAMES))
-    strict = math.prod(components[name] for name in REWARD_COMPONENT_NAMES)
-    semantic = full + 0.5 * strict + 0.2 * native
-    steps = min(max(len(state.get("steps") or []), 0), max(int(state.get("max_steps", 35)), 1))
-    max_steps = max(int(state.get("max_steps", 35)), 1)
-    efficiency = 0.05 * full * max(0.0, 1.0 - steps / max_steps)
-    penalty_overlong = (
-        0.05 * (1.0 - full) * (steps - 28) / max(max_steps - 28, 1)
-        if steps > 28
-        else 0.0
-    )
-    penalty_overlong = min(max(penalty_overlong, 0.0), 0.05)
-    penalty_unfinished = (
-        0.05
-        if state.get("termination_reason") == "assistant_finished_without_environment_done"
-        else 0.0
-    )
-    penalty_repeat = 0.03 * repeat_action_rate
-    total = semantic + efficiency - penalty_overlong - penalty_unfinished - penalty_repeat
     return {
-        **components,
-        "full": full,
-        "strict": strict,
+        "r_type": 0.0,
+        "r_att": 0.0,
+        "r_option": 0.0,
+        "r_price": 0.0,
+        "match_score": 0.0,
+        "evidence_coverage": 0.0,
+        "brand_score": 0.0,
+        "model_score": 0.0,
+        "core_function_score": 0.0,
+        "option_score": 0.0,
+        "full": 0.0,
+        "strict": 0.0,
         "native": native,
-        "semantic": semantic,
-        "efficiency": efficiency,
-        "penalty_overlong": penalty_overlong,
-        "penalty_unfinished": penalty_unfinished,
-        "penalty_repeat": penalty_repeat,
+        "semantic": 0.0,
+        "efficiency": 0.0,
+        "penalty_overlong": 0.0,
+        "penalty_unfinished": 0.0,
+        "penalty_repeat": 0.0,
         "repeat_action_rate": repeat_action_rate,
-        "total": total,
-        "terminal_utility": total,
-        "purchase_success": full,
-        "sampling_invalid": False,
-        "infrastructure_invalid": False,
+        "total": 0.0,
+        "terminal_utility": 0.0,
+        "purchase_success": 0.0,
+        "sampling_invalid": True,
+        "infrastructure_invalid": True,
+        "reward_unverifiable": True,
     }
 
 

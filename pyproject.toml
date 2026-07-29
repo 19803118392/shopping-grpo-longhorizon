@@ -23,6 +23,10 @@ sft = [
   "pillow",
   "swanlab>=0.8,<1",
 ]
+sft-accelerated = [
+  "bitsandbytes>=0.45,<1",
+  "liger-kernel>=0.6,<1",
+]
 grpo = [
   "verl==0.8.0",
   "vllm==0.25.1",
@@ -47,9 +51,6 @@ shopping-grpo = "shopping_grpo.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.setuptools.package-data]
-"shopping_grpo.resources" = ["*.json"]
 
 [tool.uv]
 override-dependencies = [

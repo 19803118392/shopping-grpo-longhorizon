@@ -14,9 +14,7 @@ from shopping_grpo.verl_adapter.runtime import (
     current_environment,
     current_runtime_state,
     record_action_attempt,
-    validate_reward_components,
-    validate_reward_v2,
-    validate_reward_v3,
+    validate_reward,
 )
 
 try:  # 本地单测不安装 veRL；部署时由 veRL 注入真实类型。
@@ -126,18 +124,10 @@ class ShopSimulatorTool(BaseTool):
                 if (
                     isinstance(reward_detail, dict)
                     and reward_detail.get("reward_version")
-                    in {
-                        "shopsimulator-reward-v2",
-                        "shopsimulator-reward-v3",
-                    }
+                    == "shopsimulator-reward-v3"
                 ):
                     try:
-                        public_detail = (
-                            validate_reward_v3(reward_detail)
-                            if reward_detail["reward_version"]
-                            == "shopsimulator-reward-v3"
-                            else validate_reward_v2(reward_detail)
-                        )
+                        public_detail = validate_reward(reward_detail)
                         if (
                             public_detail.get("terminal_utility", step["reward"])
                             != step["reward"]
@@ -155,26 +145,15 @@ class ShopSimulatorTool(BaseTool):
                         state["reward_type"] = public_detail["reward_type"]
                         state["reward_valid"] = public_detail["reward_valid"]
                         state["reward_unverifiable"] = not public_detail["reward_valid"]
-                        detail_key = (
-                            "reward_v3_detail"
-                            if public_detail["reward_version"]
-                            == "shopsimulator-reward-v3"
-                            else "reward_v2_detail"
-                        )
-                        state[detail_key] = public_detail
+                        state["reward_detail"] = public_detail
                         state["termination_reason"] = public_detail[
                             "termination_reason"
                         ]
                 else:
-                    try:
-                        state["reward_components"] = validate_reward_components(
-                            reward_detail
-                        )
-                    except ValueError as exc:
-                        _mark_infrastructure_invalid(
-                            state,
-                            f"invalid_terminal_reward_detail:{exc}",
-                        )
+                    _mark_infrastructure_invalid(
+                        state,
+                        "invalid_terminal_reward_detail:expected Reward v3",
+                    )
             return ToolResponse(text="Environment terminated."), 0.0, step
         state["latest_observation"] = observation
         state["latest_observation_raw"] = observation

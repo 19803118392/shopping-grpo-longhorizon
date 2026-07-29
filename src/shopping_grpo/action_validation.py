@@ -3,8 +3,8 @@
 import json
 import re
 
-from shopping_grpo.product_id import PRODUCT_ID_CAPTURE, is_product_id
-from shopping_grpo.shop_tools import SHOP_TOOL_SCHEMAS_V2, tool_call_to_action
+from shopping_grpo.product_id import PRODUCT_ID_CAPTURE
+from shopping_grpo.shop_tools import SHOP_TOOL_SCHEMAS, tool_call_to_action
 
 
 RUNTIME_GUARD_FIELD = "runtime_action_guard"
@@ -20,7 +20,7 @@ NAVIGATION_BUTTONS = {
 }
 TOOL_ARGUMENT_NAMES = {
     tool["function"]["name"]: set(tool["function"]["parameters"].get("properties", {}))
-    for tool in SHOP_TOOL_SCHEMAS_V2
+    for tool in SHOP_TOOL_SCHEMAS
 }
 
 
@@ -70,7 +70,7 @@ def _schema_extra_argument_names(name, arguments):
 
 
 def action_guard_tool_message(tool_call, reason, observation):
-    """返回标准 tool error observation，让 Teacher 感知刚才调用未被执行。"""
+    """返回标准 tool error observation，让 Agent 感知刚才调用未被执行。"""
     targets = clickable_buttons(observation)
     asins = product_ids(observation)
     parts = []
@@ -103,28 +103,12 @@ def action_guard_tool_message(tool_call, reason, observation):
 
 
 def product_ids(observation):
-    if "[SHOPPING_OBSERVATION_V2]" in observation:
-        return list(
-            dict.fromkeys(
-                re.findall(
-                    rf"(?m)^\d+\|({PRODUCT_ID_CAPTURE})\|",
-                    observation,
-                )
-            )
-        )
-    button_ids = [
-        button for button in clickable_buttons(observation) if is_product_id(button)
-    ]
-    if button_ids:
-        return list(dict.fromkeys(button_ids))
-    # Compatibility fallback for old observations without the action footer.
-    # Only accept complete [SEP] fields so prices or prose numbers are not targets.
-    segments = re.split(r"\s*\[SEP\]\s*", str(observation))
     return list(
         dict.fromkeys(
-            segment.strip()
-            for segment in segments
-            if is_product_id(segment.strip())
+            re.findall(
+                rf"(?m)^\d+\|({PRODUCT_ID_CAPTURE})\|",
+                observation,
+            )
         )
     )
 

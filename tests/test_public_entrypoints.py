@@ -23,11 +23,9 @@ class PublicEntrypointTest(unittest.TestCase):
             [
                 "action_schema",
                 "trajectory_normalization",
-                "reward_v3_sample",
+                "reward_sample",
                 "sft_label_mask",
-                "judge_prompt_isolation",
                 "dynamic_sampling_grouping",
-                "evaluation_assembly",
             ],
         )
 
@@ -61,6 +59,8 @@ class PublicEntrypointTest(unittest.TestCase):
             )
             train = temporary / "train.parquet"
             train.write_bytes(b"example")
+            validation = temporary / "validation.parquet"
+            validation.write_bytes(b"example")
             output = temporary / "output"
             with patch.object(
                 sys,
@@ -71,10 +71,12 @@ class PublicEntrypointTest(unittest.TestCase):
                     str(model),
                     "--train-data",
                     str(train),
+                    "--val-data",
+                    str(validation),
                     "--output",
                     str(output),
                     "--config",
-                    str(root / "configs/examples/grpo_2b_single_node.yaml"),
+                    str(root / "configs/grpo.yaml"),
                     "--logger",
                     "console",
                     "--dry-run",
@@ -86,9 +88,8 @@ class PublicEntrypointTest(unittest.TestCase):
         self.assertIn("verl.trainer.main_ppo", command)
         self.assertEqual(environment["GRPO_MODEL_PATH"], str(model))
         self.assertEqual(environment["GRPO_TRAIN_FILE"], str(train))
-        self.assertEqual(environment["GRPO_VAL_FILE"], str(train))
+        self.assertEqual(environment["GRPO_VAL_FILE"], str(validation))
         self.assertIn("trainer.logger=[console]", command)
-        self.assertIn("trainer.val_before_train=false", command)
 
 
 if __name__ == "__main__":

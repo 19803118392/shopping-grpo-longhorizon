@@ -1,11 +1,10 @@
-"""Lightweight cross-repository contract for Environment v2 experiments."""
+"""Frozen ShopSimulator Environment v2.1 contract."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 from pathlib import Path
-import subprocess
 
 
 MANIFEST_VERSION = "shopping-environment-manifest-v1"
@@ -13,9 +12,7 @@ EMBEDDED_SOURCE_FILE = "EMBEDDED_SOURCE.json"
 REQUIRED_KEYS = {
     "manifest_version",
     "shopsimulator_commit",
-    "shopping_grpo_commit",
     "product_data_sha256",
-    "task_data_sha256",
     "search",
     "reward",
     "observation_version",
@@ -33,24 +30,14 @@ def sha256_file(path):
     return digest.hexdigest()
 
 
-def git_commit(repository):
-    return subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=repository,
-        check=True,
-        text=True,
-        stdout=subprocess.PIPE,
-    ).stdout.strip()
-
-
 def shopsimulator_source_commit(repository):
     repository = Path(repository)
     embedded_source = repository / EMBEDDED_SOURCE_FILE
     if not embedded_source.is_file():
-        return git_commit(repository)
+        raise ValueError(f"missing embedded source metadata: {embedded_source}")
     try:
         metadata = json.loads(embedded_source.read_text(encoding="utf-8"))
-        commit = metadata["environment_v2_commit"]
+        commit = metadata["source_commit"]
     except (OSError, KeyError, json.JSONDecodeError) as exc:
         raise ValueError(f"invalid embedded ShopSimulator source metadata: {exc}") from exc
     if (
@@ -60,34 +47,6 @@ def shopsimulator_source_commit(repository):
     ):
         raise ValueError("embedded ShopSimulator commit is not a lowercase Git SHA")
     return commit
-
-
-def build_manifest(
-    *,
-    shopsimulator_repository,
-    shopping_grpo_repository,
-    product_data,
-    task_data,
-    environment_config,
-    seed,
-):
-    config = json.loads(Path(environment_config).read_text(encoding="utf-8"))
-    return {
-        "manifest_version": MANIFEST_VERSION,
-        "environment_version": config["environment_version"],
-        "shopsimulator_commit": shopsimulator_source_commit(
-            shopsimulator_repository
-        ),
-        "shopping_grpo_commit": git_commit(shopping_grpo_repository),
-        "product_data_sha256": sha256_file(product_data),
-        "task_data_sha256": sha256_file(task_data),
-        "search": config["search"],
-        "reward": config["reward"],
-        "observation_version": config["observation_version"],
-        "tool_version": config["tool_version"],
-        "max_steps": int(config["termination"]["max_steps"]),
-        "seed": int(seed),
-    }
 
 
 def validate_manifest(manifest):
@@ -106,17 +65,14 @@ def validate_manifest(manifest):
         raise ValueError("manifest does not select Tool v2")
     environment_version = manifest.get(
         "environment_version",
-        "shopsimulator-environment-v2",
+        "shopsimulator-environment-v2.1",
     )
-    expected_reward_versions = {
-        "shopsimulator-environment-v2": "shopsimulator-reward-v2",
-        "shopsimulator-environment-v2.1": "shopsimulator-reward-v3",
-    }
-    expected_reward = expected_reward_versions.get(environment_version)
-    if expected_reward is None:
+    if environment_version != "shopsimulator-environment-v2.1":
         raise ValueError("manifest has an unsupported environment_version")
-    if manifest["reward"].get("version") != expected_reward:
-        raise ValueError(f"{environment_version} requires {expected_reward}")
+    if manifest["reward"].get("version") != "shopsimulator-reward-v3":
+        raise ValueError(
+            "shopsimulator-environment-v2.1 requires shopsimulator-reward-v3"
+        )
     if manifest["search"].get("version") != "shopsimulator-multifield-bm25-v2":
         raise ValueError("manifest does not select multi-field BM25 v2")
     if int(manifest["search"].get("page_size", 0)) != 20:
@@ -125,9 +81,7 @@ def validate_manifest(manifest):
         raise ValueError("max_steps must be positive")
     for name in (
         "shopsimulator_commit",
-        "shopping_grpo_commit",
         "product_data_sha256",
-        "task_data_sha256",
     ):
         value = manifest[name]
         expected_length = 40 if name.endswith("_commit") else 64
@@ -138,15 +92,3 @@ def validate_manifest(manifest):
         ):
             raise ValueError(f"manifest {name} is not a lowercase hexadecimal digest")
     return manifest
-
-
-def write_manifest(path, manifest):
-    validate_manifest(manifest)
-    output = Path(path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    if output.exists():
-        raise FileExistsError(f"refusing to overwrite environment manifest: {output}")
-    output.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )

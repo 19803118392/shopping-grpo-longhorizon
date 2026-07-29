@@ -1,35 +1,13 @@
 """验证 benchmark 清单与评测入口的最小 CLI 行为。"""
 
-import json
 import sys
-import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
-from scripts.create_shop_benchmark import create_benchmark
 from scripts.evaluate_shop_benchmark import parse_args
 
 
 class BenchmarkCliTest(unittest.TestCase):
-    def test_create_benchmark_reserves_tasks_outside_sft(self):
-        """写出的清单与元数据必须明确记录 SFT 排除集和固定随机种子。"""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            tasks = root / "tasks.jsonl"
-            sft = root / "sft.jsonl"
-            manifest = root / "benchmark.jsonl"
-            metadata = root / "metadata.json"
-            tasks.write_text("".join(json.dumps({"task_id": task_id}) + "\n" for task_id in range(10)))
-            sft.write_text("".join(json.dumps({"task_id": task_id}) + "\n" for task_id in (1, 2)))
-
-            result = create_benchmark(tasks, sft, manifest, metadata, size=4, seed=7)
-
-            rows = [json.loads(line) for line in manifest.read_text().splitlines()]
-            self.assertEqual(result["task_count"], 4)
-            self.assertFalse({row["task_id"] for row in rows} & {1, 2})
-            self.assertEqual(json.loads(metadata.read_text())["seed"], 7)
-
     def test_evaluation_defaults_match_frozen_protocol(self):
         """Base、SFT、GRPO 必须默认使用同一 35 步上限。"""
         with patch.object(
@@ -38,7 +16,7 @@ class BenchmarkCliTest(unittest.TestCase):
             [
                 "evaluate_shop_benchmark.py",
                 "--benchmark",
-                "data/benchmarks/shop_benchmark_v1.jsonl",
+                "data/evaluation/tasks.jsonl",
                 "--output",
                 "outputs/eval/base/raw.jsonl",
                 "--summary",

@@ -2,19 +2,10 @@
 
 from __future__ import annotations
 
-import json
-
-from shopping_grpo.evaluation.contracts import (
-    JUDGE_DIMENSIONS,
-    JUDGE_SCHEMA_VERSION,
-    RUBRIC_SCHEMA_VERSION,
-)
 from shopping_grpo.evaluation.metrics import compute_deterministic_metrics
-from shopping_grpo.evaluation.prompts import build_trajectory_judge_messages
-from shopping_grpo.evaluation.results import assemble_task_evaluation
 from shopping_grpo.evaluation.trajectory import normalize_trajectory
 from shopping_grpo.sft_training import IGNORE_INDEX, build_supervised_example
-from shopping_grpo.shop_tools import SHOP_TOOL_SCHEMAS_V2
+from shopping_grpo.shop_tools import SHOP_TOOL_SCHEMAS
 from shopping_grpo.verl_dynamic_sampling import select_reward_varying_groups
 
 
@@ -129,51 +120,10 @@ def _raw_sample() -> dict:
     }
 
 
-def _rubric_bundle() -> dict:
-    return {
-        "schema_version": RUBRIC_SCHEMA_VERSION,
-        "task_id": 900001,
-        "query": "找白色保温杯。",
-        "rubric_version": "cpu-smoke-rubric-v1",
-        "generation": {
-            "extractor_version": "cpu-smoke",
-            "curator_model": "cpu-smoke",
-            "curator_prompt_version": "cpu-smoke",
-            "task_data_hash": "cpu-smoke",
-            "query_hash": "cpu-smoke",
-        },
-        "rubrics": [],
-    }
-
-
-def _judge_result() -> dict:
-    return {
-        "schema_version": JUDGE_SCHEMA_VERSION,
-        "task_id": 900001,
-        "trajectory_id": "cpu-smoke-trajectory",
-        "judge_status": "valid",
-        "rubric_assessments": [],
-        "dimension_scores": {
-            dimension: {
-                "score": 2,
-                "reason": "CPU smoke",
-                "evidence_event_ids": ["e0001"],
-            }
-            for dimension in JUDGE_DIMENSIONS
-        },
-        "errors": {
-            "primary": None,
-            "secondary": [],
-            "evidence_event_ids": [],
-        },
-        "overall_diagnosis": "CPU smoke",
-    }
-
-
 def run_cpu_smoke() -> dict:
     checks = []
     tool_names = {
-        schema["function"]["name"] for schema in SHOP_TOOL_SCHEMAS_V2
+        schema["function"]["name"] for schema in SHOP_TOOL_SCHEMAS
     }
     required_tools = {
         "search_products",
@@ -194,7 +144,7 @@ def run_cpu_smoke() -> dict:
     metrics = compute_deterministic_metrics(normalized)
     if not metrics["reward_and_outcome"]["strict_gold_success"]:
         raise AssertionError("Reward v3 strict-success sample failed")
-    checks.append("reward_v3_sample")
+    checks.append("reward_sample")
 
     tokenizer = _CharacterTemplate()
     supervised = build_supervised_example(
@@ -227,22 +177,6 @@ def run_cpu_smoke() -> dict:
         raise AssertionError("SFT labels are not assistant-only")
     checks.append("sft_label_mask")
 
-    messages = build_trajectory_judge_messages(
-        normalized=normalized,
-        rubric_bundle=_rubric_bundle(),
-        deterministic_metrics=metrics,
-    )
-    rendered = messages[1]["content"]
-    for secret in (
-        "MUST_NOT_REACH_JUDGE",
-        "PRIVATE_PURCHASE_ATTRIBUTE",
-        "PRIVATE_GOLD",
-        "gold_purchase",
-    ):
-        if secret in rendered:
-            raise AssertionError("Judge prompt leaked hidden information")
-    checks.append("judge_prompt_isolation")
-
     selected, diagnostics = select_reward_varying_groups(
         ["a", "a", "b", "b"],
         [0.0, 1.0, 0.5, 0.5],
@@ -251,16 +185,6 @@ def run_cpu_smoke() -> dict:
         raise AssertionError("dynamic sampling grouping changed")
     checks.append("dynamic_sampling_grouping")
 
-    assembled = assemble_task_evaluation(
-        actor={"actor_id": "cpu-smoke", "model": "none"},
-        normalized_trajectory=normalized,
-        deterministic_metrics=metrics,
-        rubric_bundle=_rubric_bundle(),
-        judge_result=_judge_result(),
-    )
-    if "total_score" in json.dumps(assembled, ensure_ascii=False):
-        raise AssertionError("evaluation assembly produced a composite score")
-    checks.append("evaluation_assembly")
     return {
         "schema_version": "shopping-cpu-smoke-v1",
         "checks": checks,

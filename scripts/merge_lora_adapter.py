@@ -42,7 +42,7 @@ def main():
         from peft import PeftModel
         from transformers import AutoConfig, AutoModelForCausalLM, AutoModelForMultimodalLM, AutoProcessor
     except ImportError as exc:
-        raise SystemExit("缺少合并依赖；请在 SFT/GRPO 虚拟环境执行：uv pip install -r requirements-sft.txt") from exc
+        raise SystemExit("缺少合并依赖；请执行：uv sync --extra sft") from exc
 
     config = AutoConfig.from_pretrained(args.base_model, trust_remote_code=True)
     model_class = choose_model_class(config, AutoModelForCausalLM, AutoModelForMultimodalLM)

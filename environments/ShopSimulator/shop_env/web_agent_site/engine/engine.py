@@ -11,7 +11,7 @@ from tqdm import tqdm
 from flask import render_template_string
 from rich import print
 from web_agent_site.utils import BASE_DIR
-from web_agent_site.engine.search_v2 import (
+from web_agent_site.engine.search import (
     MultiFieldBM25Searcher,
     normalize_query,
     sha256_file,
@@ -181,24 +181,14 @@ def get_product_per_page(top_n_products, page):
 
 
 def generate_product_prices(all_products):
-    environment_version = (
-        os.environ.get("SHOP_ENVIRONMENT_VERSION", "v1").strip().casefold()
-    )
-    environment_v2 = environment_version in {
-        "v2",
-        "shopsimulator-environment-v2",
-        "shopsimulator-environment-v2.1",
-    }
     product_prices = dict()
     for product in all_products:
         asin = product['asin']
         pricing = product['pricing']
         if not pricing:
             price = 100.0
-        elif len(pricing) == 1 or environment_v2:
+        elif len(pricing) >= 1:
             price = pricing[0]
-        else:
-            price = random.uniform(*pricing[:2])
         product_prices[asin] = price
     return product_prices
 
@@ -209,39 +199,21 @@ def _product_file_sha256(filepath):
 
 
 def init_search_engine(num_products=None, product_filepath=None):
-    backend = os.environ.get("SHOP_SEARCH_BACKEND", "lucene_v1").strip()
-    if backend == "multifield_bm25_v2":
-        if num_products is not None:
-            raise ValueError("Environment v2 search requires the complete frozen product corpus")
-        index_path = os.environ.get(
-            "SHOP_SEARCH_INDEX",
-            os.path.join(BASE_DIR, "../search_engine/environment_v2.sqlite3"),
-        )
-        expected_sha = (
-            _product_file_sha256(os.path.abspath(product_filepath))
-            if product_filepath
-            else None
-        )
-        return MultiFieldBM25Searcher(
-            index_path,
-            expected_product_sha256=expected_sha,
-        )
-    if backend != "lucene_v1":
-        raise ValueError(f"unknown SHOP_SEARCH_BACKEND: {backend!r}")
-    from pyserini.search.lucene import LuceneSearcher
-
-    if num_products == 100:
-        indexes = 'indexes_100'
-    elif num_products == 1000:
-        indexes = 'indexes_1k'
-    elif num_products == 100000:
-        indexes = 'indexes_100k'
-    elif num_products is None:
-        indexes = 'indexes'
-    else:
-        raise NotImplementedError(f'num_products being {num_products} is not supported yet.')
-    search_engine = LuceneSearcher(os.path.join(BASE_DIR, f'../search_engine/{indexes}'))
-    return search_engine
+    if num_products is not None:
+        raise ValueError("the current environment requires the complete frozen product corpus")
+    index_path = os.environ.get(
+        "SHOP_SEARCH_INDEX",
+        os.path.join(BASE_DIR, "../search_engine/products.sqlite3"),
+    )
+    expected_sha = (
+        _product_file_sha256(os.path.abspath(product_filepath))
+        if product_filepath
+        else None
+    )
+    return MultiFieldBM25Searcher(
+        index_path,
+        expected_product_sha256=expected_sha,
+    )
 
 
 def clean_product_keys(products):

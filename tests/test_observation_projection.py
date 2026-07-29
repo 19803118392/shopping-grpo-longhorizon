@@ -13,7 +13,6 @@ from shopping_grpo.observation_projection import (
     TRUNCATION_MARKER,
     project_observation,
 )
-from shopping_grpo.sft_data import project_sft_messages
 from shopping_grpo.structured_observation import render_structured_observation
 
 
@@ -140,50 +139,6 @@ class ObservationProjectionTest(unittest.TestCase):
         )
         self.assertIn("TAIL_SPECIFICATION", visible)
         self.assertTrue(meta.critical_footer_preserved)
-
-    def test_sft_projection_uses_the_same_visible_tool_message(self):
-        raw = search_page()
-        messages = [
-            {"role": "user", "content": "task"},
-            {
-                "role": "assistant",
-                "tool_calls": [
-                    {
-                        "id": "call-1",
-                        "type": "function",
-                        "function": {
-                            "name": "search_products",
-                            "arguments": '{"query":"useful product"}',
-                        },
-                    }
-                ],
-            },
-            {
-                "role": "tool",
-                "tool_call_id": "call-1",
-                "name": "search_products",
-                "content": raw,
-            },
-        ]
-
-        projected, rows = project_sft_messages(
-            messages,
-            lambda name, observation, parameters: (
-                lambda result: (result[0], result[1].to_dict())
-            )(
-                project_observation(
-                    name,
-                    observation,
-                    parameters=parameters,
-                    count_tokens=len,
-                    token_budget=1200,
-                )
-            ),
-        )
-
-        self.assertNotEqual(projected[2]["content"], raw)
-        self.assertEqual(messages[2]["content"], raw)
-        self.assertTrue(rows[0]["truncated"])
 
     def test_long_page_without_action_footer_fails_closed(self):
         with self.assertRaisesRegex(ObservationProjectionError, "action footer"):

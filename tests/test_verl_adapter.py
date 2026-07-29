@@ -68,7 +68,7 @@ class VerlAdapterRuntimeTest(unittest.TestCase):
                     "reward_version": "shopsimulator-reward-v3",
                     "reward_type": "gold_purchase",
                     "reward_valid": True,
-                    "reward_v3_detail": {
+                    "reward_detail": {
                         "weighted_score": 1.0,
                         "evidence_coverage": 1.0,
                         "dimension_scores": {"key_options": 1.0},
@@ -244,7 +244,7 @@ class VerlAdapterRuntimeTest(unittest.TestCase):
 
         asyncio.run(run())
 
-    def test_environment_v2_terminal_reward_keeps_unverifiable_separate_from_infrastructure(self):
+    def test_terminal_reward_keeps_unverifiable_separate_from_infrastructure(self):
         class FakeEnv:
             def step(self, action):
                 return {
@@ -255,7 +255,7 @@ class VerlAdapterRuntimeTest(unittest.TestCase):
                     "termination_reason": "reward_unverifiable",
                     "reward_valid": False,
                     "reward_detail": {
-                        "reward_version": "shopsimulator-reward-v2",
+                        "reward_version": "unsupported-reward",
                         "reward_type": "reward_unverifiable",
                         "reward_valid": False,
                         "termination_reason": "reward_unverifiable",
@@ -286,7 +286,7 @@ class VerlAdapterRuntimeTest(unittest.TestCase):
 
         asyncio.run(run())
 
-    def test_reward_v3_exposes_utility_success_and_sampling_validity_separately(self):
+    def test_reward_exposes_utility_success_and_sampling_validity_separately(self):
         class FakeEnv:
             def step(self, action):
                 return {
@@ -484,7 +484,7 @@ class VerlAdapterRuntimeTest(unittest.TestCase):
             def reset(self, task_id):
                 return {
                     "instruction": f"task {task_id}",
-                    "environment_version": "shopsimulator-environment-v1",
+                    "environment_version": "unsupported-environment",
                 }
 
             def release(self):
@@ -492,7 +492,7 @@ class VerlAdapterRuntimeTest(unittest.TestCase):
 
         async def run():
             session = ShopSimulatorSession(
-                required_environment_version="shopsimulator-environment-v2",
+                required_environment_version="shopsimulator-environment-v2.1",
                 env_factory=FakeEnv,
             )
             with self.assertRaisesRegex(RuntimeError, "version mismatch"):

@@ -1,17 +1,13 @@
 """
 Functions for specifying goals and reward calculations.
 """
-import random
-import os
 from collections import defaultdict
 from rich import print
 from web_agent_site.engine.normalize import normalize_color
-from web_agent_site.engine.goal_v2 import (
-    compile_task_constraint_contract,
-    deterministic_price_upper,
+from web_agent_site.engine.constraints import (
     explicit_budget_from_instruction,
 )
-from web_agent_site.engine.reward_features_v1 import (
+from web_agent_site.engine.reward_features import (
     compile_reward_features,
 )
 import math
@@ -20,7 +16,7 @@ import pdb
 _NLP = None
 
 
-def _legacy_nlp():
+def _nlp():
     global _NLP
     if _NLP is None:
         import spacy
@@ -75,35 +71,17 @@ def get_existed_goals(all_products, product_prices, if_persona=False):
             continue
         asin = item['asin']
         for product in item['instructions']:
-            environment_version = (
-                os.environ.get("SHOP_ENVIRONMENT_VERSION", "v1").strip().casefold()
-            )
-            environment_v2_1 = (
-                environment_version == "shopsimulator-environment-v2.1"
-            )
-            environment_v2 = environment_version in {
-                "v2",
-                "shopsimulator-environment-v2",
-                "shopsimulator-environment-v2.1",
-            }
             if product['instruction'] in goal_instructions:
                 cnt_2 += 1
                 #continue
             else:
                 goal_instructions.append(product['instruction'])
-            # Legacy v1 historically used the first instruction's attributes
-            # for every instruction belonging to a product. Environment v2
-            # must use annotations from the current task.
-            attributes = (
-                product.get('attributes', [])
-                if environment_v2
-                else item['instruction_attributes']
-            )
+            attributes = product.get('attributes', [])
             if len(attributes) == 0:
                 cnt_3 += 1
                 continue
 
-            if product_prices is not None and environment_v2_1:
+            if product_prices is not None:
                 # Reward v3 must not invent an unstated budget from the Gold
                 # product. Price availability remains a hard verifiability
                 # requirement, but an upper bound exists only when the user
@@ -111,19 +89,6 @@ def get_existed_goals(all_products, product_prices, if_persona=False):
                 price_upper = explicit_budget_from_instruction(
                     product["instruction"]
                 )
-            elif product_prices is not None and environment_v2:
-                price_upper = deterministic_price_upper(
-                    asin,
-                    product["instruction"],
-                    product_prices[asin],
-                )
-            elif product_prices is not None:
-                price = product_prices[asin]
-                price_range = get_price_range_above(price)
-                if len(price_range) >= 2:
-                    _, price_upper = sorted(random.sample(price_range, 2))
-                else:
-                    price_upper = 10000000
             else:
                 price_upper = 10000000
 
@@ -156,10 +121,7 @@ def get_existed_goals(all_products, product_prices, if_persona=False):
                 'user_persona': user_persona,
                 'reason_key': reason_key,
             }
-            if environment_v2_1:
-                goal.update(compile_reward_features(product, item))
-            elif environment_v2:
-                goal.update(compile_task_constraint_contract(product))
+            goal.update(compile_reward_features(product, item))
             goals.append(goal)
             for att in attributes:
                 cnt_atts[att] += 1
@@ -183,7 +145,7 @@ def get_type_reward(purchased_product, goal):
     purchased_type = purchased_product['title']
     desired_type = goal['name']
 
-    nlp = _legacy_nlp()
+    nlp = _nlp()
     purchased_type_parse = nlp(purchased_type)
     desired_type_parse = nlp(desired_type)
 
