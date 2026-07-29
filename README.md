@@ -89,27 +89,53 @@ AgentLoop、工具适配层、运行时兼容代码和一个带 SHA-256 校验�
 
 ### 评估流水线是怎么设计的？
 
-Baseline、SFT 和 GRPO 模型都通过相同的 OpenAI-compatible 服务接口接受同一批
-200 道留出任务。每道题只运行一次确定性 Rollout：
+正式评估由“代码硬检查 + 两个 LLM-as-Judge + 固定分母聚合”组成。两个 Judge
+职责不同：
+
+- **DeepSeek V4 Flash 是 Rubric Curator。** 代码先根据每道题的 Query 和私有
+  TaskFacts 提取品类、品牌、型号、功能、规格和价格候选；Flash 只能从候选中选择
+  用户真正要求的约束、去重并标注 hard/soft，不能创造新的字段或期望值。生成的
+  Rubric 冻结一次，由 Baseline、SFT 和 GRPO 共用。
+- **DeepSeek V4 Pro 是 Trajectory Judge。** 它读取用户 Query、冻结 Rubric、
+  Actor 实际看到的完整轨迹、中性终局状态和白名单代码指标，逐条判断需求是否满足，
+  并从搜索策略、候选利用、证据核验、决策质量、终止效率五个维度分别打 0/1/2 分。
+
+这里的 Rubric 是逐任务评分标准，不是向量检索式 RAG。
 
 ```mermaid
-flowchart LR
-    A[冻结任务] --> B[模型服务]
-    B --> C[Action Guard]
-    C --> D[ShopSimulator]
-    D --> E[Observation 投影与截断]
-    E --> B
-    D -->|终局状态| F[trajectory.jsonl]
-    F --> G[Reward v3]
-    F --> H[Strict Success 指标]
-    G --> I[summary.json]
-    H --> I
+flowchart TD
+    A["Benchmark test_id"] --> B["私有 TaskFacts"]
+    B --> C["代码提取 Rubric 候选"]
+    C --> D["V4 Flash 整理并冻结 Rubric"]
+    A --> E["Actor + ShopSimulator Rollout"]
+    E --> F["轨迹规范化 + Action Guard + 确定性硬检查"]
+    F -->|基础设施无效| G["not_judged，仍计入 200 题分母"]
+    F -->|检查通过| H["移除 Reward、Gold、raw observation"]
+    D --> H
+    H --> I["V4 Pro 逐需求判断 + 五维评分 + 错误分类"]
+    G --> J["四面板结果拼装"]
+    I --> J
+    J --> K["Reward / Rubric / Trajectory / Deterministic"]
+    K --> L["Baseline、SFT、GRPO 按 task_id 配对比较"]
 ```
 
-Action Guard 会阻止模型点击当前 Observation 中不存在的商品或按钮；Observation
-投影负责在 24,576 token 上下文中保留关键商品证据；终局后同时计算 Reward v3、
-购买成功率和严格成功率。缺失、报错或无有效终局的任务仍保留在 200 道题的分母中。
-完整协议见[评估文档](docs/evaluation.md)。
+以 Final-200 中的 `task_id=8187` 为例，Query 要求“一对卡通-永结同心款的高档
+酒红色木梳、礼盒、陪嫁、20 元左右”。代码生成 7 条候选，V4 Flash 冻结为 5 条
+Rubric；SFT Actor 用 10 步完成搜索、详情核验、规格选择和购买；V4 Pro 最终给出
+`搜索策略 2 / 候选利用 1 / 证据核验 1 / 决策质量 2 / 终止效率 2`，并为每项判断
+引用真实的 `event_id`。
+
+Pro 看不到 Reward 分数、Gold 商品私有字段、raw Observation、成功标签或其他模型
+结果，因此不能根据答案倒推轨迹质量。最终结果分为四个独立面板：
+
+1. Environment Reward 与终局；
+2. Query Rubric 的 hard/soft 满足情况和 Reward disagreement；
+3. Pro Judge 五维分布与错误类型；
+4. 步数、工具、Guard、重复、上下文和基础设施指标。
+
+四部分不会合成一个总分。缺失、报错和 `not_judged` 任务仍保留在 200 题分母中。
+完整数据流、两个模型的完整 Prompt、输入隔离规则、示例 Rubric 和最终统计口径见
+[评估流水线文档](docs/evaluation.md)。
 
 > **图片预留 2｜训练与评估全流程图。** 使用横向大图串联“教师数据采集、Reward
 > 过滤、LoRA SFT、在线 GRPO、模型导出、统一 200 题评估”，并在每个阶段下方标注
@@ -272,7 +298,7 @@ src/shopping_grpo/
   environment/                   环境客户端、动作、工具和 Observation
   training/sft/                  SFT 数据渲染与 Mask
   training/grpo/                 veRL AgentLoop、适配和动态采样
-  evaluation/                    Rollout、轨迹规范化和指标汇总
+  evaluation/                    硬检查、Rubric、轨迹 Judge 和指标汇总
 tests/                           核心单元、入口和 Wheel 安装检查
 ```
 

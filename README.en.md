@@ -73,25 +73,43 @@ and the complete audit are in [Data collection](docs/data-collection.md).
 
 ### How evaluation works
 
-Every model is served through the same OpenAI-compatible endpoint and receives
-the same 200 held-out tasks. The runner creates an isolated ShopSimulator
-session, constrains actions to what was visible, projects observations into the
-24,576-token context, records the full trajectory, and computes Reward v3 plus
-strict-success metrics. Failed or missing tasks remain in the denominator.
+Formal evaluation combines deterministic checks with two LLM-as-Judge roles.
+DeepSeek V4 Flash curates a frozen requirement Rubric from code-generated
+category, brand, model, function, option and price candidates. It may select and
+deduplicate candidates, but cannot invent fields or expected values. The same
+Rubric is shared by Baseline, SFT and GRPO.
+
+After each Actor completes a rollout, code normalizes events and computes
+Reward, legality, repetition, context and infrastructure checks. Valid
+trajectories then go to DeepSeek V4 Pro with the original Query, frozen Rubric,
+Actor-visible trajectory, neutral terminal flags and allowlisted behavioral
+metrics. Reward values, hidden Gold fields, raw observations, success labels and
+other models' results are excluded.
 
 ```mermaid
-flowchart LR
-    A[Frozen task] --> B[Model endpoint]
-    B --> C[Action guard]
-    C --> D[ShopSimulator]
-    D --> E[Observation projection]
-    E --> B
-    D -->|terminal| F[Trajectory JSONL]
-    F --> G[Reward v3]
-    F --> H[Strict metrics]
-    G --> I[summary.json]
-    H --> I
+flowchart TD
+    A[Benchmark task ID] --> B[Private TaskFacts]
+    B --> C[Code-generated candidates]
+    C --> D[V4 Flash frozen Rubric]
+    A --> E[Actor rollout]
+    E --> F[Normalization and hard checks]
+    F -->|valid| G[Judge-safe payload]
+    D --> G
+    G --> H[V4 Pro requirement and five-dimension judgment]
+    F -->|infrastructure invalid| I[not_judged]
+    H --> J[Four-panel aggregation]
+    I --> J
+    J --> K[Paired Baseline / SFT / GRPO comparison]
 ```
+
+V4 Pro scores Search Strategy, Candidate Utilization, Evidence Verification,
+Decision Quality and Termination Efficiency independently on a 0/1/2 scale. It
+also assesses each Rubric and assigns errors from a frozen taxonomy. The final
+report keeps Reward/terminal, requirement Rubric, trajectory quality and
+deterministic behavior as four separate panels—there is no composite score.
+Failed, missing and not-judged tasks remain in the 200-task denominator. The
+[evaluation guide](docs/evaluation.md) contains the complete prompts, one
+worked benchmark example, input-isolation rules and aggregation contract.
 
 > **Reserved figure — Training and evaluation pipeline.** A full-width diagram
 > showing teacher data collection, LoRA SFT, online GRPO rollouts and the shared
@@ -244,7 +262,7 @@ src/shopping_grpo/
   environment/                   HTTP client, tools, actions and observations
   training/sft/                  SFT dataset masking and collation
   training/grpo/                 veRL adapter, compatibility and sampling logic
-  evaluation/                    rollout normalization and metric aggregation
+  evaluation/                    hard checks, Rubrics, trajectory Judge and metrics
 tests/                           focused unit, launcher and packaging checks
 ```
 
