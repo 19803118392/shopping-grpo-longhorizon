@@ -7,10 +7,10 @@ import math
 from typing import Any
 from uuid import uuid4
 
-from shopping_grpo.action_validation import action_reject_reason
-from shopping_grpo.shop_tools import tool_call_to_action
-from shopping_grpo.structured_observation import render_structured_observation
-from shopping_grpo.verl_adapter.runtime import (
+from shopping_grpo.environment.actions import action_reject_reason
+from shopping_grpo.environment.tools import tool_call_to_action
+from shopping_grpo.environment.observation import render_structured_observation
+from shopping_grpo.training.grpo.adapter.runtime import (
     current_environment,
     current_runtime_state,
     record_action_attempt,

@@ -11,20 +11,20 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
-from shopping_grpo.action_validation import action_guard_tool_message, action_reject_reason
-from shopping_grpo.context_window import (
+from shopping_grpo.environment.actions import action_guard_tool_message, action_reject_reason
+from shopping_grpo.environment.context import (
     ContextBudgetError,
     VllmChatTokenCounter,
     VllmTextTokenCounter,
     compact_chat_messages,
 )
-from shopping_grpo.observation_projection import project_observation
-from shopping_grpo.shop_http_env import ShopAgentEnv, ShopEnvironmentError, ShopHttpError
-from shopping_grpo.shop_tools import (
+from shopping_grpo.environment.projection import project_observation
+from shopping_grpo.environment.client import ShopAgentEnv, ShopEnvironmentError, ShopHttpError
+from shopping_grpo.environment.tools import (
     SHOP_TOOL_SCHEMAS,
     tool_call_to_action,
 )
-from shopping_grpo.structured_observation import render_structured_observation
+from shopping_grpo.environment.observation import render_structured_observation
 
 
 SYSTEM_PROMPT = """你是一个购物 Agent，负责在 ShopSimulator 中替用户完成一次单轮购物任务。

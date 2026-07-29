@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 
-from shopping_grpo.environment_manifest import (
+from shopping_grpo.environment.manifest import (
     MANIFEST_VERSION,
     shopsimulator_source_commit,
     validate_manifest,

@@ -6,8 +6,8 @@ from dataclasses import asdict, dataclass
 import json
 import re
 
-from shopping_grpo.action_validation import clickable_buttons, product_ids
-from shopping_grpo.product_id import PRODUCT_ID_CAPTURE, is_product_id
+from shopping_grpo.environment.actions import clickable_buttons, product_ids
+from shopping_grpo.environment.product_id import PRODUCT_ID_CAPTURE, is_product_id
 
 
 FOOTER_MARKER = "\n\n搜索功能是否可用:"

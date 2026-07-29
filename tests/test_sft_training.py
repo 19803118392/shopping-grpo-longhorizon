@@ -5,7 +5,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from shopping_grpo.sft_training import (
+from shopping_grpo.training.sft.dataset import (
     IGNORE_INDEX,
     build_supervised_example,
     load_supervised_examples,

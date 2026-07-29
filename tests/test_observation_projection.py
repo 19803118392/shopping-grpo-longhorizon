@@ -3,17 +3,17 @@
 import json
 import unittest
 
-from shopping_grpo.action_validation import (
+from shopping_grpo.environment.actions import (
     action_reject_reason,
     clickable_buttons,
     product_ids,
 )
-from shopping_grpo.observation_projection import (
+from shopping_grpo.environment.projection import (
     ObservationProjectionError,
     TRUNCATION_MARKER,
     project_observation,
 )
-from shopping_grpo.structured_observation import render_structured_observation
+from shopping_grpo.environment.observation import render_structured_observation
 
 
 def search_page(product_count=12, page=1):

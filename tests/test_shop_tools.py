@@ -1,6 +1,6 @@
 import unittest
 
-from shopping_grpo.shop_tools import (
+from shopping_grpo.environment.tools import (
     SHOP_TOOL_SCHEMAS,
     tool_call_to_action,
 )

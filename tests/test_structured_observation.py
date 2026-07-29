@@ -1,7 +1,7 @@
 import unittest
 
-from shopping_grpo.action_validation import action_reject_reason, product_ids
-from shopping_grpo.structured_observation import (
+from shopping_grpo.environment.actions import action_reject_reason, product_ids
+from shopping_grpo.environment.observation import (
     StructuredObservationError,
     render_structured_observation,
 )

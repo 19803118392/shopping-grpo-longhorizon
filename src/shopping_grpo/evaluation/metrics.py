@@ -10,7 +10,7 @@ import re
 
 from shopping_grpo.evaluation.contracts import CONTRACT_VERSION
 from shopping_grpo.evaluation.trajectory import NORMALIZED_TRAJECTORY_VERSION
-from shopping_grpo.product_id import PRODUCT_ID_CAPTURE
+from shopping_grpo.environment.product_id import PRODUCT_ID_CAPTURE
 
 
 DETERMINISTIC_METRICS_VERSION = "shopping-deterministic-metrics-v1"

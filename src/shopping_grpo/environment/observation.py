@@ -6,7 +6,7 @@ import json
 import re
 from collections.abc import Mapping
 
-from shopping_grpo.product_id import is_product_id
+from shopping_grpo.environment.product_id import is_product_id
 
 OBSERVATION_VERSION = "shopping-observation-v2"
 HEADER = "[SHOPPING_OBSERVATION_V2]"

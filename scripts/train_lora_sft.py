@@ -7,7 +7,7 @@ import time as _time
 from functools import partial
 from pathlib import Path
 
-from shopping_grpo.sft_training import load_supervised_examples
+from shopping_grpo.training.sft.dataset import load_supervised_examples
 
 DEFAULT_TARGET_MODULES = (
     "q_proj",

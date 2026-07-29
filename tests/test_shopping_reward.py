@@ -2,7 +2,7 @@
 
 import unittest
 
-from shopping_grpo.verl_adapter.runtime import (
+from shopping_grpo.training.grpo.adapter.runtime import (
     make_runtime_state,
     record_action_attempt,
     reward_breakdown,

@@ -1,7 +1,7 @@
 import inspect
 import unittest
 
-from shopping_grpo import shop_http_env
+from shopping_grpo.environment import client as shop_http_env
 
 
 class FakeTransport:

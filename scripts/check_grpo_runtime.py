@@ -44,7 +44,7 @@ def validate_reward_runtime_files(manifest, root):
         raise SystemExit(
             "Environment v2.1 manifest runtime_files_sha256 is missing or incomplete"
         )
-    from shopping_grpo.environment_manifest import sha256_file
+    from shopping_grpo.environment.manifest import sha256_file
 
     mismatches = {}
     for name, relative_path in CURRENT_RUNTIME_FILES.items():
@@ -73,7 +73,7 @@ def validate_environment_contract():
             f"{required_version} requires SHOPPING_ENV_MANIFEST pointing to a frozen manifest"
         )
     try:
-        from shopping_grpo.environment_manifest import validate_manifest
+        from shopping_grpo.environment.manifest import validate_manifest
 
         manifest = validate_manifest(
             json.loads(Path(manifest_path).read_text(encoding="utf-8"))
@@ -180,7 +180,7 @@ def validate_dynamic_sampling(config, verl_source: Path, installed):
         )
 
     try:
-        from shopping_grpo.verl_dynamic_sampling import (
+        from shopping_grpo.training.grpo.dynamic_sampling import (
             extract_shopping_group_signals,
             select_reward_varying_groups,
         )
@@ -390,9 +390,9 @@ def main():
         import verl
         from verl.experimental.agent_loop.tool_parser import ToolParser
         from verl.experimental.agent_loop.tool_agent_loop import AgentState, ToolAgentLoop
-        from shopping_grpo.verl_adapter.agent_loop import ShoppingToolAgentLoop
-        from shopping_grpo.verl_adapter.tools import ShopSimulatorTool
-        from shopping_grpo.verl_compat import install_torch_padding_fallback
+        from shopping_grpo.training.grpo.adapter.agent_loop import ShoppingToolAgentLoop
+        from shopping_grpo.training.grpo.adapter.tools import ShopSimulatorTool
+        from shopping_grpo.training.grpo.compat import install_torch_padding_fallback
         from verl.tools.base_tool import BaseTool
         from verl.utils.tracking import Tracking
     except ImportError as exc:

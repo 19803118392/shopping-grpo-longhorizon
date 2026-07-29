@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from shopping_grpo.evaluation.summary import summarize_trajectories
-from shopping_grpo.rollout import OpenAIChatClient, collect_tasks, load_tasks
+from shopping_grpo.evaluation.rollout import OpenAIChatClient, collect_tasks, load_tasks
 
 
 def parse_args():

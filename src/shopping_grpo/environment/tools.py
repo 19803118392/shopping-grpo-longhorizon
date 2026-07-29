@@ -1,3 +1,5 @@
+"""The single public tool schema and action mapping for ShopSimulator."""
+
 CLICK_TOOL_ACTIONS = {
     "open_product": ("asin", None),
     "select_option": ("value", None),

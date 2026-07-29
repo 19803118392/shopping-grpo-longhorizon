@@ -1,6 +1,6 @@
 import unittest
 
-from shopping_grpo.action_validation import action_reject_reason, product_ids
+from shopping_grpo.environment.actions import action_reject_reason, product_ids
 
 
 class ActionValidationTest(unittest.TestCase):

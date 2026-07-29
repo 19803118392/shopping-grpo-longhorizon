@@ -8,8 +8,8 @@ from unittest.mock import patch
 from verl.experimental.agent_loop.agent_loop import AgentLoopMetrics, AgentLoopOutput
 from verl.experimental.agent_loop.tool_agent_loop import ToolAgentLoop
 
-from shopping_grpo.verl_adapter.agent_loop import ShoppingToolAgentLoop
-from shopping_grpo.verl_adapter.runtime import (
+from shopping_grpo.training.grpo.adapter.agent_loop import ShoppingToolAgentLoop
+from shopping_grpo.training.grpo.adapter.runtime import (
     current_environment,
     current_runtime_state,
     make_runtime_state,
@@ -17,8 +17,8 @@ from shopping_grpo.verl_adapter.runtime import (
     task_id_from_kwargs,
     terminal_reward,
 )
-from shopping_grpo.verl_adapter.session import ShopSimulatorSession
-from shopping_grpo.verl_adapter.tools import ShopSimulatorTool
+from shopping_grpo.training.grpo.adapter.session import ShopSimulatorSession
+from shopping_grpo.training.grpo.adapter.tools import ShopSimulatorTool
 
 
 def make_tool(name):

@@ -2,7 +2,7 @@
 
 import unittest
 
-from shopping_grpo.verl_dynamic_sampling import (
+from shopping_grpo.training.grpo.dynamic_sampling import (
     aggregate_shopping_metrics,
     extract_shopping_group_signals,
     select_reward_varying_groups,

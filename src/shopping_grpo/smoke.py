@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from shopping_grpo.evaluation.metrics import compute_deterministic_metrics
 from shopping_grpo.evaluation.trajectory import normalize_trajectory
-from shopping_grpo.sft_training import IGNORE_INDEX, build_supervised_example
-from shopping_grpo.shop_tools import SHOP_TOOL_SCHEMAS
-from shopping_grpo.verl_dynamic_sampling import select_reward_varying_groups
+from shopping_grpo.training.sft.dataset import IGNORE_INDEX, build_supervised_example
+from shopping_grpo.environment.tools import SHOP_TOOL_SCHEMAS
+from shopping_grpo.training.grpo.dynamic_sampling import select_reward_varying_groups
 
 
 class _CharacterTemplate:

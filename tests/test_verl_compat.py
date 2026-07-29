@@ -32,7 +32,7 @@ class VerlCompatTest(unittest.TestCase):
                 "verl.utils.npu_flash_attn_utils": fallback,
             },
         ):
-            from shopping_grpo.verl_compat import install_torch_padding_fallback
+            from shopping_grpo.training.grpo.compat import install_torch_padding_fallback
 
             install_torch_padding_fallback()
 

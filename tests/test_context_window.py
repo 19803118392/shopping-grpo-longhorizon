@@ -2,7 +2,7 @@
 
 import unittest
 
-from shopping_grpo.context_window import (
+from shopping_grpo.environment.context import (
     ContextBudgetError,
     VllmChatTokenCounter,
     compact_chat_messages,

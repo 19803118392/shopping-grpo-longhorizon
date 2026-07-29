@@ -15,7 +15,7 @@ import torch
 from verl import DataProto
 
 from scripts import apply_verl_dynamic_sampling_patch as patcher
-from shopping_grpo.verl_dynamic_sampling import (
+from shopping_grpo.training.grpo.dynamic_sampling import (
     extract_shopping_group_signals,
     select_reward_varying_groups,
 )

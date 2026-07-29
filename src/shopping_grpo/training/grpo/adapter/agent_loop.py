@@ -6,19 +6,19 @@ import json
 
 from verl.experimental.agent_loop.tool_agent_loop import AgentState, ToolAgentLoop
 
-from shopping_grpo.context_window import ContextBudgetError, compact_token_trajectory
-from shopping_grpo.observation_projection import (
+from shopping_grpo.environment.context import ContextBudgetError, compact_token_trajectory
+from shopping_grpo.environment.projection import (
     ObservationProjectionError,
     project_observation,
 )
-from shopping_grpo.verl_adapter.runtime import (
+from shopping_grpo.training.grpo.adapter.runtime import (
     current_runtime_state,
     record_observation_projection,
     reward_breakdown,
     task_id_from_kwargs,
     terminal_reward,
 )
-from shopping_grpo.verl_adapter.session import ShopSimulatorSession
+from shopping_grpo.training.grpo.adapter.session import ShopSimulatorSession
 
 
 class ShoppingToolAgentLoop(ToolAgentLoop):

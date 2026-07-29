@@ -6,9 +6,9 @@ from pathlib import Path
 from urllib.error import URLError
 from unittest.mock import patch
 
-from shopping_grpo.action_validation import action_guard_tool_message
-from shopping_grpo.shop_http_env import ShopEnvironmentError
-from shopping_grpo.rollout import (
+from shopping_grpo.environment.actions import action_guard_tool_message
+from shopping_grpo.environment.client import ShopEnvironmentError
+from shopping_grpo.evaluation.rollout import (
     CollectionInfrastructureError,
     OpenAIChatClient,
     SYSTEM_PROMPT,
@@ -822,7 +822,7 @@ class RolloutTest(unittest.TestCase):
             transport=transport,
         )
 
-        with patch("shopping_grpo.rollout.time.sleep") as sleep:
+        with patch("shopping_grpo.evaluation.rollout.time.sleep") as sleep:
             message = client.complete([{"role": "user", "content": "继续"}], tools=[])
 
         self.assertEqual(message["content"], "ok")

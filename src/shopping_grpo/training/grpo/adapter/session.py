@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import asyncio
 
-from shopping_grpo.shop_http_env import ShopAgentEnv
-from shopping_grpo.structured_observation import render_structured_observation
-from shopping_grpo.verl_adapter.runtime import current_environment, current_runtime_state, make_runtime_state
+from shopping_grpo.environment.client import ShopAgentEnv
+from shopping_grpo.environment.observation import render_structured_observation
+from shopping_grpo.training.grpo.adapter.runtime import current_environment, current_runtime_state, make_runtime_state
 
 
 class ShopSimulatorSession:

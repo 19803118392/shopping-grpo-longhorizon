@@ -3,8 +3,8 @@
 import json
 import re
 
-from shopping_grpo.product_id import PRODUCT_ID_CAPTURE
-from shopping_grpo.shop_tools import SHOP_TOOL_SCHEMAS, tool_call_to_action
+from shopping_grpo.environment.product_id import PRODUCT_ID_CAPTURE
+from shopping_grpo.environment.tools import SHOP_TOOL_SCHEMAS, tool_call_to_action
 
 
 RUNTIME_GUARD_FIELD = "runtime_action_guard"

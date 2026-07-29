@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from shopping_grpo.shop_http_env import ShopAgentEnv
+from shopping_grpo.environment.client import ShopAgentEnv
 
 
 def write_run_result(output_dir, task_id, base_url, steps, reset=None):

@@ -1,73 +1,86 @@
 # Shopping GRPO
 
-An end-to-end Shopping Agent post-training tutorial built on Qwen3.5-2B,
-ShopSimulator and veRL:
+An end-to-end, beginner-oriented tutorial for post-training a shopping agent:
 
 ```text
-Qwen3.5-2B baseline → LoRA SFT → GRPO → held-out evaluation
+Qwen3.5-2B baseline → LoRA SFT → GRPO with veRL → held-out evaluation
 ```
 
-The repository contains the ShopSimulator source snapshot, frozen SFT/GRPO/eval
-datasets, the veRL integration and every launcher needed for the workflow.
-There is one supported environment and one supported training recipe:
-ShopSimulator Environment v2.1 with Reward v3.
+The repository ships one supported workflow, one environment contract and the
+datasets needed to reproduce it. Clone it, follow the commands below in order,
+and compare all three models on the same 200 held-out tasks.
+
+## What is ShopSimulator?
+
+[ShopSimulator](https://arxiv.org/pdf/2601.18225) is a large-scale Chinese
+shopping environment for evaluating long-horizon LLM agents. A task describes
+what a user wants—including category, budget, brand, model, functions and
+product options—but the agent must discover the right item through interaction.
+
+In this project the agent can search products, open candidates, inspect details,
+select variants, buy, or stop when no acceptable item can be verified. Success
+therefore requires more than producing a plausible answer: the agent must gather
+evidence, obey constraints, choose the correct variant and terminate correctly.
+
+The frozen Environment v2.1 source and product archive are embedded under
+[`environments/ShopSimulator/`](environments/ShopSimulator/), so the tutorial
+does not depend on a separately running third-party repository.
+
+## The four stages
+
+| Stage | What happens | Entry point | Details |
+|---|---|---|---|
+| Baseline | Evaluate the untouched base model | `bash scripts/baseline.sh` | [Evaluation](docs/evaluation.md) |
+| SFT | Learn tool use from accepted teacher trajectories | `bash scripts/sft.sh` | [SFT](docs/sft.md) |
+| GRPO | Optimize terminal Reward v3 with online rollouts | `bash scripts/grpo.sh` | [GRPO](docs/grpo.md) |
+| Evaluation | Run the same frozen 200-task protocol | `bash scripts/evaluate.sh NAME` | [Evaluation](docs/evaluation.md) |
+
+The checked-in SFT data was produced by a separate collection stage documented
+in [Data collection](docs/data-collection.md). The custom constraint-aware
+reward is specified in [Reward v3](docs/reward-v3.md).
 
 ## Results
 
 One deterministic rollout per task on the same 200 held-out tasks:
 
-| Model | Strict success | Mean reward |
-|---|---:|---:|
-| Qwen3.5-2B baseline | 0.0% | -0.1105 |
-| LoRA SFT | 60.5% | 0.4729 |
-| GRPO step 100 | 62.0% | 0.5158 |
+| Model | Strict success | Purchase success | Mean reward |
+|---|---:|---:|---:|
+| Qwen3.5-2B baseline | 0.0% | 0.0% | -0.1105 |
+| LoRA SFT | 60.5% | 60.5% | 0.4729 |
+| GRPO step 100 | 62.0% | 62.5% | 0.5158 |
 
-See [`experiments/README.md`](experiments/README.md) for interpretation.
+The complete compact summaries and reproduction settings are in
+[`experiments/`](experiments/). These are reported results, not a promise that
+different hardware or dependency versions will produce bit-identical training.
 
 ## Requirements
 
 - Linux with an NVIDIA GPU and a compatible CUDA driver;
 - [`uv`](https://docs.astral.sh/uv/);
-- about 25 GB of disk space for dependencies, model weights and generated
-  artifacts;
-- SFT was designed for a 48 GB GPU;
-- the provided GRPO configuration was validated on one 96 GB GPU.
+- about 25 GB of free disk for environments, weights and generated artifacts;
+- approximately 48 GB GPU memory for the provided SFT recipe;
+- one 96 GB GPU for the provided GRPO recipe.
 
-Python 3.12 is used for training and Python 3.10 for the isolated
-ShopSimulator service. `uv` resolves both environments.
+The main environment uses Python 3.12. ShopSimulator is isolated on Python 3.10.
+`uv` creates both environments. veRL is **installed as the pinned
+`verl==0.8.0` dependency**; its source is not copied into this repository. Only
+the Shopping Agent adapter and a small version-checked patch live here.
 
-## Repository layout
+## Quick start
 
-```text
-configs/                 GRPO, AgentLoop and tool configuration
-data/
-  sft/                   ready-to-train SFT JSONL
-  grpo/                  ready-to-train veRL JSONL and Parquet
-  evaluation/            200 held-out tasks
-environments/
-  ShopSimulator/         embedded environment and product archive
-experiments/             final reported experiment
-scripts/                 the tutorial entrypoints
-src/shopping_grpo/       environment, training and veRL integration code
-tests/                   unit and packaging checks
-```
+Run every command from the repository root.
 
-Generated checkpoints, rollouts and logs are written only to `outputs/` and
-are ignored by Git.
-
-## 1. Install
-
-From the repository root:
+### 1. Install
 
 ```bash
 bash scripts/setup.sh
 ```
 
-This command creates the main `.venv`, installs the pinned veRL/vLLM/SFT
-dependencies, prepares the separate ShopSimulator environment, expands the
-product archive and builds the search index.
+This installs the pinned SFT and GRPO dependencies, creates the isolated
+ShopSimulator environment, verifies and expands the product archive, builds the
+search index and applies the version-checked veRL patch.
 
-## 2. Start ShopSimulator
+### 2. Start ShopSimulator
 
 Keep this terminal running:
 
@@ -75,84 +88,49 @@ Keep this terminal running:
 bash scripts/start_environment.sh
 ```
 
-The structured service listens on `http://127.0.0.1:5700`.
+The service listens on `http://127.0.0.1:5700`.
 
-## 3. Baseline
+### 3. Evaluate the baseline
 
-In a second terminal, start the base model server:
+Start the base model server in a second terminal:
 
 ```bash
 bash scripts/serve_model.sh Qwen/Qwen3.5-2B
 ```
 
-In a third terminal, collect and summarize the baseline:
+Evaluate it in a third terminal:
 
 ```bash
 bash scripts/baseline.sh
 ```
 
-Outputs:
-
-```text
-outputs/evaluation/baseline/trajectories.jsonl
-outputs/evaluation/baseline/summary.json
-```
-
 Stop the model server before training so it releases the GPU.
 
-## 4. LoRA SFT
-
-The checked-in dataset contains 379 training and 49 validation trajectories:
+### 4. Train and evaluate SFT
 
 ```bash
 bash scripts/sft.sh
-```
-
-This trains the LoRA adapter and merges it into a standalone model:
-
-```text
-outputs/models/sft-lora/
-outputs/models/sft-merged/
-```
-
-Evaluate the merged SFT model:
-
-```bash
 bash scripts/serve_model.sh outputs/models/sft-merged
 bash scripts/evaluate.sh sft
 ```
 
 Stop the model server again before GRPO.
 
-## 5. GRPO
+### 5. Train GRPO
 
-Inspect the resolved command without starting CUDA/Ray:
+First inspect the fully resolved launcher without starting CUDA or Ray:
 
 ```bash
 bash scripts/grpo.sh --dry-run
 ```
 
-Start training:
+Then train:
 
 ```bash
 bash scripts/grpo.sh
 ```
 
-The default recipe uses the merged SFT model, the checked-in veRL Parquet
-files, constraint-aware Reward v3 and bounded dynamic sampling. Checkpoints are
-written under `outputs/models/grpo/`.
-
-To enable SwanLab:
-
-```bash
-export SWANLAB_API_KEY=...
-bash scripts/grpo.sh --logger swanlab
-```
-
-## 6. Export and evaluate GRPO
-
-Choose a checkpoint using the GRPO validation metrics, then export its actor to
-Hugging Face format:
+Choose a checkpoint using validation metrics and export its actor:
 
 ```bash
 bash scripts/export_grpo.sh \
@@ -160,28 +138,47 @@ bash scripts/export_grpo.sh \
   outputs/models/grpo-merged
 ```
 
-Serve and evaluate it:
+Evaluate it:
 
 ```bash
 bash scripts/serve_model.sh outputs/models/grpo-merged
 bash scripts/evaluate.sh grpo
 ```
 
-Compare:
+Generated checkpoints, rollouts and logs are written under `outputs/`, which is
+ignored by Git.
+
+## Repository map
 
 ```text
-outputs/evaluation/baseline/summary.json
-outputs/evaluation/sft/summary.json
-outputs/evaluation/grpo/summary.json
+configs/                         current GRPO, AgentLoop and tool configuration
+data/
+  sft/                           379 train + 49 validation trajectories
+  grpo/                          ready-to-train JSONL and veRL Parquet
+  evaluation/                    frozen 200-task held-out set
+docs/                            one guide for each tutorial stage and Reward v3
+environments/ShopSimulator/      embedded environment and product archive
+experiments/
+  baseline/                      baseline config and result summary
+  sft/                           SFT config and result summary
+  grpo/                          GRPO config and result summary
+scripts/                         thin user-facing tutorial entry points
+src/shopping_grpo/
+  environment/                   HTTP client, tools, actions and observations
+  training/sft/                  SFT dataset masking and collation
+  training/grpo/                 veRL adapter, compatibility and sampling logic
+  evaluation/                    rollout normalization and metric aggregation
+tests/                           focused unit, launcher and packaging checks
 ```
 
-The primary metric is `strict_success_rate`, which requires a valid Reward v3
-gold purchase and a complete environment terminal state. Missing or failed
-tasks remain in the denominator.
+The project keeps focused checks for the CPU smoke path, offline trajectory
+evaluation, GRPO launcher arguments, non-editable wheel installation, Reward
+aggregation and the frozen environment manifest. Cleanup does not mean deleting
+tests that protect the public workflow.
 
 ## Configuration
 
-Most users only need environment variables:
+Most users only need these environment variables:
 
 | Variable | Default |
 |---|---|
@@ -192,7 +189,7 @@ Most users only need environment variables:
 | `SFT_ADAPTER_DIR` | `outputs/models/sft-lora` |
 | `SFT_MERGED_DIR` | `outputs/models/sft-merged` |
 
-Advanced GRPO overrides can be appended after the launcher arguments:
+Advanced GRPO overrides can be appended after `--`:
 
 ```bash
 bash scripts/grpo.sh -- \
@@ -200,16 +197,30 @@ bash scripts/grpo.sh -- \
   trainer.save_freq=10
 ```
 
-## Components
+SwanLab logging is opt-in:
 
-- ShopSimulator is embedded under [`environments/ShopSimulator/`](environments/ShopSimulator/).
-- veRL 0.8.0 is pinned in `pyproject.toml`; the repository contains the
-  Shopping AgentLoop, tool adapter and the small pinned dynamic-sampling patch.
-- All training and evaluation datasets are versioned under [`data/`](data/).
+```bash
+export SWANLAB_API_KEY=...
+bash scripts/grpo.sh --logger swanlab
+```
 
-## Acknowledgements
+## Documentation
 
-This project builds on
-[ShopSimulator](https://github.com/ShopAgent-Team/ShopSimulator),
-[veRL](https://github.com/verl-project/verl) and
+- [Data collection and dataset provenance](docs/data-collection.md)
+- [LoRA SFT](docs/sft.md)
+- [GRPO with veRL](docs/grpo.md)
+- [Held-out evaluation](docs/evaluation.md)
+- [Reward v3 design](docs/reward-v3.md)
+- [Auditable experiment results](experiments/comparison.md)
+
+## References and acknowledgements
+
+This tutorial builds on the
+[ShopSimulator paper](https://arxiv.org/pdf/2601.18225) and source project,
+[veRL](https://github.com/verl-project/verl), and
 [Qwen](https://github.com/QwenLM/Qwen3).
+
+The repository organization and tutorial presentation were informed by
+[qiqihezh/agentic-grpo-longhorizon](https://github.com/qiqihezh/agentic-grpo-longhorizon).
+Thanks to the [OpenCode Go plan](https://dev.opencode.ai/go) for supporting the
+development workflow.
