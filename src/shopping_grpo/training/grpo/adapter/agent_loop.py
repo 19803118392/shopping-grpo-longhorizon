@@ -1,4 +1,8 @@
-"""veRL 0.8 ToolAgentLoop 的 ShopSimulator 轨迹生命周期适配。"""
+"""veRL 0.8 ToolAgentLoop 的 ShopSimulator 轨迹生命周期适配。
+
+这个类不重新实现模型生成，而是在三个边界插入项目约束：上下文超长时压缩、工具
+返回后投影 observation、trajectory 结束时计算奖励并释放环境。
+"""
 
 from __future__ import annotations
 
@@ -91,6 +95,7 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         sampling_params,
         ignore_termination=False,
     ):
+        """在每次生成前执行上下文预算检查，并限制本轮最大输出长度。"""
         runtime_state = current_runtime_state.get()
         current_input_tokens = len(agent_data.prompt_ids)
         if runtime_state is not None:
@@ -133,6 +138,7 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
                 runtime_state["infrastructure_invalid"] = True
             return AgentState.TERMINATED
         if stats is not None and stats.removed_tokens:
+            # routed-experts 的额外状态无法随 token 一起安全裁剪，因此直接判为无效。
             if agent_data.routed_experts is not None:
                 if runtime_state is not None:
                     runtime_state["terminate"] = True
@@ -159,6 +165,7 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         )
 
     async def _call_tool(self, tool_call, tools_kwargs, agent_data):
+        """把工具适配器拿到的原始 observation 压缩成模型真正可见的版本。"""
         response, reward, step = await super()._call_tool(
             tool_call,
             tools_kwargs,
@@ -171,6 +178,8 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         if raw_observation is None:
             return response, reward, step
         try:
+            # 解析失败或投影破坏动作契约时，停止当前样本而不是把坏 observation
+            # 继续喂给模型。
             parameters = json.loads(tool_call.arguments or "{}")
             visible_observation, projection = project_observation(
                 tool_name=tool_call.name,
@@ -207,6 +216,7 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         return response, reward, step
 
     async def _handle_processing_tools_state(self, agent_data):
+        """强制每个 assistant 回合最多执行一个工具调用。"""
         runtime_state = current_runtime_state.get()
         if runtime_state is not None and len(agent_data.tool_calls) > 1:
             runtime_state["terminate"] = True
@@ -220,6 +230,7 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         return next_state
 
     async def run(self, sampling_params, **kwargs):
+        """启动 session、运行父类 AgentLoop，并在 finally 中释放环境租约。"""
         task_id = task_id_from_kwargs(kwargs)
         session = ShopSimulatorSession(
             base_url=self.base_url,
@@ -235,6 +246,7 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
                 state["error"] = "assistant_finished_without_environment_done"
                 state["termination_reason"] = state["error"]
                 state["terminate"] = True
+            # 父类结束后统一从环境状态结算，避免把中途异常当作正常终局奖励。
             breakdown = reward_breakdown(state)
             output.reward_score = terminal_reward(state, mode=self.reward_mode)
             output.extra_fields["shopping"] = {

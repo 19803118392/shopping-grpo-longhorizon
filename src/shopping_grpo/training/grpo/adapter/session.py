@@ -1,4 +1,8 @@
-"""一条 veRL trajectory 对应一个 ShopSimulator 环境租约。"""
+"""把一条 veRL trajectory 绑定到一个 ShopSimulator 环境租约。
+
+session 负责异步训练框架与同步 HTTP 客户端之间的边界：在线程中执行网络调用，
+在 coroutine-local context 中暴露当前环境和运行状态，并在任何退出路径释放租约。
+"""
 
 from __future__ import annotations
 
@@ -31,10 +35,12 @@ class ShopSimulatorSession:
         self._state_token = None
 
     async def start(self, task_id: int) -> dict:
+        """启动一条 trajectory，并把首个 observation 放进运行状态。"""
         if self.env is not None:
             raise RuntimeError("ShopSimulator session has already started")
         self.env = self.env_factory(base_url=self.base_url, timeout=self.timeout)
         try:
+            # ShopAgentEnv 使用阻塞 urllib；放到线程中不会阻塞 veRL 的事件循环。
             initial = await asyncio.to_thread(self.env.reset, int(task_id))
         except Exception:
             try:
@@ -70,11 +76,13 @@ class ShopSimulatorSession:
                 if isinstance(initial, dict)
                 else initial
             )
+        # ContextVar 让并发 trajectory 互不串状态，比共享全局 current_env 安全。
         self._environment_token = current_environment.set(self.env)
         self._state_token = current_runtime_state.set(self.state)
         return self.state
 
     async def close(self) -> None:
+        """释放环境并恢复 ContextVar；释放失败仍会清理本地绑定。"""
         if self.env is None:
             return
         try:

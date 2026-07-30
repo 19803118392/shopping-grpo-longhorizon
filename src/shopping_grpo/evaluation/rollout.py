@@ -1,4 +1,8 @@
-"""使用 OpenAI-compatible 工具调用运行 Shopping Agent 评测轨迹。"""
+"""使用 OpenAI-compatible 工具调用运行 Shopping Agent 评测轨迹。
+
+这里负责把模型回复、工具守卫和 ShopSimulator 串成一条可回放记录；它是评测采集
+入口，不负责修改环境仓库或训练模型。
+"""
 
 import json
 import os
@@ -125,6 +129,7 @@ class OpenAIChatClient:
         self.transport = transport
 
     def complete(self, messages, tools):
+        """请求模型下一轮回复，并在上下文超限时按配置压缩历史。"""
         self.last_context_event = None
         self.last_context_tokens = None
         request_messages = messages
@@ -265,6 +270,7 @@ def collect_for_task(
     tools=None,
     attempt_index=0,
 ):
+    """执行一个任务并返回完整轨迹；所有异常都会被写入轨迹后再释放环境。"""
     trajectory = {
         "trajectory_id": str(uuid4()),
         "task_id": int(task["task_id"]),
@@ -286,6 +292,7 @@ def collect_for_task(
     }
     env = env_factory(base_url=base_url)
     try:
+        # reset 建立任务状态；后续每一轮只允许一个工具调用。
         initial = env.reset(task["task_id"])
         if initial.get("observation_state") is not None:
             latest_observation = render_structured_observation(
@@ -303,6 +310,7 @@ def collect_for_task(
         latest_observation_truncated = False
 
         while len(trajectory["steps"]) < int(max_steps):
+            # 先请求模型，再校验动作；工具结果会追加到 messages，成为下一轮上下文。
             assistant = client.complete(messages, tool_schemas)
             context_tokens = getattr(client, "last_context_tokens", None)
             if context_tokens is not None:
@@ -365,6 +373,7 @@ def collect_for_task(
                 trajectory["status"] = "max_steps"
                 return trajectory
             messages.append(assistant)
+            # 只有通过当前 observation 守卫的调用才会触碰环境并消耗一个执行步骤。
             step = _execute_tool_call(env, tool_call, len(trajectory["steps"]))
             raw_observation = step["observation"]
             projector = getattr(client, "project_observation", None)

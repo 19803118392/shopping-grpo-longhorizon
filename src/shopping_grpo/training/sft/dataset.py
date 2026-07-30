@@ -60,6 +60,7 @@ def build_supervised_example(messages, tools, tokenizer, max_length=8192, chat_t
     消息」，两者的 token 差即为该回合的可训练部分，其中自然包含 tool call。
     任何超长或模板边界不一致样本都会丢弃，不做可能截断工具调用的截断。
     """
+    # 原始消息保持 OpenAI 格式；只在这里为目标 chat template 做训练期转换。
     template = chat_template or tokenizer
     rendered_messages = normalize_messages_for_chat_template(messages)
     if rendered_messages is None:
@@ -85,6 +86,7 @@ def build_supervised_example(messages, tools, tokenizer, max_length=8192, chat_t
     if len(input_ids) > int(max_length):
         return None
 
+    # 先全部 mask，再逐个打开 assistant 回合；模型不会对用户指令或环境回复算 loss。
     labels = [IGNORE_INDEX] * len(input_ids)
     for index in assistant_indices:
         try:

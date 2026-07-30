@@ -1,4 +1,8 @@
-"""Deterministic trajectory metrics; no LLM inference is allowed here."""
+"""只依赖代码计算的轨迹指标；这里禁止 LLM 推理。
+
+指标从标准化事件流、终局 Reward v3 和上下文诊断中读取，分别回答“做了什么”、
+“是否合法/是否成功”和“上下文是否健康”，不会把不同含义强行合成一个总分。
+"""
 
 from __future__ import annotations
 
@@ -98,7 +102,7 @@ def _strict_success(normalized: Mapping, reward_detail: Mapping) -> bool:
 
 
 def compute_deterministic_metrics(normalized: object) -> dict:
-    """Compute one trajectory's code-owned metrics from normalized events."""
+    """从一条标准化轨迹计算代码拥有的确定性指标。"""
 
     if not isinstance(normalized, Mapping):
         raise TypeError("normalized trajectory must be an object")
@@ -106,6 +110,8 @@ def compute_deterministic_metrics(normalized: object) -> dict:
         raise ValueError(
             "normalized trajectory has an unsupported schema_version"
         )
+    # 先把事件分成所有动作尝试、真正执行的步骤和守卫拒绝，后面的统计都基于
+    # 这三个集合，避免把“模型尝试过”误计为“环境执行过”。
     events = normalized.get("events")
     events = events if isinstance(events, list) else []
     attempts = [
@@ -127,6 +133,7 @@ def compute_deterministic_metrics(normalized: object) -> dict:
         action_signatures
     )
 
+    # 搜索指标只统计真实执行的 search_products；候选数来自 Actor 实际看到的文本。
     search_events = [
         event for event in executed if event.get("tool_name") == "search_products"
     ]
@@ -174,6 +181,7 @@ def compute_deterministic_metrics(normalized: object) -> dict:
     )
     step_errors = sum(bool(event.get("step_error")) for event in executed)
 
+    # 终局和 Reward 单独读取，严格成功必须同时满足环境终局、Reward v3 和 gold_purchase。
     terminal = normalized.get("terminal")
     terminal = terminal if isinstance(terminal, Mapping) else {}
     reward_detail = terminal.get("reward_detail")
@@ -194,6 +202,7 @@ def compute_deterministic_metrics(normalized: object) -> dict:
     release_error = errors.get("release_error")
     trajectory_error_type = _error_type(trajectory_error)
     release_error_type = _error_type(release_error)
+    # 基础设施失败仍保留在结果中，但不会进入可比较的 Judge 样本。
     infrastructure_invalid = bool(
         normalized.get("infrastructure_invalid")
         or release_error

@@ -1,4 +1,8 @@
-"""Deterministic context-window management shared by evaluation and GRPO rollouts."""
+"""评测和 GRPO 共用的上下文窗口管理。
+
+历史由完整的 assistant tool-call + tool observation 组组成；超长时只删除较旧的
+完整组，保留固定 prompt 和最近的环境反馈，避免留下半截工具调用。
+"""
 
 from __future__ import annotations
 
@@ -24,7 +28,7 @@ class ContextWindowStats:
 
 
 def compact_chat_messages(messages, tools, count_tokens, max_input_tokens):
-    """Keep the fixed prompt and the largest fitting suffix of complete tool-call groups."""
+    """保留固定 prompt，并尽量保留能放入预算的最新完整工具调用组。"""
     if int(max_input_tokens) < 1:
         raise ValueError("max_input_tokens must be positive")
     original = [dict(message) for message in messages]
@@ -38,6 +42,7 @@ def compact_chat_messages(messages, tools, count_tokens, max_input_tokens):
             removed_messages=0,
         )
 
+    # anchor 是 system/user 等固定提示；groups 才是可以整体删除的交互历史。
     anchor, groups = _split_chat_tool_groups(original)
     if not groups:
         raise ContextBudgetError(
@@ -52,6 +57,7 @@ def compact_chat_messages(messages, tools, count_tokens, max_input_tokens):
             f"{latest_tokens} tokens, above input budget {max_input_tokens}"
         )
 
+    # 每次只保留消息后缀，二分查找预算内能保留的最大历史长度。
     low, high, kept_groups = 1, len(groups), 1
     kept_tokens = latest_tokens
     while low <= high:
@@ -83,7 +89,7 @@ def compact_token_trajectory(
     max_input_tokens,
     preserve_recent_groups=1,
 ):
-    """Drop old complete assistant/tool token groups while keeping all arrays aligned."""
+    """删除旧的完整 assistant/tool token 组，同时保持训练数组对齐。"""
     prompt_ids = list(prompt_ids)
     response_mask = list(response_mask)
     response_logprobs = list(response_logprobs)
@@ -108,6 +114,7 @@ def compact_token_trajectory(
             removed_messages=0,
         )
 
+    # response_mask 标记 assistant 输出，前面的 token 是不能单独删除的固定 prompt。
     initial_prompt_length = len(prompt_ids) - len(response_mask)
     group_ends = _complete_token_group_ends(response_mask)
     removable_group_ends = group_ends[:-preserve_recent_groups]
@@ -123,6 +130,7 @@ def compact_token_trajectory(
             f"{required_tokens} tokens, above input budget {max_input_tokens}"
         )
 
+    # 同步裁剪 prompt、response mask 和 logprobs；任意一个数组错位都会破坏训练。
     compacted_prompt = prompt_ids[:initial_prompt_length] + prompt_ids[
         initial_prompt_length + drop_count :
     ]

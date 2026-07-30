@@ -1,4 +1,8 @@
-"""Canonical renderer for ShopSimulator Environment v2 structured state."""
+"""把环境的结构化状态渲染成模型可见的稳定 observation。
+
+渲染器只输出公开商品信息、当前页面和可执行按钮；它会主动拒绝 goal、reward
+等隐藏字段，防止训练和评测把答案泄露给模型。
+"""
 
 from __future__ import annotations
 
@@ -35,7 +39,7 @@ def _footer(state):
 
 
 def render_structured_observation(state: Mapping) -> str:
-    """Render one state without accepting hidden goal or reward payloads."""
+    """渲染一个状态，并拒绝版本不匹配或包含隐藏字段的输入。"""
     if not isinstance(state, Mapping):
         raise StructuredObservationError("observation_state must be an object")
     if state.get("observation_version") != OBSERVATION_VERSION:
@@ -47,6 +51,8 @@ def render_structured_observation(state: Mapping) -> str:
             "observation_state contains forbidden fields: " + ", ".join(sorted(leaked))
         )
 
+    # 先按页面类型渲染正文，最后统一追加搜索状态和按钮 footer；守卫和投影器
+    # 都依赖这个 footer 来判断下一步动作是否合法。
     page_type = str(state.get("page_type") or "unknown")
     lines = [HEADER, f"page_type: {page_type}"]
     if page_type == "search_home":
@@ -64,6 +70,7 @@ def render_structured_observation(state: Mapping) -> str:
 
 
 def _render_search_results(state):
+    """渲染搜索结果，并确保每个展示的 ASIN 都是可操作目标。"""
     products = state.get("products")
     if not isinstance(products, list):
         raise StructuredObservationError("search results must contain a products list")
@@ -112,6 +119,7 @@ def _render_search_results(state):
 
 
 def _render_product(state):
+    """渲染商品详情和规格选择，价格优先使用当前已选 variant 的价格。"""
     product = state.get("product")
     if not isinstance(product, Mapping):
         raise StructuredObservationError("product page must contain a product object")

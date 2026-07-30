@@ -1,4 +1,8 @@
-"""The single public tool schema and action mapping for ShopSimulator."""
+"""ShopSimulator 对模型公开的唯一工具定义。
+
+这里同时保存两件必须保持同步的内容：模型看到的 JSON Schema，以及把工具调用
+转换成环境 ``search[...]``/``click[...]``/``finish[...]`` 动作的映射。
+"""
 
 CLICK_TOOL_ACTIONS = {
     "open_product": ("asin", None),
@@ -15,6 +19,7 @@ CLICK_TOOL_ACTIONS = {
 
 
 def tool_call_to_action(name, parameters):
+    """把一个标准 tool call 转成 ShopSimulator 能执行的字符串动作。"""
     parameters = parameters or {}
     if name == "think":
         return None
@@ -28,6 +33,7 @@ def tool_call_to_action(name, parameters):
 
 
 def _schema(name, description, properties=None, required=None):
+    """生成统一格式的 OpenAI function schema，并禁止额外参数。"""
     return {
         "type": "function",
         "function": {

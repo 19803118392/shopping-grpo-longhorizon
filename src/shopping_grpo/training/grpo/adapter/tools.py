@@ -37,7 +37,7 @@ except ImportError:  # pragma: no cover - 仅轻量开发环境使用
 
 
 class ShopSimulatorTool(BaseTool):
-    """共享工具定义；当前 coroutine 的 env/state 由 AgentLoop 绑定。"""
+    """执行共享工具定义；当前 coroutine 的 env/state 由 AgentLoop 绑定。"""
 
     async def create(self, instance_id=None, **kwargs):
         del kwargs
@@ -45,6 +45,7 @@ class ShopSimulatorTool(BaseTool):
 
     @rollout_trace_op
     async def execute(self, instance_id: str, parameters: dict[str, Any], **kwargs):
+        """校验、执行一次工具调用，并把公共结果写入 trajectory 状态。"""
         del instance_id, kwargs
         env = current_environment.get()
         state = current_runtime_state.get()
@@ -56,6 +57,7 @@ class ShopSimulatorTool(BaseTool):
             _terminate(state, "max_steps")
             return ToolResponse(text="Error: maximum executed tool steps reached."), 0.0, {"reason": "max_steps"}
         parameters = parameters if isinstance(parameters, dict) else {}
+        # think 不触碰环境，只记录一次模型决策；其余工具必须经过动作守卫。
         if self.name == "think":
             step = _append_step(state, self.name, parameters)
             if len(state["steps"]) >= state["max_steps"]:
@@ -81,6 +83,8 @@ class ShopSimulatorTool(BaseTool):
                 }
             return ToolResponse(text=f"Error: action guard rejected this call ({reason}); read the latest observation."), 0.0, {"reason": reason}
         try:
+            # 先转换成环境动作，再在线程中调用同步客户端；终局 reward 只信任
+            # 环境返回的 Reward v3 结构，避免训练侧自行猜测分数。
             action = tool_call_to_action(self.name, parameters)
             result = await asyncio.to_thread(env.step, action)
             if result.get("observation_state") is not None:
@@ -169,6 +173,7 @@ class ShopSimulatorTool(BaseTool):
 
 
 def _append_step(state, tool, parameters, done=False, reward=0.0):
+    """追加一个可审计的工具步骤，并返回刚写入的记录。"""
     step = {
         "index": len(state["steps"]),
         "tool": tool,
@@ -187,6 +192,7 @@ def _mark_infrastructure_invalid(state, reason):
 
 
 def _terminate(state, reason, *, infrastructure_invalid=False):
+    """标记 trajectory 停止；基础设施错误不会被误当成模型奖励。"""
     state["terminate"] = True
     state["termination_reason"] = reason
     state["error"] = reason

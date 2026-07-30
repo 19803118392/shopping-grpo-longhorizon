@@ -1,4 +1,8 @@
-"""Structured client for one leased ShopSimulator environment."""
+"""ShopSimulator 的最小 HTTP 客户端。
+
+每个 ``ShopAgentEnv`` 对象只负责一条 trajectory：先租用一个环境实例，
+反复执行动作，最后释放租约。训练和评测都通过这个生命周期访问商店。
+"""
 
 import json
 from urllib.error import HTTPError, URLError
@@ -24,7 +28,7 @@ class ShopEnvironmentStateError(RuntimeError):
 
 
 class ShopAgentEnv:
-    """One trajectory's exclusive ShopSimulator API lease."""
+    """一条 trajectory 独占的 ShopSimulator API 租约。"""
 
     def __init__(self, base_url="http://127.0.0.1:5700", timeout=60, transport=None):
         self.base_url = base_url.rstrip("/")
@@ -45,9 +49,11 @@ class ShopAgentEnv:
         return False
 
     def reset(self, task_id):
+        """为任务申请环境实例，并保存服务端返回的 ``env_idx``。"""
         if self.env_idx is not None:
             raise ShopEnvironmentStateError("Environment is already leased; release it before reset")
 
+        # reset 只负责建立租约；真正的购物动作统一走 step，便于上层记录轨迹。
         result = self._call({"action": "reset", "idx": int(task_id)})
         env_idx = result.get("env_idx")
         if not isinstance(env_idx, int):
@@ -57,6 +63,7 @@ class ShopAgentEnv:
         return result
 
     def step(self, action):
+        """执行一个已经转换好的环境动作，并更新终局状态。"""
         if not isinstance(action, str) or not action:
             raise ValueError("action must be a non-empty string")
         if self.done:
@@ -68,6 +75,7 @@ class ShopAgentEnv:
         return result
 
     def release(self):
+        """释放当前租约；重复 release 是安全的空操作。"""
         if self.env_idx is None:
             return None
 
@@ -83,6 +91,7 @@ class ShopAgentEnv:
         return self.env_idx
 
     def _call(self, payload):
+        """统一处理 HTTP、环境错误和结构化协议错误。"""
         try:
             response = self._send(payload)
         except (HTTPError, URLError, OSError) as exc:

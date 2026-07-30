@@ -1,4 +1,8 @@
-"""校验工具调用是否符合 ShopSimulator 当前 observation。"""
+"""根据最新 observation 守卫模型的工具调用。
+
+ShopSimulator 的按钮和商品只在当前页面有效。动作守卫在请求到达环境前检查
+这一点，并把拒绝原因反馈给模型，避免非法点击污染环境状态。
+"""
 
 import json
 import re
@@ -25,7 +29,11 @@ TOOL_ARGUMENT_NAMES = {
 
 
 def action_reject_reason(name, arguments, observation):
-    """返回动作拒绝原因；None 表示允许执行。"""
+    """返回动作拒绝原因；``None`` 表示允许执行。
+
+检查顺序很重要：先拦截 schema 外字段，再处理无需页面状态的动作，最后只允许
+点击最新 observation 中仍然存在的目标。
+"""
     extra_argument_names = _schema_extra_argument_names(name, arguments)
     if extra_argument_names:
         return "schema_extra_arguments:" + ",".join(extra_argument_names)
@@ -70,7 +78,7 @@ def _schema_extra_argument_names(name, arguments):
 
 
 def action_guard_tool_message(tool_call, reason, observation):
-    """返回标准 tool error observation，让 Agent 感知刚才调用未被执行。"""
+    """构造标准 tool error observation，让 Agent 感知调用未被执行。"""
     targets = clickable_buttons(observation)
     asins = product_ids(observation)
     parts = []
@@ -103,6 +111,7 @@ def action_guard_tool_message(tool_call, reason, observation):
 
 
 def product_ids(observation):
+    """提取当前 observation 中可打开的商品 ID，并保持出现顺序。"""
     return list(
         dict.fromkeys(
             re.findall(
@@ -114,6 +123,7 @@ def product_ids(observation):
 
 
 def clickable_buttons(observation):
+    """读取 observation footer 中当前页面实际可点击的按钮。"""
     match = re.search(r"可点击的按钮:\s*(\[[^\n]*\])", observation)
     if not match:
         return []

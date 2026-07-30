@@ -1,4 +1,8 @@
-"""Normalize persisted collector rollouts into an auditable actor-visible stream."""
+"""把采集器原始轨迹整理成可审计、只含 Actor 可见信息的事件流。
+
+评测前统一经过这里：工具调用会被解析成稳定字段，动作守卫拒绝会单独成为事件，
+而环境的 hidden goal、raw observation 默认不会进入 Judge 输入。
+"""
 
 from __future__ import annotations
 
@@ -19,7 +23,7 @@ def _text(value: object) -> str:
 
 
 def _tool_call_payload(tool_call: object) -> tuple[str, dict, str | None]:
-    """Return name/arguments without raising on malformed historical calls."""
+    """解析工具名和参数；历史坏数据转成 parse error 而不是中断整条评测。"""
 
     if not isinstance(tool_call, Mapping):
         return "", {}, "tool_call_not_object"
@@ -137,6 +141,8 @@ def normalize_trajectory(
     blocked = blocked if isinstance(blocked, list) else []
     warnings = []
 
+    # 先按 source step 位置保存被守卫拒绝的调用，稍后与真正执行的步骤交错输出，
+    # 这样 event_id 能反映模型真实经历的动作顺序。
     blocked_by_position = defaultdict(list)
     trailing_blocked = []
     for blocked_index, item in enumerate(blocked):
@@ -235,6 +241,7 @@ def normalize_trajectory(
             )
         events.append(event)
 
+    # 每个动作尝试都有独立 ID：被拒绝的调用也计数，但没有 executed_step_id。
     for source_index in range(len(steps) + 1):
         for blocked_index, item in blocked_by_position.get(source_index, []):
             append_guard(blocked_index, item)

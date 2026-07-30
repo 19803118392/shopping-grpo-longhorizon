@@ -1,4 +1,9 @@
-"""Deterministic, tool-aware projection of ShopSimulator observations."""
+"""在不丢失动作目标的前提下压缩模型可见 observation。
+
+长商品标题和详情会占用上下文，但搜索结果中的 ASIN、页面导航和 footer 不能被
+截掉。投影器因此先按页面类型选择预算，再压缩正文，最后验证所有可操作目标仍
+与原始 observation 一致。
+"""
 
 from __future__ import annotations
 
@@ -59,7 +64,7 @@ def project_observation(
     parameters=None,
     search_top_k=20,
 ):
-    """Return a bounded observation whose visible targets are also the guard targets."""
+    """返回有 token 上限的 observation，并保证可见目标与动作守卫目标一致。"""
     observation = str(observation)
     token_budget = int(token_budget)
     detail_token_budget = int(detail_token_budget)
@@ -78,6 +83,7 @@ def project_observation(
         "search_results": token_budget,
         "product_detail": detail_token_budget,
     }.get(page_type, generic_token_budget)
+    # 短 observation 原样保留；只有超预算时才压缩，避免不必要地改变模型输入。
     if raw_tokens <= effective_budget:
         visible = observation
     else:
@@ -97,6 +103,7 @@ def project_observation(
                 token_budget=effective_budget,
             )
 
+    # 压缩完成后再次验证：预算、footer、ASIN 和按钮都必须满足安全契约。
     visible_tokens = int(count_tokens(visible))
     if visible_tokens > effective_budget:
         raise ObservationProjectionError(
@@ -170,6 +177,7 @@ def _project_search_results(
     token_budget,
     search_top_k,
 ):
+    """压缩搜索结果标题，但保留当前页的每一个候选 ASIN。"""
     if "[SHOPPING_OBSERVATION_V2]" in observation:
         return _project_structured_search_results(
             observation,
@@ -234,6 +242,7 @@ def _project_search_results(
         return "\n".join(lines)
 
     maximum_title_characters = max((len(title) for _, title, _ in products), default=0)
+    # 用二分搜索找到预算内最长标题，尽量保留信息而不引入复杂的排序策略。
     low, high, best = 0, maximum_title_characters, None
     while low <= high:
         middle = (low + high) // 2
@@ -332,6 +341,7 @@ def _compact_title(title, character_limit):
 
 
 def _project_generic_page(observation, *, count_tokens, token_budget):
+    """压缩详情/子页正文，同时完整保留动作 footer。"""
     body, footer = _split_footer(observation)
     footer_lines = _footer_lines(footer, clickable_buttons(observation))
     suffix = "\n".join([TRUNCATION_MARKER, *footer_lines])

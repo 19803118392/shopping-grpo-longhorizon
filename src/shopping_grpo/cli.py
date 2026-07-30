@@ -1,4 +1,8 @@
-"""Small public CLI for CPU validation and deterministic offline evaluation."""
+"""面向用户的轻量 CLI：运行 CPU 契约检查，或离线汇总已保存的轨迹。
+
+这里不启动模型、不启动 ShopSimulator；需要 GPU 的训练和在线评测仍由仓库根目录
+的 shell 入口负责。
+"""
 
 from __future__ import annotations
 
@@ -14,6 +18,7 @@ from shopping_grpo.smoke import run_cpu_smoke
 
 
 def _offline_evaluate(args: argparse.Namespace) -> None:
+    """规范化 JSONL 轨迹，计算确定性指标，并打印汇总。"""
     rows = []
     reward_types = Counter()
     strict_successes = 0
@@ -53,6 +58,7 @@ def _offline_evaluate(args: argparse.Namespace) -> None:
 
 
 def _smoke(args: argparse.Namespace) -> None:
+    """运行不依赖模型和环境服务的纯 CPU 契约检查。"""
     result = run_cpu_smoke()
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
@@ -63,6 +69,7 @@ def _smoke(args: argparse.Namespace) -> None:
 
 
 def parse_args() -> argparse.Namespace:
+    """定义公开子命令并返回解析后的参数。"""
     parser = argparse.ArgumentParser(
         prog="shopping-grpo",
         description="Shopping GRPO public CPU/offline utilities",
