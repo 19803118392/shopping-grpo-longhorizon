@@ -127,7 +127,8 @@ report keeps Reward/terminal, requirement Rubric, trajectory quality and
 deterministic behavior as four separate panels—there is no composite score.
 Failed, missing and not-judged tasks remain in the 200-task denominator. The
 [evaluation guide](docs/evaluation.md) contains the complete prompts, one
-worked benchmark example, input-isolation rules and aggregation contract.
+worked benchmark example, input-isolation rules and aggregation contract. An
+interactive static view is available in the [Final-200 Benchmark Dashboard](docs/evaluation-dashboard.html).
 
 > **Reserved figure — Training and evaluation pipeline.** A full-width diagram
 > showing teacher data collection, LoRA SFT, online GRPO rollouts and the shared
@@ -354,6 +355,7 @@ bash scripts/grpo.sh --logger swanlab
 - [LoRA SFT](docs/sft.md)
 - [GRPO with veRL](docs/grpo.md)
 - [Held-out evaluation](docs/evaluation.md)
+- [Final-200 Benchmark Dashboard](docs/evaluation-dashboard.html)
 - [Reward v3 design](docs/reward-v3.md)
 - [Auditable experiment results](experiments/comparison.md)
 

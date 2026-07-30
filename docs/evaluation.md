@@ -1,5 +1,7 @@
 # Evaluation：从一条 Benchmark Test 到最终比较
 
+配套的可视化页面：[Final-200 Benchmark Dashboard](evaluation-dashboard.html)。
+
 本项目的正式评估不是“让一个模型看结果后打一个总分”，而是由代码硬检查、
 DeepSeek V4 Flash Rubric 整理器、DeepSeek V4 Pro 轨迹 Judge 和最终聚合器组成。
 四类结果始终分栏报告，不合成一个不可解释的总分。

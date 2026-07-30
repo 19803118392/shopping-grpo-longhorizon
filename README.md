@@ -142,7 +142,8 @@ Pro 看不到 Reward 分数、Gold 商品私有字段、raw Observation、成功
 
 四部分不会合成一个总分。缺失、报错和 `not_judged` 任务仍保留在 200 题分母中。
 完整数据流、两个模型的完整 Prompt、输入隔离规则、示例 Rubric 和最终统计口径见
-[评估流水线文档](docs/evaluation.md)。
+[评估流水线文档](docs/evaluation.md)。也可以直接打开[Final-200 Benchmark Dashboard](docs/evaluation-dashboard.html)
+查看交互式图表。
 
 > **图片预留 2｜训练与评估全流程图。** 使用横向大图串联“教师数据采集、Reward
 > 过滤、LoRA SFT、在线 GRPO、模型导出、统一 200 题评估”，并在每个阶段下方标注
@@ -354,6 +355,7 @@ bash scripts/grpo.sh --logger swanlab
 - [LoRA SFT](docs/sft.md)
 - [使用 veRL 进行 GRPO](docs/grpo.md)
 - [留出集评估](docs/evaluation.md)
+- [Final-200 Benchmark Dashboard](docs/evaluation-dashboard.html)
 - [Reward v3 设计](docs/reward-v3.md)
 - [可审计实验结果](experiments/comparison.md)
 
