@@ -145,9 +145,7 @@ Pro 看不到 Reward 分数、Gold 商品私有字段、raw Observation、成功
 [评估流水线文档](docs/evaluation.md)。也可以直接打开[Final-200 Benchmark Dashboard](docs/evaluation-dashboard.html)
 查看交互式图表。
 
-> **图片预留 2｜训练与评估全流程图。** 使用横向大图串联“教师数据采集、Reward
-> 过滤、LoRA SFT、在线 GRPO、模型导出、统一 200 题评估”，并在每个阶段下方标注
-> 输入文件、输出产物和核心指标。
+
 
 ## 实验结果
 
