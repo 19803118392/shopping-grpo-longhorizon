@@ -271,6 +271,8 @@ def summarize_evaluations(
     }
     primary_errors = Counter()
     secondary_errors = Counter()
+    primary_error_task_ids = defaultdict(list)
+    secondary_error_task_ids = defaultdict(list)
     total_steps = 0
     total_attempts = 0
     total_guards = 0
@@ -318,7 +320,10 @@ def summarize_evaluations(
             primary = quality["errors"].get("primary")
             if primary:
                 primary_errors[str(primary)] += 1
-            secondary_errors.update(quality["errors"].get("secondary") or [])
+                primary_error_task_ids[str(primary)].append(task_id)
+            for secondary in quality["errors"].get("secondary") or []:
+                secondary_errors[str(secondary)] += 1
+                secondary_error_task_ids[str(secondary)].append(task_id)
 
         deterministic = record["deterministic"]
         actions = deterministic["actions_and_efficiency"]
@@ -397,9 +402,17 @@ def summarize_evaluations(
             "judge_coverage_rate": _mean(valid_judges, denominator),
             "dimensions": dimension_summary,
             "primary_error_counts": dict(sorted(primary_errors.items())),
+            "primary_error_task_ids": {
+                error: sorted(task_ids)
+                for error, task_ids in sorted(primary_error_task_ids.items())
+            },
             "secondary_error_counts": dict(
                 sorted(secondary_errors.items())
             ),
+            "secondary_error_task_ids": {
+                error: sorted(task_ids)
+                for error, task_ids in sorted(secondary_error_task_ids.items())
+            },
         },
         "deterministic": {
             "average_executed_steps_fixed_denominator": _mean(

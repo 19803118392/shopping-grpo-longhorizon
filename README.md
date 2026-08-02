@@ -75,10 +75,20 @@ flowchart LR
 Environment v2.1 中分七批采集：
 
 - 共获得 604 条互不重复的原始任务轨迹；
-- 使用 Reward v3 对轨迹进行环境回放和终局检查；
+- 每条轨迹在采集时都真实执行环境动作，再按 Reward v3 终局结果验收；
 - 只保留成功完成 `gold_purchase` 的 428 条轨迹；
 - 删除教师模型的私有推理内容，只保留用户可观察到的工具调用与动作；
 - 最终划分为 379 条训练数据和 49 条验证数据。
+
+仓库已提供可断点续跑的采集入口：
+
+```bash
+python scripts/collect_sft_data.py \
+  --tasks data/grpo/train.jsonl \
+  --output-dir outputs/sft-collection \
+  --target-accepted 428 \
+  --workers 4
+```
 
 SFT 只在 Assistant 动作 token 上计算 Loss，用户指令和环境 Observation 会被
 Mask。这样模型学习的是可执行的工具策略，而不是背诵环境返回内容。数据哈希、接受率
@@ -314,6 +324,7 @@ experiments/
   grpo/                          GRPO 配置与结果
 scripts/                         面向用户的薄入口脚本
 src/shopping_grpo/
+  collection/                    Teacher 轨迹验收与 SFT 数据构造
   environment/                   环境客户端、动作、工具和 Observation
   training/sft/                  SFT 数据渲染与 Mask
   training/grpo/                 veRL AgentLoop、适配和动态采样

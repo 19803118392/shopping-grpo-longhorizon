@@ -73,10 +73,21 @@ flowchart LR
 
 The final collection used `deepseek-v4-flash` as a teacher in ShopSimulator
 Environment v2.1. Seven batches produced 604 unique raw trajectories. We
-replayed and filtered them through Reward v3, kept 428 gold-purchase
-trajectories, removed private reasoning and retained only observable actions.
+executed every trajectory in the environment and accepted it from its Reward v3
+terminal result, kept 428 gold-purchase trajectories, removed private reasoning
+and retained only observable actions.
 The final split contains 379 training and 49 validation rows. Dataset hashes
 and the complete audit are in [Data collection](docs/data-collection.md).
+
+The resumable collection entry point is:
+
+```bash
+python scripts/collect_sft_data.py \
+  --tasks data/grpo/train.jsonl \
+  --output-dir outputs/sft-collection \
+  --target-accepted 428 \
+  --workers 4
+```
 
 ### How GRPO is trained
 
@@ -309,6 +320,7 @@ experiments/
   grpo/                          GRPO config and result summary
 scripts/                         thin user-facing tutorial entry points
 src/shopping_grpo/
+  collection/                    Teacher acceptance and SFT data construction
   environment/                   HTTP client, tools, actions and observations
   training/sft/                  SFT dataset masking and collation
   training/grpo/                 veRL adapter, compatibility and sampling logic

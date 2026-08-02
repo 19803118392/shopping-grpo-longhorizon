@@ -363,6 +363,10 @@ def validate_judge_result(
     secondary = _unique_nonempty_strings(
         errors.get("secondary"), "judge_result.errors.secondary"
     )
+    if len(secondary) > 2:
+        raise ContractValidationError(
+            "judge_result.errors.secondary must contain at most two values"
+        )
     unknown_secondary = sorted(set(secondary) - ERROR_TAXONOMY)
     if unknown_secondary:
         raise ContractValidationError(
@@ -372,6 +376,10 @@ def validate_judge_result(
     if primary is not None and primary in secondary:
         raise ContractValidationError(
             "judge_result.errors.primary must not be repeated in secondary"
+        )
+    if primary is None and secondary:
+        raise ContractValidationError(
+            "judge_result.errors.secondary must be empty when primary is null"
         )
     validate_evidence(
         errors.get("evidence_event_ids"),

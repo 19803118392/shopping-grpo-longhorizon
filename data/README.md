@@ -10,4 +10,5 @@ Only the datasets used by the tutorial are kept here.
 
 Adjacent `metadata.json` files record SHA256 checksums. Training and evaluation
 task IDs do not overlap. Generated trajectories belong under `outputs/`, never
-under `data/`.
+under `data/`. Use `scripts/collect_sft_data.py` to create a new audited SFT
+dataset before promoting its train/validation files into this directory.
