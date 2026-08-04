@@ -32,6 +32,7 @@ class BenchmarkCliTest(unittest.TestCase):
             args = parse_args()
 
         self.assertEqual(args.max_steps, 35)
+        self.assertEqual(args.attempts_per_task, 1)
         self.assertEqual(args.max_tokens, 512)
         self.assertEqual(args.temperature, 0.0)
         self.assertEqual(args.context_window, 24576)
@@ -41,6 +42,9 @@ class BenchmarkCliTest(unittest.TestCase):
         self.assertEqual(args.observation_detail_token_budget, 4096)
         self.assertEqual(args.observation_generic_token_budget, 768)
         self.assertEqual(args.observation_search_top_k, 20)
+        self.assertFalse(args.evidence_memory)
+        self.assertEqual(args.evidence_memory_max_candidates, 5)
+        self.assertEqual(args.evidence_memory_max_chars, 2_000)
 
 
 if __name__ == "__main__":  # pragma: no cover

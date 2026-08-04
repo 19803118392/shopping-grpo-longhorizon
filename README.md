@@ -171,11 +171,16 @@ SFT 带来了主要能力提升，让模型学会合法工具调用、长程搜�
 基础上进一步减少错误购买、循环和非法动作。机器可读的训练配置、结果摘要和限制说明
 位于 [`experiments/`](experiments/)。
 
+这里的 GRPO 相对 SFT 只增加 3/200 个严格成功任务（+1.5 个百分点），而且每题仅
+运行一次，因此不能据此宣称提升具有统计显著性。新增的重复采样评测支持固定尝试数、
+Wilson 95% 区间、经验 `pass@k` / `pass^k`、任务级配对 Bootstrap 和精确 McNemar
+检验；租用 GPU 后应先用它复验该差异。
+
 ## 训练硬件与耗时
 
 所有训练均使用单张 NVIDIA RTX 6000（96 GB）完成。
 
-### SFT LoRA 训练（448 条训练数据，3 个 epoch）
+### SFT LoRA 训练（379 条训练数据，3 个 epoch）
 
 | 阶段 | 耗时 | 峰值显存 |
 |---|---:|---:|
@@ -206,7 +211,7 @@ SFT 带来了主要能力提升，让模型学会合法工具调用、长程搜�
 - NVIDIA GPU 和兼容的 CUDA Driver；
 - [`uv`](https://docs.astral.sh/uv/)；
 - 大约 25 GB 可用磁盘空间，用于依赖、模型权重和运行产物；
-- SFT 配置按照 48 GB 显存设计；
+- 当前 SFT 配方实测峰值为 89 GiB，按 96 GB GPU 准备；尚未验证 48 GB 配置；
 - GRPO 配置按照单张 96 GB GPU 验证。
 
 主训练环境使用 Python 3.12，ShopSimulator 使用隔离的 Python 3.10 环境。
@@ -307,6 +312,10 @@ Reward v3 是一个确定性的终局 Reward，不依赖另一个大模型进行
 ![Reward V3 decision rules](docs/images/reward-v3-decision-rules.png)
 
 完整公式、终止条件和证据要求见 [Reward v3 设计文档](docs/reward-v3.md)。
+
+本地新增的 Evidence Memory、重复采样统计和课程数据准备见
+[下一轮 GPU 实验说明](docs/local-upgrades.md)；租卡后的执行顺序、停机条件和产物清单见
+[96 GB GPU Runbook](docs/gpu-runbook.md)。
 
 ## 仓库结构
 

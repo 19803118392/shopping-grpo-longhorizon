@@ -5,6 +5,10 @@ import threading
 import unittest
 from unittest.mock import patch
 
+import pytest
+
+pytest.importorskip("verl", reason="veRL adapter tests require the GPU training extra")
+
 from verl.experimental.agent_loop.agent_loop import AgentLoopMetrics, AgentLoopOutput
 from verl.experimental.agent_loop.tool_agent_loop import ToolAgentLoop
 

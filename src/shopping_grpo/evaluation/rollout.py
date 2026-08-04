@@ -10,26 +10,30 @@ import time
 import traceback
 from datetime import datetime, timezone
 from http.client import RemoteDisconnected
-from urllib.error import URLError
 from pathlib import Path
+from urllib.error import URLError
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
 from shopping_grpo.environment.actions import action_guard_tool_message, action_reject_reason
+from shopping_grpo.environment.client import ShopAgentEnv, ShopEnvironmentError, ShopHttpError
 from shopping_grpo.environment.context import (
     ContextBudgetError,
     VllmChatTokenCounter,
     VllmTextTokenCounter,
     compact_chat_messages,
 )
+from shopping_grpo.environment.evidence import (
+    EVIDENCE_MEMORY_VERSION,
+    EvidenceMemory,
+    augment_observation_with_evidence,
+)
+from shopping_grpo.environment.observation import render_structured_observation
 from shopping_grpo.environment.projection import project_observation
-from shopping_grpo.environment.client import ShopAgentEnv, ShopEnvironmentError, ShopHttpError
 from shopping_grpo.environment.tools import (
     SHOP_TOOL_SCHEMAS,
     tool_call_to_action,
 )
-from shopping_grpo.environment.observation import render_structured_observation
-
 
 SYSTEM_PROMPT = """你是一个购物 Agent，负责在 ShopSimulator 中替用户完成一次单轮购物任务。
 
@@ -77,6 +81,9 @@ class OpenAIChatClient:
         observation_search_top_k=20,
         token_counter=None,
         observation_token_counter=None,
+        evidence_memory_enable=False,
+        evidence_memory_max_candidates=5,
+        evidence_memory_max_chars=2_000,
         transport=None,
     ):
         self.model = model
@@ -99,6 +106,13 @@ class OpenAIChatClient:
         self.observation_search_top_k = int(observation_search_top_k)
         self.observation_detail_token_budget = int(observation_detail_token_budget)
         self.observation_generic_token_budget = int(observation_generic_token_budget)
+        self.evidence_memory_enable = bool(evidence_memory_enable)
+        self.evidence_memory_max_candidates = int(evidence_memory_max_candidates)
+        self.evidence_memory_max_chars = int(evidence_memory_max_chars)
+        if self.evidence_memory_max_candidates < 1:
+            raise ValueError("evidence_memory_max_candidates must be positive")
+        if self.evidence_memory_max_chars < 256:
+            raise ValueError("evidence_memory_max_chars must be at least 256")
         if self.context_window is not None:
             if self.context_window <= self.max_tokens + self.context_safety_margin:
                 raise ValueError("context_window must exceed max_tokens plus context_safety_margin")
@@ -289,7 +303,20 @@ def collect_for_task(
         "done": False,
         "error": None,
         "release_error": None,
+        "evidence_memory": {
+            "enabled": bool(getattr(client, "evidence_memory_enable", False)),
+            "schema_version": EVIDENCE_MEMORY_VERSION,
+            "events": [],
+            "final_snapshot": None,
+            "rendered_chars": 0,
+        },
     }
+    evidence_memory = None
+    if trajectory["evidence_memory"]["enabled"]:
+        evidence_memory = EvidenceMemory(
+            max_candidates=getattr(client, "evidence_memory_max_candidates", 5),
+            max_chars=getattr(client, "evidence_memory_max_chars", 2_000),
+        )
     env = env_factory(base_url=base_url)
     try:
         # reset 建立任务状态；后续每一轮只允许一个工具调用。
@@ -303,6 +330,12 @@ def collect_for_task(
                 "instruction", initial.get("observation", "")
             )
         trajectory["initial_result"] = initial
+        if evidence_memory is not None and initial.get("observation_state") is not None:
+            event = evidence_memory.observe(
+                initial["observation_state"], event_id=0, tool_name="reset"
+            )
+            trajectory["evidence_memory"]["events"].append(event)
+            trajectory["evidence_memory"]["final_snapshot"] = evidence_memory.snapshot()
         messages = _initial_messages(task, initial)
         trajectory["messages"] = messages
         tool_schemas = tools or SHOP_TOOL_SCHEMAS
@@ -387,6 +420,25 @@ def collect_for_task(
                     step["raw_observation"] = raw_observation
                     step["observation"] = visible_observation
                     step["projection"] = projection
+            observation_state = (step.get("result") or {}).get("observation_state")
+            if evidence_memory is not None and observation_state is not None:
+                event = evidence_memory.observe(
+                    observation_state,
+                    event_id=len(trajectory["steps"]) + 1,
+                    tool_name=step["tool_name"],
+                )
+                step["evidence_memory_event"] = event
+                step["model_observation"] = augment_observation_with_evidence(
+                    step["observation"], evidence_memory
+                )
+                step["evidence_memory_chars"] = len(evidence_memory.render())
+                trajectory["evidence_memory"]["rendered_chars"] += step[
+                    "evidence_memory_chars"
+                ]
+                trajectory["evidence_memory"]["events"].append(event)
+                trajectory["evidence_memory"][
+                    "final_snapshot"
+                ] = evidence_memory.snapshot()
             trajectory["steps"].append(step)
             consecutive_blocked_calls = 0
             latest_observation = step["observation"]
@@ -533,7 +585,7 @@ def _tool_message(tool_call, step):
         "role": "tool",
         "tool_call_id": tool_call.get("id"),
         "name": step["tool_name"],
-        "content": step["observation"],
+        "content": step.get("model_observation", step["observation"]),
     }
 
 

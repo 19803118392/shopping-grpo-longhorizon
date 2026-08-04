@@ -1,0 +1,35 @@
+name: cpu-ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install CPU development dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+      - name: Run CPU test suite
+        run: python -m pytest -q
+      - name: Compile public modules and scripts
+        run: python -m compileall -q src scripts
+      - name: Validate the curriculum plan without GPU dependencies
+        run: >-
+          python scripts/prepare_grpo_curriculum.py
+          --metadata data/grpo/train.jsonl
+          --source-parquet data/grpo/train.parquet
+          --output-dir outputs/ci-curriculum
+          --dry-run

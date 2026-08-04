@@ -2,7 +2,6 @@
 
 from collections import Counter
 
-
 REWARD_V3 = "shopsimulator-reward-v3"
 REWARD_V3_TYPES = (
     "gold_purchase",
@@ -86,7 +85,7 @@ def summarize_trajectories(expected_task_ids, trajectories):
         for blocked in item.get("blocked_tool_calls") or []
     ]
     executed_after_truncation = sum(
-        bool(((steps[index - 1].get("projection") or {}).get("truncated")))
+        bool((steps[index - 1].get("projection") or {}).get("truncated"))
         for item in by_task.values()
         for steps in [item.get("steps") or []]
         for index in range(1, len(steps))
@@ -209,7 +208,8 @@ def _reward_detail(trajectory):
     return detail if isinstance(detail, dict) else {}
 
 
-def _is_strict_success(trajectory):
+def is_strict_success(trajectory):
+    """Return whether a trajectory satisfies the complete Reward v3 success contract."""
     terminal = trajectory.get("terminal_result") or {}
     detail = _reward_detail(trajectory)
     return (
@@ -223,3 +223,7 @@ def _is_strict_success(trajectory):
         and detail.get("purchase_success") is True
         and detail.get("termination_reason") == "gold_purchase"
     )
+
+
+# Retain the internal name for callers created before the public statistics API.
+_is_strict_success = is_strict_success

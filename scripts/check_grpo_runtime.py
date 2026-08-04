@@ -8,8 +8,8 @@ import math
 import os
 import sys
 from importlib.metadata import PackageNotFoundError, distribution, version
+from importlib.util import find_spec
 from pathlib import Path
-
 
 EXPECTED_VERSIONS = {
     "verl": "0.8.0",
@@ -130,12 +130,25 @@ def compose_runtime_config(overrides):
     try:
         from hydra import compose, initialize_config_dir
         from hydra.core.global_hydra import GlobalHydra
+        from omegaconf import OmegaConf
     except ImportError as exc:
         raise SystemExit(f"cannot parse GRPO config before preflight: {exc}") from exc
 
-    GlobalHydra.instance().clear()
     config_dir = Path(__file__).resolve().parents[1] / "configs"
     config_name = os.environ.get("GRPO_CONFIG_NAME", "grpo")
+    try:
+        verl_config_available = find_spec("verl.trainer.config") is not None
+    except (ImportError, ModuleNotFoundError):
+        verl_config_available = False
+    if not verl_config_available:
+        # CPU preflight still validates every project-owned safety field.  The full
+        # Hydra defaults tree is composed below once the pinned veRL runtime exists.
+        config = OmegaConf.load(config_dir / f"{config_name}.yaml")
+        config.pop("defaults", None)
+        config.pop("hydra", None)
+        return OmegaConf.merge(config, OmegaConf.from_dotlist(list(overrides)))
+
+    GlobalHydra.instance().clear()
     with initialize_config_dir(version_base=None, config_dir=str(config_dir)):
         return compose(config_name=config_name, overrides=list(overrides))
 
@@ -388,13 +401,14 @@ def main():
     try:
         import torch
         import verl
-        from verl.experimental.agent_loop.tool_parser import ToolParser
         from verl.experimental.agent_loop.tool_agent_loop import AgentState, ToolAgentLoop
+        from verl.experimental.agent_loop.tool_parser import ToolParser
+        from verl.tools.base_tool import BaseTool
+        from verl.utils.tracking import Tracking
+
         from shopping_grpo.training.grpo.adapter.agent_loop import ShoppingToolAgentLoop
         from shopping_grpo.training.grpo.adapter.tools import ShopSimulatorTool
         from shopping_grpo.training.grpo.compat import install_torch_padding_fallback
-        from verl.tools.base_tool import BaseTool
-        from verl.utils.tracking import Tracking
     except ImportError as exc:
         raise SystemExit(
             "incompatible veRL 0.8 install: required AgentLoop/Tool APIs are unavailable; "

@@ -10,6 +10,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import pytest
+
+pytest.importorskip("verl", reason="veRL patch tests require the GPU training extra")
+pytest.importorskip("torch", reason="veRL patch tests require PyTorch")
+
 import numpy as np
 import torch
 from verl import DataProto

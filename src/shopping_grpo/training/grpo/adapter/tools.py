@@ -8,8 +8,8 @@ from typing import Any
 from uuid import uuid4
 
 from shopping_grpo.environment.actions import action_reject_reason
-from shopping_grpo.environment.tools import tool_call_to_action
 from shopping_grpo.environment.observation import render_structured_observation
+from shopping_grpo.environment.tools import tool_call_to_action
 from shopping_grpo.training.grpo.adapter.runtime import (
     current_environment,
     current_runtime_state,
@@ -88,6 +88,7 @@ class ShopSimulatorTool(BaseTool):
             action = tool_call_to_action(self.name, parameters)
             result = await asyncio.to_thread(env.step, action)
             if result.get("observation_state") is not None:
+                state["_pending_observation_state"] = result["observation_state"]
                 observation = render_structured_observation(
                     result["observation_state"]
                 )

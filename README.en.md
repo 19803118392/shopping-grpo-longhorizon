@@ -159,11 +159,18 @@ The complete compact summaries and reproduction settings are in
 [`experiments/`](experiments/). These are reported results, not a promise that
 different hardware or dependency versions will produce bit-identical training.
 
+GRPO improves over SFT by only 3/200 strict-success tasks (+1.5 percentage
+points), with one rollout per task, so this table alone does not establish a
+statistically significant gain. The repeated-run evaluator now reports a fixed
+attempt denominator, Wilson 95% intervals, empirical `pass@k` / `pass^k`, a
+task-paired bootstrap interval, and an exact McNemar test. This comparison should
+be rerun after GPU provisioning.
+
 ## Training hardware and time
 
 All training used a single NVIDIA RTX 6000 with 96 GB of GPU memory.
 
-### LoRA SFT training (448 training examples, 3 epochs)
+### LoRA SFT training (379 training examples, 3 epochs)
 
 | Stage | Time | Peak GPU memory |
 |---|---:|---:|
@@ -193,13 +200,18 @@ All training used a single NVIDIA RTX 6000 with 96 GB of GPU memory.
 - Linux with an NVIDIA GPU and a compatible CUDA driver;
 - [`uv`](https://docs.astral.sh/uv/);
 - about 25 GB of free disk for environments, weights and generated artifacts;
-- approximately 48 GB GPU memory for the provided SFT recipe;
+- 96 GB GPU memory for the measured SFT recipe (89 GiB peak); a 48 GB recipe has
+  not been validated;
 - one 96 GB GPU for the provided GRPO recipe.
 
 The main environment uses Python 3.12. ShopSimulator is isolated on Python 3.10.
 `uv` creates both environments. veRL is **installed as the pinned
 `verl==0.8.0` dependency**; its source is not copied into this repository. Only
 the Shopping Agent adapter and a small version-checked patch live here.
+
+See [local experiment upgrades](docs/local-upgrades.md) for Evidence Memory,
+repeated-run statistics, and curriculum preparation, and the
+[96 GB GPU runbook](docs/gpu-runbook.md) for provisioning and stop conditions.
 
 ## Quick start
 
