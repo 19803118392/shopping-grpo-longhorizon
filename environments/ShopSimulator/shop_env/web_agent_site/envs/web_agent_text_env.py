@@ -664,7 +664,6 @@ class SimServer:
             options=session["options"],
             instruction_text=session["goal"]["instruction_text"],
             show_attrs=self.show_attrs,
-            selected_option=selected_option,  # 新增
             selected_price=selected_price,    # 新增
         )
         return html, url
