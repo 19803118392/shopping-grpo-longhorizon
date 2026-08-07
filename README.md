@@ -60,6 +60,29 @@ Terminal-GRPO（30 updates）各运行了一次确定性评测。严格成功固
 作为当前分支的新实验结果。仓库导入时未包含许可证文件；重新发布或用于作品集前，请
 阅读 [NOTICE](NOTICE.md) 并确认上游授权条件。
 
+## Agentic RL 的五个核心问题
+
+下面五项都对应仓库中的实际实现和可审计产物，也是介绍这个项目时采用的统一口径。
+
+| 问题 | 本项目的回答 | 证据入口 |
+|---|---|---|
+| 任务环境 | ShopSimulator Environment v2.1。输入是一条包含品类、预算、品牌/型号、功能和规格约束的中文 Query；Agent 只能根据逐步返回的 Observation 操作有状态的购物页面，并在最多35步内购买或结束。 | [环境源码](environments/ShopSimulator/) · [评估协议](docs/evaluation.md) |
+| 动作空间 | 对外 schema 有13个串行工具调用：12个有效环境动作覆盖搜索、打开商品、选择规格、查看4类证据、翻页/返回、购买和放弃；`think` 不改变环境且会浪费步数，因此明确禁止。工具参数必须来自当前 Observation，非法或过期动作由 Guard 拒绝。 | [工具定义](src/shopping_grpo/environment/tools.py) |
+| 训练轨迹 | 一条轨迹是 `Query → tool call → Observation → … → terminal`。SFT 从604条真实执行的教师轨迹中保留428条严格成功轨迹，最终使用379/49 train/validation，只对 Assistant 动作 token 计算 Loss；GRPO 从合并后的 SFT 模型出发，每个 prompt 在线生成4条环境轨迹。 | [数据采集](docs/data-collection.md) · [SFT](docs/sft.md) · [GRPO](docs/grpo.md) |
+| 奖励设计 | Reward v3 是无 LLM Judge 的确定性终局奖励：先检查品类和预算硬约束，再按品牌0.35、型号0.25、核心功能0.25、关键规格0.15计算有效偏好得分，并区分精确购买、有效替代、部分替代、合理放弃、循环和错误购买。Actor 只看到 Query 与 Observation；Gold ASIN 和目标商品字段只用于终局验收。 | [Reward v3 定义](docs/reward-v3.md) |
+| 评测闭环 | Validation-50×3 用配对 seed 做模型选择，报告固定分母、Wilson CI、`pass@3`/`pass^3`、paired bootstrap、McNemar、胜/平/负和失败画像；随后冻结代码、模型、配置与哈希，只运行一次确定性 Final-200，看到结果后不再调参。 | [开发集实验卡](experiments/validation-50x3/README.md) · [Final-200 实验卡](experiments/final-200/README.md) |
+
+12个有效动作分别是 `search_products`、`open_product`、`select_option`、
+`view_description`、`view_features`、`view_reviews`、`view_attributes`、
+`next_page`、`prev_page`、`back_to_search`、`buy_now` 和
+`finish_without_purchase`。每回合最多执行一个动作，使动作、Observation 和 Reward
+都能回溯到明确的轨迹位置。
+
+这套闭环给出的最终结论不是“GRPO 已被证明显著提升”，而是：GRPO 在开发集上的
++8.0pp 没有泛化到 Final-200；最终只观察到 +1.5pp，置信区间跨0。因而这个项目当前
+最有说服力的贡献是把 Agent 训练、严格终局判定、配对统计和失败审计连成了可复现
+闭环，并诚实识别出一个未通过留出集验证的算法假设。
+
 ## ShopSimulator 是什么？
 
 [ShopSimulator](https://arxiv.org/pdf/2601.18225) 是一个用于评估长程购物

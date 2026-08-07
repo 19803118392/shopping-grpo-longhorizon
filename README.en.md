@@ -67,6 +67,34 @@ below and are not new measurements from this branch. No license file was present
 in the imported repository; read [NOTICE](NOTICE.md) and confirm the upstream
 terms before redistribution or portfolio use.
 
+## Five questions an Agentic RL project must answer
+
+These answers map directly to implemented code and auditable artifacts. They
+are also the canonical way to describe this project.
+
+| Question | Answer in this project | Evidence |
+|---|---|---|
+| Task environment | ShopSimulator Environment v2.1. Each Chinese Query may specify category, budget, brand/model, functions, and product options. The agent operates a stateful shopping page only through incremental Observations and must buy or stop within 35 steps. | [Environment source](environments/ShopSimulator/) · [Evaluation protocol](docs/evaluation.md) |
+| Action space | The public schema contains 13 serial tools. Twelve effective environment actions cover search, product opening, option selection, four evidence views, pagination/navigation, purchase, and abstention. `think` has no environment effect and is explicitly discouraged. Arguments must be grounded in the current Observation; the Guard rejects illegal or stale actions. | [Tool definitions](src/shopping_grpo/environment/tools.py) |
+| Training trajectories | A trajectory is `Query → tool call → Observation → … → terminal`. SFT retained 428 strict-success trajectories from 604 executed teacher rollouts, used a 379/49 train/validation split, and applies loss only to Assistant action tokens. GRPO starts from merged SFT and samples four fresh environment trajectories per prompt online. | [Data collection](docs/data-collection.md) · [SFT](docs/sft.md) · [GRPO](docs/grpo.md) |
+| Reward design | Reward v3 is a deterministic terminal reward without an LLM judge. It first gates category and budget, then scores active preferences with brand 0.35, model 0.25, core functions 0.25, and key options 0.15, while distinguishing exact, valid-alternative, partial, abstention, loop, and wrong-purchase outcomes. The Actor sees only Query and Observation; Gold ASIN and target-product fields are used only for terminal scoring. | [Reward v3 specification](docs/reward-v3.md) |
+| Evaluation loop | Paired-seed Validation-50×3 is used for selection and reports a fixed denominator, Wilson intervals, `pass@3`/`pass^3`, paired bootstrap, McNemar, win/tie/loss, and failure profiles. Code, models, configuration, and hashes are then frozen before one deterministic Final-200 run, with no post-result tuning. | [Validation card](experiments/validation-50x3/README.md) · [Final-200 card](experiments/final-200/README.md) |
+
+The twelve effective actions are `search_products`, `open_product`,
+`select_option`, `view_description`, `view_features`, `view_reviews`,
+`view_attributes`, `next_page`, `prev_page`, `back_to_search`, `buy_now`, and
+`finish_without_purchase`. At most one action executes per turn, so every
+action, Observation, and reward remains attributable to a specific trajectory
+position.
+
+The closed-loop conclusion is not that GRPO has already demonstrated a
+significant gain. Its +8.0-point validation improvement did not generalize to
+Final-200, where the observed gain was +1.5 points with an interval crossing
+zero. The strongest contribution at this stage is a reproducible connection
+between agent training, strict terminal scoring, paired statistics, and failure
+auditing—and the honest rejection of an algorithmic hypothesis that did not
+survive held-out evaluation.
+
 ## What is ShopSimulator?
 
 [ShopSimulator](https://arxiv.org/pdf/2601.18225) is a large-scale Chinese
