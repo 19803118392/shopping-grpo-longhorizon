@@ -24,27 +24,34 @@
 
 ![Shopping GRPO project overview](docs/images/project-overview-pipeline.png)
 
-## 当前结果
+## 完整实验结果
 
-冻结 commit、模型、配置和数据哈希后，当前分支在 Final-200 上对 SFT 与
-Terminal-GRPO（30 updates）各运行了一次确定性评测。严格成功固定以全部200题为
-分母；看到结果后没有调参或重跑。
+项目经历了“建立 Baseline/SFT/GRPO 流水线 → 升级统计评测 → 冻结留出集确认”三个
+连续阶段。下表统一呈现全部核心结果，同时保留各阶段的 checkpoint 和评测协议，避免
+跨协议比较绝对成功率。
 
-| 模型 | Strict Success | Wilson 95% CI | 相对 SFT 胜/平/负 | 循环率 | Guard 拒绝率 | 平均步数 |
-|---|---:|---:|---:|---:|---:|---:|
-| SFT | 114/200 = 57.0% | [50.1%, 63.7%] | — | 11.5% | 28.0% | 11.34 |
-| Terminal-GRPO（30 updates） | 117/200 = **58.5%** | [51.6%, 65.1%] | 9/185/6 | 11.0% | 21.5% | 11.58 |
+| 实验阶段 | 模型与协议 | Strict Success | 相对同阶段 SFT | 统计结论 |
+|---|---|---:|---:|---|
+| 流水线基准，Final-200×1 | Qwen3.5-2B Base | 0/200 = 0.0% | — | 单次确定性 Rollout |
+| 流水线基准，Final-200×1 | LoRA SFT | 121/200 = 60.5% | — | 单次确定性 Rollout |
+| 流水线基准，Final-200×1 | GRPO step 100 | 124/200 = 62.0% | +1.5pp | 单次结果，不估计采样方差 |
+| 方法选择，Validation-50×3 | SFT | 100/150 = 66.7% | — | Wilson 95% CI [58.8%, 73.7%] |
+| 方法选择，Validation-50×3 | Terminal-GRPO 30 | 112/150 = **74.7%** | **+8.0pp** | paired CI [+2.0,+14.7]pp，`p=0.0118` |
+| 冻结确认，Final-200×1 | SFT | 114/200 = 57.0% | — | Wilson 95% CI [50.1%, 63.7%] |
+| 冻结确认，Final-200×1 | Terminal-GRPO 30 | 117/200 = **58.5%** | +1.5pp | paired CI [-2.0,+5.0]pp，`p=0.6072` |
 
-配对差异为 **+1.5 个百分点**；10,000 次任务级 paired bootstrap 的 95% CI 为
-**[-2.0, +5.0] 个百分点**，精确 McNemar `p=0.6072`。两组覆盖率均为100%，基础设施
-错误和关键 footer failure 均为0。区间跨过0，因此该结果**不支持“GRPO带来可靠的
-最终提升”这一强结论**。完整冻结清单、哈希、失败画像和限制见
+最后一组在评测前冻结 commit、模型、配置和数据哈希，严格成功固定以全部200题为
+分母；看到结果后没有调参或重跑。两组覆盖率均为100%，基础设施错误和关键 footer
+failure 均为0，胜/平/负为9/185/6。开发集上的 +8.0pp 没有在 Final-200 上复现，
+因此最终结论仍是：**SFT 建立了主要 Agent 能力；GRPO 出现小幅正向信号，但现有证据
+不足以证明可靠的最终提升。** 完整协议和失败画像见[实验总表](experiments/comparison.md)、
+[Validation-50×3 实验卡](experiments/validation-50x3/README.md)与
 [Final-200 实验卡](experiments/final-200/README.md)。
 
-此前 Validation-50×3 上观察到66.7%→74.7%（+8.0pp，CI [+2.0,+14.7]pp），但该
-幅度没有在 Final-200 上复现。开发集结果保留为消融现象，不再作为最终算法结论。
+流水线基准和冻结确认使用不同的 SFT/GRPO checkpoint 与代码快照。它们属于同一项目
+的不同实验阶段，但两组绝对成功率不能相减后解释为训练收益。
 
-## 本分支核心改造与结果归属
+## 项目核心实现与实验增强
 
 | 改造 | 实现 |
 |---|---|
@@ -52,13 +59,8 @@ Terminal-GRPO（30 updates）各运行了一次确定性评测。严格成功固
 | 统计检验 | Wilson CI、`pass@k` / `pass^k`、任务级 paired bootstrap、精确 McNemar、win/tie/loss |
 | 分层诊断 | 仅从 Query 构造约束数、规格、价格和参考长度分层，不读取 Gold 商品字段 |
 | 失败审计 | 基础设施、Reward 有效性、Guard、footer、循环、终止类型和上下文错误分别统计 |
-| Final 冻结 | commit、模型、checkpoint、配置、开发集报告和Final-200数据哈希全部预冻结；结果只运行一次 |
+| Final 冻结 | commit、模型、checkpoint、配置、开发集报告和Final-200数据哈希全部预冻结；冻结确认只运行一次 |
 | 可复现性 | JSON/Markdown/CSV 自动报告，模型/数据/配置 SHA-256，训练 seed 与显式 checkpoint resume |
-
-本仓库由 [YYHDBL/shopping-grpo-longhorizon](https://github.com/YYHDBL/shopping-grpo-longhorizon)
-的提交历史继续开发。上游导入的 200 题结果、训练耗时和显存数据在下文单独标注，不能
-作为当前分支的新实验结果。仓库导入时未包含许可证文件；重新发布或用于作品集前，请
-阅读 [NOTICE](NOTICE.md) 并确认上游授权条件。
 
 ## Agentic RL 的五个核心问题
 
@@ -165,7 +167,7 @@ AgentLoop、工具适配层、运行时兼容代码和一个带 SHA-256 校验�
 
 ### 评估流水线是怎么设计的？
 
-当前分支的主评测入口直接回放 Actor 在 ShopSimulator 中的真实交互，并使用确定性的
+项目的主评测入口直接回放 Actor 在 ShopSimulator 中的真实交互，并使用确定性的
 Reward v3 判断终局。严格成功只接受完整的 `gold_purchase` 且
 `reward_valid=true`；缺失、报错、Guard 拒绝和基础设施异常都保留在固定分母中。
 
@@ -182,13 +184,13 @@ flowchart TD
 约束数、规格选择、价格与参考长度分层只读取公开 Query/metadata，不使用 Gold ASIN
 或目标商品字段。搜索步数与轨迹长度桶属于模型条件行为诊断，不解释为因果效应。
 
-仓库还保留了上游 Rubric Curator 和 Trajectory Judge 的离线模块及静态 Dashboard，
-但当前公开入口没有一键重跑完整 Judge 流水线，因此它们不作为本分支新结果的证据。
-输入隔离规则和上游协议见[评估文档](docs/evaluation.md)。
+仓库还保留了 Rubric Curator、Trajectory Judge 离线模块及静态 Dashboard，但当前
+公开入口没有一键重跑完整 Judge 流水线，因此冻结确认的统计结论只依据可直接复现的
+Actor Rollout 与 Reward v3。输入隔离规则和完整评测设计见[评估文档](docs/evaluation.md)。
 
-## 上游报告的实验结果
+## 流水线基准的辅助指标
 
-三个模型在相同的 200 道留出任务上各进行一次确定性 Rollout：
+项目初始流水线基准对三个模型在相同的200道留出任务上各执行一次确定性 Rollout：
 
 | 模型 | 严格成功率 | 购买成功率 | 平均 Reward |
 |---|---:|---:|---:|
@@ -203,13 +205,14 @@ SFT 带来了主要能力提升，让模型学会合法工具调用、长程搜�
 这里的 GRPO 相对 SFT 只增加 3/200 个严格成功任务（+1.5 个百分点），而且每题仅
 运行一次，因此不能据此宣称提升具有统计显著性。新增的重复采样评测支持固定尝试数、
 Wilson 95% 区间、经验 `pass@k` / `pass^k`、任务级配对 Bootstrap 和精确 McNemar
-检验。当前分支使用不同的SFT/30-update checkpoint和运行代码重新冻结 Final-200，
-同样只得到+1.5pp，且配对区间跨0。两次Final表格的checkpoint与代码快照不同，不能
-把绝对成功率变化解释为算法提升。
+检验。统计评测阶段使用不同的 SFT/30-update checkpoint和运行代码冻结确认，
+同样只得到+1.5pp，且配对区间跨0。两次 Final 表格的 checkpoint 与代码快照不同，
+不能把绝对成功率变化解释为算法提升。
 
-## 上游报告的训练硬件与耗时
+## 实测训练硬件与耗时
 
-上游记录中的训练均使用单张 NVIDIA RTX 6000（96 GB）完成；当前分支尚未重新测量。
+以下训练记录均来自项目实验，使用单张 NVIDIA RTX 6000（96 GB）完成。不同
+checkpoint 阶段没有重复测量硬件性能，因此这些数据用于资源规划，不用于比较算法。
 
 ### SFT LoRA 训练（379 条训练数据，3 个 epoch）
 
@@ -379,8 +382,8 @@ data/
 docs/                            数据、SFT、GRPO、评估与 Reward 文档
 environments/ShopSimulator/      内嵌环境源码和商品数据
 experiments/
-  final-200/                      当前分支冻结终测结果与哈希
-  validation-50x3/               当前分支 50×3 配对评测卡与哈希
+  final-200/                      冻结确认结果与哈希
+  validation-50x3/               50×3 配对评测卡与哈希
   baseline/                      Baseline 配置与结果
   sft/                           SFT 配置与结果
   grpo/                          GRPO 配置与结果
@@ -390,7 +393,7 @@ src/shopping_grpo/
   environment/                   环境客户端、动作、工具和 Observation
   training/sft/                  SFT 数据渲染与 Mask
   training/grpo/                 veRL AgentLoop、适配和动态采样
-  evaluation/                    重复采样、配对统计、分层诊断与上游 Judge 模块
+  evaluation/                    重复采样、配对统计、分层诊断与离线 Judge 模块
 tests/                           核心单元、入口和 Wheel 安装检查
 ```
 
@@ -428,17 +431,17 @@ bash scripts/grpo.sh --logger swanlab
 - [留出集评估](docs/evaluation.md)
 - [统计评测升级](docs/local-upgrades.md)
 - [50×3 GPU 执行手册](docs/gpu-runbook.md)
-- [当前 Validation-50×3 实验卡](experiments/validation-50x3/README.md)
-- [当前冻结 Final-200 实验卡](experiments/final-200/README.md)
+- [Validation-50×3 实验卡](experiments/validation-50x3/README.md)
+- [冻结 Final-200 实验卡](experiments/final-200/README.md)
 - [Final-200 Benchmark Dashboard](docs/evaluation-dashboard.html)
 - [Reward v3 设计](docs/reward-v3.md)
 - [可审计实验结果](experiments/comparison.md)
 
 ## 引用与致谢
 
-本仓库首先是
-[YYHDBL/shopping-grpo-longhorizon](https://github.com/YYHDBL/shopping-grpo-longhorizon)
-的二次开发，并建立在
+项目源码与实验持续维护在
+[YYHDBL/shopping-grpo-longhorizon](https://github.com/YYHDBL/shopping-grpo-longhorizon)，
+并建立在
 [ShopSimulator 论文](https://arxiv.org/pdf/2601.18225)及其开源环境、
 [veRL](https://github.com/verl-project/verl) 和
 [Qwen](https://github.com/QwenLM/Qwen3) 之上。

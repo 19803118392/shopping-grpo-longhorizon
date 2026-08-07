@@ -1,7 +1,8 @@
 # Statistical evaluation upgrade
 
-This branch evaluates SFT and GRPO as a paired repeated-measures experiment. It does
-not treat a one-off percentage difference as evidence of an algorithmic gain.
+The statistical-evaluation stage compares SFT and GRPO as a paired repeated-
+measures experiment. It does not treat a one-off percentage difference as
+evidence of an algorithmic gain.
 
 The first completed 50×3 run reports SFT 66.7% versus Terminal-GRPO 74.7%, a
 paired difference of +8.0 percentage points with bootstrap 95% CI

@@ -1,7 +1,8 @@
 # Validation-50×3 paired evaluation
 
-This is the compact, Git-tracked experiment card for the current branch. Raw
-trajectories and model weights remain under the Git-ignored `outputs/` tree.
+This is the compact, Git-tracked card for the project's repeated method-selection
+experiment. Raw trajectories and model weights remain under the Git-ignored
+`outputs/` tree.
 
 > Final-200 subsequently measured SFT 57.0% versus Terminal-GRPO 58.5%, with a
 > paired 95% CI of [-2.0, +5.0] points and McNemar p=0.6072. The validation gain
@@ -43,8 +44,9 @@ behavioral improvement.
 
 This is a development-set method comparison. Query-derived strata are
 exploratory and have no multiple-comparison correction. The result is not a
-Final-200 score and must not be directly subtracted from the imported upstream
-single-pass 60.5%/62.0% table.
+Final-200 score and must not be directly subtracted from the project's earlier
+single-pass 60.5%/62.0% pipeline benchmark because the checkpoints and protocols
+differ.
 
 Machine-readable protocol and result files are [run_config.json](run_config.json)
 and [summary.json](summary.json).

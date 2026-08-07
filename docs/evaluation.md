@@ -2,11 +2,11 @@
 
 配套的可视化页面：[Final-200 Benchmark Dashboard](evaluation-dashboard.html)。
 
-> **实现状态。** 本文记录离线评测模块的设计和导入的上游实验协议。
+> **实现状态。** 本文记录项目的完整离线评测设计与实验协议。
 > `bash scripts/evaluate.sh NAME` 当前只执行 Actor Rollout 和确定性 Reward v3 汇总。
 > `src/shopping_grpo/evaluation/` 中的 TaskFacts、Rubric、Judge-safe payload、契约校验、
 > 四面板聚合与配对比较都有独立测试，但仓库尚未提供把这些阶段串起来的端到端 CLI。
-> 因此下面列出的完整 Judge 产物不能被描述为当前分支“一条命令即可复现”。
+> 因此下面列出的完整 Judge 产物不能被描述为“一条命令即可复现”。
 
 本项目的正式评估不是“让一个模型看结果后打一个总分”，而是由代码硬检查、
 DeepSeek V4 Flash Rubric 整理器、DeepSeek V4 Pro 轨迹 Judge 和最终聚合器组成。
@@ -70,9 +70,9 @@ Final-200 的约束如下：
 - 不用于 Prompt 调优、Rubric/Judge 校准或 checkpoint 选择；
 - 每个模型每题一次确定性 Rollout。
 
-上游文档和静态 Dashboard 已披露 `task_id=8187` 的 Query 与案例分析，因此这个集合
-应称为“训练零重叠的留出集”，不能再严格称为完全盲测集。当前分支不得根据该案例或
-任何 Final-200 结果调整 Prompt、Reward、课程、Evidence Memory 或 checkpoint。
+项目文档和静态 Dashboard 已披露 `task_id=8187` 的 Query 与案例分析，因此这个集合
+应称为“训练零重叠的留出集”，不能再严格称为完全盲测集。项目不得根据该案例或任何
+Final-200 结果调整 Prompt、Reward、课程、Evidence Memory 或 checkpoint。
 
 ## 3. 第一位 LLM：V4 Flash 生成冻结 Rubric
 
@@ -360,7 +360,7 @@ Reward 与 Rubric 冲突时两者都保留。例如 Reward 判为 gold，但 Rub
 统计成功状态迁移、Reward type 迁移、hard violation 差值、五维分数差值、步数、
 Guard 和重复动作变化；仍然不生成一个综合总分。
 
-导入的上游报告记录的 Pro Judge 覆盖率为：
+初始单次评测记录的 Pro Judge 覆盖率为：
 
 | Actor | Valid Judge | Not judged | Coverage |
 |---|---:|---:|---:|

@@ -25,31 +25,40 @@ and statistical tests
 
 ![Shopping GRPO project overview](docs/images/project-overview-pipeline.png)
 
-## Current result
+## Complete experimental results
 
-After freezing the commit, models, configuration, and data hashes, this branch
-evaluated SFT and Terminal-GRPO (30 updates) once on Final-200. Strict success
-uses all 200 tasks as the fixed denominator; no tuning or rerun occurred after
-the results became visible.
+The project progressed through three consecutive stages: establishing the
+Baseline/SFT/GRPO pipeline, adding statistical evaluation, and confirming the
+selected method on a frozen held-out set. The table keeps each checkpoint and
+protocol explicit so absolute rates are not compared across protocols.
 
-| Model | Strict success | Wilson 95% CI | Win/tie/loss vs SFT | Loop rate | Guard rejection | Mean steps |
-|---|---:|---:|---:|---:|---:|---:|
-| SFT | 114/200 = 57.0% | [50.1%, 63.7%] | — | 11.5% | 28.0% | 11.34 |
-| Terminal-GRPO (30 updates) | 117/200 = **58.5%** | [51.6%, 65.1%] | 9/185/6 | 11.0% | 21.5% | 11.58 |
+| Stage | Model and protocol | Strict success | vs stage-matched SFT | Statistical conclusion |
+|---|---|---:|---:|---|
+| Pipeline benchmark, Final-200×1 | Qwen3.5-2B Base | 0/200 = 0.0% | — | One deterministic rollout |
+| Pipeline benchmark, Final-200×1 | LoRA SFT | 121/200 = 60.5% | — | One deterministic rollout |
+| Pipeline benchmark, Final-200×1 | GRPO step 100 | 124/200 = 62.0% | +1.5 points | One pass; sampling variance not estimated |
+| Method selection, Validation-50×3 | SFT | 100/150 = 66.7% | — | Wilson 95% CI [58.8%, 73.7%] |
+| Method selection, Validation-50×3 | Terminal-GRPO 30 | 112/150 = **74.7%** | **+8.0 points** | paired CI [+2.0,+14.7], `p=0.0118` |
+| Frozen confirmation, Final-200×1 | SFT | 114/200 = 57.0% | — | Wilson 95% CI [50.1%, 63.7%] |
+| Frozen confirmation, Final-200×1 | Terminal-GRPO 30 | 117/200 = **58.5%** | +1.5 points | paired CI [-2.0,+5.0], `p=0.6072` |
 
-The paired difference is **+1.5 percentage points**. A 10,000-sample task-paired
-bootstrap gives a 95% CI of **[-2.0, +5.0] points**, and the exact McNemar test
-gives `p=0.6072`. Both runs have 100% coverage, zero infrastructure-invalid
-attempts, and zero critical footer failures. Because the interval includes zero,
-this result **does not support a strong claim of a reliable final GRPO gain**.
-See the [Final-200 experiment card](experiments/final-200/README.md) for frozen
-artifacts, hashes, failure profiles, and limitations.
+Before the final row pair, the commit, models, configuration, and data hashes
+were frozen. Strict success used all 200 tasks as the denominator, and no tuning
+or rerun occurred after the results became visible. Both models had 100%
+coverage, zero infrastructure-invalid attempts, zero critical footer failures,
+and a win/tie/loss count of 9/185/6. The +8.0-point validation effect did not
+reproduce on Final-200. The final conclusion is therefore: **SFT establishes
+most of the agent capability; GRPO shows a small positive signal, but the
+current evidence does not establish a reliable final improvement.** See the
+[experiment comparison](experiments/comparison.md),
+[Validation-50×3 card](experiments/validation-50x3/README.md), and
+[Final-200 card](experiments/final-200/README.md).
 
-Validation-50×3 previously showed 66.7%→74.7% (+8.0 points, CI
-[+2.0,+14.7]), but that magnitude did not reproduce on Final-200. The validation
-result remains an ablation observation, not the final algorithmic conclusion.
+The pipeline benchmark and frozen confirmation used different SFT/GRPO
+checkpoints and code snapshots. They are stages of one project, but differences
+between their absolute success rates are not training-effect estimates.
 
-## Contributions and result ownership
+## Core implementation and experimental upgrades
 
 | Upgrade | Implementation |
 |---|---|
@@ -57,15 +66,8 @@ result remains an ablation observation, not the final algorithmic conclusion.
 | Statistical tests | Wilson CI, `pass@k` / `pass^k`, task-paired bootstrap, exact McNemar, win/tie/loss |
 | Stratified diagnostics | constraint, option, price, and reference-length strata derived only from Query fields |
 | Failure audit | separate infrastructure, Reward validity, Guard, footer, loop, termination, and context errors |
-| Final freeze | pre-frozen commit, model, checkpoint, configuration, validation-report, and Final-200 hashes; one run only |
+| Final freeze | pre-frozen commit, model, checkpoint, configuration, validation-report, and Final-200 hashes; one frozen-confirmation run only |
 | Reproducibility | JSON/Markdown/CSV reports, model/data/config SHA-256, deterministic training seeds, explicit checkpoint resume |
-
-This repository continues the commit history of
-[YYHDBL/shopping-grpo-longhorizon](https://github.com/YYHDBL/shopping-grpo-longhorizon).
-The imported 200-task results, runtime, and memory figures are labelled separately
-below and are not new measurements from this branch. No license file was present
-in the imported repository; read [NOTICE](NOTICE.md) and confirm the upstream
-terms before redistribution or portfolio use.
 
 ## Five questions an Agentic RL project must answer
 
@@ -172,7 +174,7 @@ small SHA-256-checked patch. See the [GRPO guide](docs/grpo.md) for details.
 
 ### How evaluation works
 
-The primary evaluator on this branch replays real Actor interactions in
+The primary evaluator replays real Actor interactions in
 ShopSimulator and uses deterministic Reward v3 for terminal outcomes. Strict
 success requires a complete `gold_purchase` with `reward_valid=true`; missing
 rows, task errors, Guard rejections, and infrastructure failures remain in the
@@ -193,15 +195,17 @@ metadata fields—never a Gold ASIN or target-product field. Search-step and
 trajectory-length buckets are model-conditional behavioral diagnostics, not
 causal explanations.
 
-The repository retains the upstream offline Rubric Curator and Trajectory Judge
-modules and static dashboard, but the public entry point does not rerun that
-complete Judge pipeline in one command. They are therefore not evidence for the
-new result on this branch. See the [evaluation guide](docs/evaluation.md) for
-the imported protocol and input-isolation rules.
+The repository retains the offline Rubric Curator and Trajectory Judge modules
+and static dashboard, but the public entry point does not rerun that complete
+Judge pipeline in one command. The frozen-confirmation conclusion therefore
+uses only the directly reproducible Actor rollout and Reward v3 pipeline. See
+the [evaluation guide](docs/evaluation.md) for the full design and input-isolation
+rules.
 
-## Upstream reported results
+## Auxiliary metrics from the pipeline benchmark
 
-One deterministic rollout per task on the same 200 held-out tasks:
+The initial pipeline benchmark ran one deterministic rollout per model on each
+of the same 200 held-out tasks:
 
 | Model | Strict success | Purchase success | Mean reward |
 |---|---:|---:|---:|
@@ -210,23 +214,24 @@ One deterministic rollout per task on the same 200 held-out tasks:
 | GRPO step 100 | 62.0% | 62.5% | 0.5158 |
 
 The complete compact summaries and reproduction settings are in
-[`experiments/`](experiments/). These are reported results, not a promise that
-different hardware or dependency versions will produce bit-identical training.
+[`experiments/`](experiments/). Different hardware or dependency versions are
+not expected to produce bit-identical training.
 
 GRPO improves over SFT by only 3/200 strict-success tasks (+1.5 percentage
 points), with one rollout per task, so this table alone does not establish a
 statistically significant gain. The repeated-run evaluator now reports a fixed
 attempt denominator, Wilson 95% intervals, empirical `pass@k` / `pass^k`, a
-task-paired bootstrap interval, and an exact McNemar test. The current branch
-froze Final-200 again with different SFT/30-update checkpoints and runtime code;
-it also found +1.5 points with an interval crossing zero. The two final tables
-use different checkpoint and code snapshots, so changes in their absolute rates
-must not be interpreted as an algorithmic gain.
+task-paired bootstrap interval, and an exact McNemar test. The statistical-
+evaluation stage froze different SFT/30-update checkpoints and runtime code for
+its confirmation run; it also found +1.5 points with an interval crossing zero.
+The two Final-200 tables use different checkpoint and code snapshots, so changes
+in their absolute rates must not be interpreted as an algorithmic gain.
 
-## Upstream reported training hardware and time
+## Measured training hardware and time
 
-The upstream record used one NVIDIA RTX 6000 with 96 GB of GPU memory. This
-branch has not remeasured the figures.
+These project runs used one NVIDIA RTX 6000 with 96 GB of GPU memory. Hardware
+performance was not remeasured for every checkpoint stage, so the figures are
+for resource planning rather than algorithm comparison.
 
 ### LoRA SFT training (379 training examples, 3 epochs)
 
@@ -403,8 +408,8 @@ data/
 docs/                            one guide for each tutorial stage and Reward v3
 environments/ShopSimulator/      embedded environment and product archive
 experiments/
-  final-200/                      current frozen final result and hashes
-  validation-50x3/               current paired evaluation card and hashes
+  final-200/                      frozen confirmation result and hashes
+  validation-50x3/               paired 50×3 evaluation card and hashes
   baseline/                      baseline config and result summary
   sft/                           SFT config and result summary
   grpo/                          GRPO config and result summary
@@ -414,7 +419,7 @@ src/shopping_grpo/
   environment/                   HTTP client, tools, actions and observations
   training/sft/                  SFT dataset masking and collation
   training/grpo/                 veRL adapter, compatibility and sampling logic
-  evaluation/                    repeated sampling, paired statistics, strata, and imported Judge modules
+  evaluation/                    repeated sampling, paired statistics, strata, and offline Judge modules
 tests/                           focused unit, launcher and packaging checks
 ```
 
@@ -459,17 +464,17 @@ bash scripts/grpo.sh --logger swanlab
 - [Held-out evaluation](docs/evaluation.md)
 - [Statistical evaluation upgrade](docs/local-upgrades.md)
 - [50×3 GPU runbook](docs/gpu-runbook.md)
-- [Current Validation-50×3 experiment card](experiments/validation-50x3/README.md)
-- [Current frozen Final-200 experiment card](experiments/final-200/README.md)
+- [Validation-50×3 experiment card](experiments/validation-50x3/README.md)
+- [Frozen Final-200 experiment card](experiments/final-200/README.md)
 - [Final-200 Benchmark Dashboard](docs/evaluation-dashboard.html)
 - [Reward v3 design](docs/reward-v3.md)
 - [Auditable experiment results](experiments/comparison.md)
 
 ## References and acknowledgements
 
-This repository is a derivative of
+The source and experiments are maintained at
 [YYHDBL/shopping-grpo-longhorizon](https://github.com/YYHDBL/shopping-grpo-longhorizon)
-and builds on the
+and build on the
 [ShopSimulator paper](https://arxiv.org/pdf/2601.18225) and source project,
 [veRL](https://github.com/verl-project/verl), and
 [Qwen](https://github.com/QwenLM/Qwen3).

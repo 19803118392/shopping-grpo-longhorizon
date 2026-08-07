@@ -5,16 +5,17 @@ checkpoints and complete trajectories are intentionally kept under the ignored
 `outputs/` tree.
 
 ```text
-final-200/         current frozen one-pass final evaluation
-validation-50x3/  current-branch paired repeated evaluation
-baseline/   base-model evaluation config and summary
-sft/        SFT training/evaluation config and summary
-grpo/       GRPO training/evaluation config and summary
+final-200/         frozen-confirmation one-pass evaluation
+validation-50x3/  paired repeated method-selection evaluation
+baseline/          pipeline benchmark config and summary
+sft/               SFT training/evaluation config and summary
+grpo/              GRPO training/evaluation config and summary
 comparison.md
 ```
 
-[`final-200/`](final-200/) is the frozen current-branch final evaluation;
-[`validation-50x3/`](validation-50x3/) is the development-set repeated
-comparison that preceded it. The `baseline/`, `sft/`, and `grpo/` directories
-are imported upstream records. See [comparison.md](comparison.md) for the three
-protocols and their limitations.
+Together these directories record three stages of one project:
+`baseline/`, `sft/`, and `grpo/` contain the initial pipeline benchmark;
+[`validation-50x3/`](validation-50x3/) contains the repeated development-set
+comparison; and [`final-200/`](final-200/) contains the frozen confirmation.
+See [comparison.md](comparison.md) for the unified result table, protocol
+boundaries, and limitations.
