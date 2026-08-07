@@ -3,6 +3,11 @@
 This is the compact, Git-tracked experiment card for the current branch. Raw
 trajectories and model weights remain under the Git-ignored `outputs/` tree.
 
+> Final-200 subsequently measured SFT 57.0% versus Terminal-GRPO 58.5%, with a
+> paired 95% CI of [-2.0, +5.0] points and McNemar p=0.6072. The validation gain
+> therefore did not generalize as a statistically reliable final improvement.
+> See the [Final-200 experiment card](../final-200/README.md).
+
 ## Protocol
 
 - dataset: first 50 tasks in `data/grpo/validation.jsonl`;

@@ -14,7 +14,7 @@ Reproducible post-training and evaluation for long-horizon shopping agents
 [![LoRA SFT](https://img.shields.io/badge/Post--training-LoRA%20SFT-7B61FF)](docs/sft.md)
 [![veRL](https://img.shields.io/badge/veRL-0.8.0-0E8A16)](https://github.com/verl-project/verl)
 [![ShopSimulator](https://img.shields.io/badge/Environment-ShopSimulator%20v2.1-4C78A8)](https://arxiv.org/pdf/2601.18225)
-[![Evaluation](https://img.shields.io/badge/Evaluation-Paired%2050%C3%973-F59E0B)](experiments/validation-50x3/README.md)
+[![Evaluation](https://img.shields.io/badge/Evaluation-Frozen%20Final--200-F59E0B)](experiments/final-200/README.md)
 
 <br />
 
@@ -27,27 +27,27 @@ and statistical tests
 
 ## Current result
 
-The current branch evaluates SFT and Terminal-GRPO (30 updates) on 50 development
-tasks from `data/grpo/validation.jsonl`, with three paired attempts per task.
-Both models use the same task, attempt, derived seed, and
-`temperature/top-p=0.7/0.9`; strict success has a fixed denominator of 150
-attempts per model.
+After freezing the commit, models, configuration, and data hashes, this branch
+evaluated SFT and Terminal-GRPO (30 updates) once on Final-200. Strict success
+uses all 200 tasks as the fixed denominator; no tuning or rerun occurred after
+the results became visible.
 
-| Model | Strict success | Wilson 95% CI | Win/tie/loss vs SFT | `pass@3` | `pass^3` | Loop rate | Mean steps |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| SFT | 66.7% | [58.8%, 73.7%] | — | 78.0% | 54.0% | 10.0% | 10.95 |
-| Terminal-GRPO (30 updates) | **74.7%** | **[67.2%, 81.0%]** | **9/39/2** | **84.0%** | **62.0%** | **8.7%** | **10.80** |
+| Model | Strict success | Wilson 95% CI | Win/tie/loss vs SFT | Loop rate | Guard rejection | Mean steps |
+|---|---:|---:|---:|---:|---:|---:|
+| SFT | 114/200 = 57.0% | [50.1%, 63.7%] | — | 11.5% | 28.0% | 11.34 |
+| Terminal-GRPO (30 updates) | 117/200 = **58.5%** | [51.6%, 65.1%] | 9/185/6 | 11.0% | 21.5% | 11.58 |
 
-The paired difference is **+8.0 percentage points**. A 10,000-sample task-paired
-bootstrap gives a 95% CI of **[+2.0, +14.7] points**, and the exact McNemar test
-gives `p=0.0118`. Both runs have 100% attempt coverage, zero infrastructure-invalid
-attempts, and zero critical footer failures. See the
-[Validation-50×3 experiment card](experiments/validation-50x3/README.md) for
-configuration, hashes, and limitations.
+The paired difference is **+1.5 percentage points**. A 10,000-sample task-paired
+bootstrap gives a 95% CI of **[-2.0, +5.0] points**, and the exact McNemar test
+gives `p=0.6072`. Both runs have 100% coverage, zero infrastructure-invalid
+attempts, and zero critical footer failures. Because the interval includes zero,
+this result **does not support a strong claim of a reliable final GRPO gain**.
+See the [Final-200 experiment card](experiments/final-200/README.md) for frozen
+artifacts, hashes, failure profiles, and limitations.
 
-> This is a development-set method comparison, not a Final-200 score. It must
-> not be subtracted directly from the upstream single-pass 60.5%/62.0% results;
-> Final-200 remains frozen and is not used for tuning.
+Validation-50×3 previously showed 66.7%→74.7% (+8.0 points, CI
+[+2.0,+14.7]), but that magnitude did not reproduce on Final-200. The validation
+result remains an ablation observation, not the final algorithmic conclusion.
 
 ## Contributions and result ownership
 
@@ -57,6 +57,7 @@ configuration, hashes, and limitations.
 | Statistical tests | Wilson CI, `pass@k` / `pass^k`, task-paired bootstrap, exact McNemar, win/tie/loss |
 | Stratified diagnostics | constraint, option, price, and reference-length strata derived only from Query fields |
 | Failure audit | separate infrastructure, Reward validity, Guard, footer, loop, termination, and context errors |
+| Final freeze | pre-frozen commit, model, checkpoint, configuration, validation-report, and Final-200 hashes; one run only |
 | Reproducibility | JSON/Markdown/CSV reports, model/data/config SHA-256, deterministic training seeds, explicit checkpoint resume |
 
 This repository continues the commit history of
@@ -188,10 +189,11 @@ GRPO improves over SFT by only 3/200 strict-success tasks (+1.5 percentage
 points), with one rollout per task, so this table alone does not establish a
 statistically significant gain. The repeated-run evaluator now reports a fixed
 attempt denominator, Wilson 95% intervals, empirical `pass@k` / `pass^k`, a
-task-paired bootstrap interval, and an exact McNemar test. The development-set
-result above is the first complete rerun under that protocol. It uses a different
-task set, checkpoint, and sampling design from the upstream single-pass Final-200
-table, so the two tables must not be subtracted directly.
+task-paired bootstrap interval, and an exact McNemar test. The current branch
+froze Final-200 again with different SFT/30-update checkpoints and runtime code;
+it also found +1.5 points with an interval crossing zero. The two final tables
+use different checkpoint and code snapshots, so changes in their absolute rates
+must not be interpreted as an algorithmic gain.
 
 ## Upstream reported training hardware and time
 
@@ -373,6 +375,7 @@ data/
 docs/                            one guide for each tutorial stage and Reward v3
 environments/ShopSimulator/      embedded environment and product archive
 experiments/
+  final-200/                      current frozen final result and hashes
   validation-50x3/               current paired evaluation card and hashes
   baseline/                      baseline config and result summary
   sft/                           SFT config and result summary
@@ -429,6 +432,7 @@ bash scripts/grpo.sh --logger swanlab
 - [Statistical evaluation upgrade](docs/local-upgrades.md)
 - [50×3 GPU runbook](docs/gpu-runbook.md)
 - [Current Validation-50×3 experiment card](experiments/validation-50x3/README.md)
+- [Current frozen Final-200 experiment card](experiments/final-200/README.md)
 - [Final-200 Benchmark Dashboard](docs/evaluation-dashboard.html)
 - [Reward v3 design](docs/reward-v3.md)
 - [Auditable experiment results](experiments/comparison.md)

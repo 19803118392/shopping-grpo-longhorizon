@@ -16,5 +16,9 @@ fixed-denominator repeated-sampling protocol, and the [GPU runbook](gpu-runbook.
 contains the matched 50×3 execution commands. The compact verified result is
 stored in the [Validation-50×3 experiment card](../experiments/validation-50x3/README.md).
 
+The subsequent one-pass frozen result is stored in the
+[Final-200 experiment card](../experiments/final-200/README.md). It did not
+establish a statistically reliable GRPO gain and may not be rerun for tuning.
+
 The static [Final-200 dashboard](evaluation-dashboard.html) belongs to the
 imported upstream single-pass report; it is not the current branch's 50×3 result.

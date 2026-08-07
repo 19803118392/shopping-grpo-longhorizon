@@ -14,7 +14,7 @@
 [![LoRA SFT](https://img.shields.io/badge/Post--training-LoRA%20SFT-7B61FF)](docs/sft.md)
 [![veRL](https://img.shields.io/badge/veRL-0.8.0-0E8A16)](https://github.com/verl-project/verl)
 [![ShopSimulator](https://img.shields.io/badge/Environment-ShopSimulator%20v2.1-4C78A8)](https://arxiv.org/pdf/2601.18225)
-[![Evaluation](https://img.shields.io/badge/Evaluation-Paired%2050%C3%973-F59E0B)](experiments/validation-50x3/README.md)
+[![Evaluation](https://img.shields.io/badge/Evaluation-Frozen%20Final--200-F59E0B)](experiments/final-200/README.md)
 
 <br />
 
@@ -26,22 +26,23 @@
 
 ## 当前结果
 
-当前分支在 `data/grpo/validation.jsonl` 的 50 个开发任务上，对 SFT 和
-Terminal-GRPO（30 updates）各运行 3 次配对采样。两组使用相同 task、attempt、派生
-seed 和 `temperature/top-p=0.7/0.9`，严格成功固定以 150 次 attempt 为分母。
+冻结 commit、模型、配置和数据哈希后，当前分支在 Final-200 上对 SFT 与
+Terminal-GRPO（30 updates）各运行了一次确定性评测。严格成功固定以全部200题为
+分母；看到结果后没有调参或重跑。
 
-| 模型 | Strict Success | Wilson 95% CI | 相对 SFT 胜/平/负 | `pass@3` | `pass^3` | 循环率 | 平均步数 |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| SFT | 66.7% | [58.8%, 73.7%] | — | 78.0% | 54.0% | 10.0% | 10.95 |
-| Terminal-GRPO（30 updates） | **74.7%** | **[67.2%, 81.0%]** | **9/39/2** | **84.0%** | **62.0%** | **8.7%** | **10.80** |
+| 模型 | Strict Success | Wilson 95% CI | 相对 SFT 胜/平/负 | 循环率 | Guard 拒绝率 | 平均步数 |
+|---|---:|---:|---:|---:|---:|---:|
+| SFT | 114/200 = 57.0% | [50.1%, 63.7%] | — | 11.5% | 28.0% | 11.34 |
+| Terminal-GRPO（30 updates） | 117/200 = **58.5%** | [51.6%, 65.1%] | 9/185/6 | 11.0% | 21.5% | 11.58 |
 
-配对差异为 **+8.0 个百分点**；10,000 次任务级 paired bootstrap 的 95% CI 为
-**[+2.0, +14.7] 个百分点**，精确 McNemar `p=0.0118`。两组 attempt coverage 均为
-100%，基础设施错误和关键 footer failure 均为 0。完整配置、哈希和限制见
-[Validation-50×3 实验卡](experiments/validation-50x3/README.md)。
+配对差异为 **+1.5 个百分点**；10,000 次任务级 paired bootstrap 的 95% CI 为
+**[-2.0, +5.0] 个百分点**，精确 McNemar `p=0.6072`。两组覆盖率均为100%，基础设施
+错误和关键 footer failure 均为0。区间跨过0，因此该结果**不支持“GRPO带来可靠的
+最终提升”这一强结论**。完整冻结清单、哈希、失败画像和限制见
+[Final-200 实验卡](experiments/final-200/README.md)。
 
-> 这是开发集上的方法比较，不是 Final-200 成绩。它不能与上游单次 Final-200 的
-> 60.5%/62.0% 直接横向相减；Final-200 保持冻结，不用于调参。
+此前 Validation-50×3 上观察到66.7%→74.7%（+8.0pp，CI [+2.0,+14.7]pp），但该
+幅度没有在 Final-200 上复现。开发集结果保留为消融现象，不再作为最终算法结论。
 
 ## 本分支核心改造与结果归属
 
@@ -51,6 +52,7 @@ seed 和 `temperature/top-p=0.7/0.9`，严格成功固定以 150 次 attempt 为
 | 统计检验 | Wilson CI、`pass@k` / `pass^k`、任务级 paired bootstrap、精确 McNemar、win/tie/loss |
 | 分层诊断 | 仅从 Query 构造约束数、规格、价格和参考长度分层，不读取 Gold 商品字段 |
 | 失败审计 | 基础设施、Reward 有效性、Guard、footer、循环、终止类型和上下文错误分别统计 |
+| Final 冻结 | commit、模型、checkpoint、配置、开发集报告和Final-200数据哈希全部预冻结；结果只运行一次 |
 | 可复现性 | JSON/Markdown/CSV 自动报告，模型/数据/配置 SHA-256，训练 seed 与显式 checkpoint resume |
 
 本仓库由 [YYHDBL/shopping-grpo-longhorizon](https://github.com/YYHDBL/shopping-grpo-longhorizon)
@@ -178,8 +180,9 @@ SFT 带来了主要能力提升，让模型学会合法工具调用、长程搜�
 这里的 GRPO 相对 SFT 只增加 3/200 个严格成功任务（+1.5 个百分点），而且每题仅
 运行一次，因此不能据此宣称提升具有统计显著性。新增的重复采样评测支持固定尝试数、
 Wilson 95% 区间、经验 `pass@k` / `pass^k`、任务级配对 Bootstrap 和精确 McNemar
-检验。上面的当前分支结果是该协议在开发集上的第一次完整复验；它与上游的单次
-Final-200 表格数据集、checkpoint 和采样口径不同，不能直接横向相减。
+检验。当前分支使用不同的SFT/30-update checkpoint和运行代码重新冻结 Final-200，
+同样只得到+1.5pp，且配对区间跨0。两次Final表格的checkpoint与代码快照不同，不能
+把绝对成功率变化解释为算法提升。
 
 ## 上游报告的训练硬件与耗时
 
@@ -353,6 +356,7 @@ data/
 docs/                            数据、SFT、GRPO、评估与 Reward 文档
 environments/ShopSimulator/      内嵌环境源码和商品数据
 experiments/
+  final-200/                      当前分支冻结终测结果与哈希
   validation-50x3/               当前分支 50×3 配对评测卡与哈希
   baseline/                      Baseline 配置与结果
   sft/                           SFT 配置与结果
@@ -402,6 +406,7 @@ bash scripts/grpo.sh --logger swanlab
 - [统计评测升级](docs/local-upgrades.md)
 - [50×3 GPU 执行手册](docs/gpu-runbook.md)
 - [当前 Validation-50×3 实验卡](experiments/validation-50x3/README.md)
+- [当前冻结 Final-200 实验卡](experiments/final-200/README.md)
 - [Final-200 Benchmark Dashboard](docs/evaluation-dashboard.html)
 - [Reward v3 设计](docs/reward-v3.md)
 - [可审计实验结果](experiments/comparison.md)

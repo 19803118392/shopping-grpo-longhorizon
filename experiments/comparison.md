@@ -1,5 +1,20 @@
 # Experiment comparison
 
+## Current branch: frozen Final-200
+
+The current SFT and Terminal-GRPO (30 updates) checkpoints were frozen before a
+single deterministic pass over all 200 final tasks.
+
+| Model | Strict success | Wilson 95% CI | Loop rate | Guard rejection | Mean steps |
+|---|---:|---:|---:|---:|---:|
+| SFT | 57.0% | [50.1%, 63.7%] | 11.5% | 28.0% | 11.34 |
+| Terminal-GRPO (30 updates) | 58.5% | [51.6%, 65.1%] | 11.0% | 21.5% | 11.58 |
+
+The paired delta is **+1.5 percentage points**, with task win/tie/loss
+`9/185/6`, task-paired bootstrap 95% CI **[-2.0, +5.0] points**, and exact
+McNemar `p=0.6072`. This is not statistically significant and does not establish
+a reliable final GRPO gain. See the [Final-200 experiment card](final-200/README.md).
+
 ## Current branch: paired Validation-50×3
 
 The current branch compares SFT and Terminal-GRPO after 30 updates on 50
@@ -10,9 +25,10 @@ development tasks with three paired attempts per task.
 | SFT | 66.7% | [58.8%, 73.7%] | 78.0% | 54.0% | 10.0% | 10.95 |
 | Terminal-GRPO (30 updates) | **74.7%** | **[67.2%, 81.0%]** | **84.0%** | **62.0%** | **8.7%** | **10.80** |
 
-The paired delta is **+8.0 percentage points**, with task win/tie/loss `9/39/2`,
+The paired delta was **+8.0 percentage points**, with task win/tie/loss `9/39/2`,
 task-paired bootstrap 95% CI **[+2.0, +14.7] points**, and exact McNemar
-`p=0.0118`. This is a development-set result, not Final-200. See the
+`p=0.0118`. Final-200 did not reproduce that effect size, so this remains a
+development-set ablation rather than the final algorithmic conclusion. See the
 [experiment card](validation-50x3/README.md) for the full protocol and hashes.
 
 ## Imported upstream: single-pass Final-200

@@ -1,0 +1,54 @@
+{
+  "schema_version": "shopping-final-200-summary-v1",
+  "sft": {
+    "strict_successes": 114,
+    "tasks": 200,
+    "strict_success_rate": 0.57,
+    "wilson_95": [0.5007048776415268, 0.6366567766656557],
+    "loop_rate": 0.115,
+    "guard_rejection_rate": 0.28,
+    "average_steps": 11.34,
+    "context_budget_errors": 3,
+    "infrastructure_invalid_attempts": 0,
+    "critical_footer_failures": 0
+  },
+  "terminal_grpo_30": {
+    "strict_successes": 117,
+    "tasks": 200,
+    "strict_success_rate": 0.585,
+    "wilson_95": [0.5157391490134403, 0.6510571455024242],
+    "loop_rate": 0.11,
+    "guard_rejection_rate": 0.215,
+    "average_steps": 11.58,
+    "context_budget_errors": 6,
+    "infrastructure_invalid_attempts": 0,
+    "critical_footer_failures": 0
+  },
+  "paired_comparison": {
+    "candidate_minus_baseline": 0.015,
+    "candidate_minus_baseline_percentage_points": 1.5,
+    "task_wins": 9,
+    "task_ties": 185,
+    "task_losses": 6,
+    "paired_bootstrap": {
+      "samples": 10000,
+      "seed": 2026,
+      "confidence": 0.95,
+      "low": -0.02,
+      "high": 0.05,
+      "probability_delta_above_zero": 0.7353
+    },
+    "mcnemar_exact_two_sided": {
+      "baseline_only_successes": 6,
+      "candidate_only_successes": 9,
+      "discordant_pairs": 15,
+      "p_value": 0.60723876953125
+    },
+    "statistically_significant_at_0_05": false
+  },
+  "decision": {
+    "reliable_final_gain_established": false,
+    "tune_after_final": false,
+    "rerun_final_200": false
+  }
+}

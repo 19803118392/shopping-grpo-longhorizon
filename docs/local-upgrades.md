@@ -9,6 +9,12 @@ paired difference of +8.0 percentage points with bootstrap 95% CI
 [experiment card](../experiments/validation-50x3/README.md); this is a validation
 result, not Final-200.
 
+The later frozen Final-200 run reports 57.0% versus 58.5%, a paired difference
+of +1.5 points with bootstrap 95% CI [-2.0, +5.0] and McNemar p=0.6072. It does
+not establish a reliable final gain. The project retains both results and does
+not tune or rerun after Final-200; see the
+[final experiment card](../experiments/final-200/README.md).
+
 ## Repeated sampling
 
 Each `(task_id, attempt_index)` has a deterministic actor seed derived from the base
@@ -57,5 +63,6 @@ multiple-comparison correction.
 ```
 
 `scripts/render_statistical_report.py` can re-render an existing comparison JSON.
-Final-200 remains frozen and deterministic; method selection uses only the 50-task
-GRPO validation set.
+Final-200 was run once after freezing and is now closed. Its negative statistical
+result is retained without tuning or rerunning; method selection used only the
+50-task GRPO validation set.

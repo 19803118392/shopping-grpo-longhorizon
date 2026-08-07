@@ -79,6 +79,9 @@ must not delay or alter the primary matched SFT-vs-GRPO comparison.
 
 ## 5. Final-200 boundary
 
-Final-200 remains one deterministic attempt per task after configuration and model
-freeze. It is not used for setting selection and is never repeated after results are
-visible. Starting Final-200 still requires explicit user authorization.
+Final-200 was run once on frozen commit
+`a48019f8c4cc3eb61361c88190a730c0267aa437` after explicit user authorization.
+It produced SFT 57.0% versus Terminal-GRPO 58.5%, paired CI [-2.0, +5.0] points,
+and McNemar p=0.6072. The result is recorded in the
+[Final-200 experiment card](../experiments/final-200/README.md). It must not be
+used for tuning and must not be rerun.
