@@ -69,7 +69,7 @@ def terminal_state(*, detail: dict | None = None, native_reward: float = 1.0) ->
             "reward_type": validated["reward_type"],
             "reward_valid": validated["reward_valid"],
             "reward_unverifiable": not validated["reward_valid"],
-            "reward_detail": validated,
+            "reward_public": validated,
         }
     )
     return state

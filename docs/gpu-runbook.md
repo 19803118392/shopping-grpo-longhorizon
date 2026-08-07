@@ -1,112 +1,84 @@
-# 96 GB GPU runbook
+# GPU evaluation runbook
 
-Use this checklist after provisioning a single 96 GB NVIDIA GPU. Keep training and
-evaluation sequential: both workflows lease ShopSimulator slots and must not share
-the service concurrently.
+The repository supports `Baseline → SFT → GRPO → Evaluation` under ShopSimulator
+Environment v2.1, Observation v2, Tool v2 and terminal Reward v3.
 
-## Scope and first-session budget
+This runbook measures whether Terminal-GRPO improves over SFT. Model selection uses
+only `data/grpo/validation.jsonl`. The frozen `data/evaluation/tasks.jsonl` is not
+opened for repeated sampling or tuning.
 
-The first rental should target environment setup, smoke tests, and an Evidence
-Memory control/ablation—not the 500-step final run. Reserve at least 16 CPU cores,
-64 GB RAM, and 100 GB persistent disk for environments, model caches, checkpoints,
-rollouts, and logs. Set a provider-side spending alert and an initial 10-hour stop
-limit. Record the actual hourly price from the chosen provider before starting.
+The protocol has been completed once on the current branch. Its compact result,
+configuration, and hashes are stored in the
+[Validation-50×3 experiment card](../experiments/validation-50x3/README.md).
 
-Expected measured workloads from the existing report are approximately 3 hours for
-SFT, 3–4 hours for the 100-step GRPO checkpoint, and 14 hours for 500 GRPO steps.
-Repeated evaluation scales approximately with attempts per task and should be
-budgeted separately.
-
-## 1. Capture the machine contract
-
-Save these outputs under a persistent run directory before installing anything:
-
-```bash
-mkdir -p outputs/run-audit
-git rev-parse HEAD | tee outputs/run-audit/git-head.txt
-nvidia-smi | tee outputs/run-audit/nvidia-smi.txt
-nvidia-smi --query-gpu=name,memory.total,driver_version \
-  --format=csv,noheader | tee outputs/run-audit/gpu.csv
-python --version | tee outputs/run-audit/python.txt
-df -h | tee outputs/run-audit/disk.txt
-```
-
-Do not put API keys in the repository or captured command logs.
-
-## 2. Install and validate in order
+## 1. Preflight and fixed-seed replay
 
 ```bash
 bash scripts/setup.sh
-bash scripts/start_environment.sh
-python scripts/smoke_shop_env.py
-python -m pytest -q
-python -m compileall -q src scripts
-shopping-grpo smoke --json
+.venv/bin/python -m pytest -q
+.venv/bin/python -m compileall -q src scripts environments/ShopSimulator/shop_env
+.venv/bin/shopping-grpo smoke --json
 ```
 
-Before GRPO, ensure the merged SFT model exists and run the version/hash preflight
-through a dry run:
+Before the full comparison, run the same SFT service twice on 5 tasks × 2 attempts
+with protocol `seed-replay`, then verify:
 
 ```bash
-python scripts/train_grpo.py \
-  --model outputs/models/sft-merged \
-  --output outputs/models/grpo-preflight \
-  --dry-run
+.venv/bin/python scripts/verify_seed_replay.py \
+  --first outputs/eval/seed-a/raw.jsonl \
+  --second outputs/eval/seed-b/raw.jsonl \
+  --output outputs/eval/seed-replay.json
 ```
 
-The dry run must point at an existing model with `config.json` and weights. It prints
-the exact veRL command and environment paths without creating a training output.
+The verifier must report `exact_model_and_action_replay=true`. Otherwise results are
+task-paired only and must not be described as common-random-number estimates.
 
-## 3. Run the cheapest useful A/B first
+## 2. Matched SFT and GRPO evaluation
 
-Serve one frozen SFT checkpoint and collect the same tasks, sampling parameters,
-attempt count, and seed policy twice:
-
-1. control: Evidence Memory disabled;
-2. candidate: `--evidence-memory` enabled.
-
-Start with 20 benchmark tasks × 2 attempts. If action guards, Reward v3 validity,
-and output coverage are clean, expand to 200 tasks × 5 attempts. Compare with
-`scripts/compare_repeated_evaluations.py`. Do not interpret a positive point estimate
-as a win unless the interval, task transitions, and failure taxonomy are coherent.
-
-## 4. Modified GRPO smoke run
-
-Enable Evidence Memory only for the modified run:
+Serve `outputs/models/sft-merged`, then run:
 
 ```bash
-export SHOPPING_EVIDENCE_MEMORY_ENABLE=true
-bash scripts/grpo.sh -- \
-  trainer.total_training_steps=5 \
-  trainer.save_freq=5 \
-  trainer.test_freq=5 \
-  trainer.experiment_name=shopping-evidence-memory-smoke
+.venv/bin/python scripts/evaluate_shop_benchmark.py \
+  --protocol dev50x3 --benchmark data/grpo/validation.jsonl --limit 50 \
+  --output outputs/eval/sft-50x3/raw.jsonl \
+  --summary outputs/eval/sft-50x3/summary.json \
+  --model shopping-agent --llm-base-url http://127.0.0.1:8000/v1 \
+  --api-key EMPTY --attempts-per-task 3 --temperature 0.7 --top-p 0.9 \
+  --max-steps 35 --seed 2026
 ```
 
-Inspect five updates before scheduling 100 steps. The control run must use the same
-checkpoint, seed/config, task data, rollout count, and hardware, with
-`SHOPPING_EVIDENCE_MEMORY_ENABLE=false`.
+Stop the SFT server, serve `outputs/models/terminal-grpo-30-merged`, and repeat with
+output directory `outputs/eval/terminal-grpo-50x3`. The task order, attempt indices,
+seed, temperature, top-p, context limits and ShopSimulator process must remain fixed.
 
-## 5. Stop conditions
+## 3. Paired report
 
-Stop the run, preserve logs, and diagnose before spending more when any of these
-conditions occurs:
+```bash
+.venv/bin/python scripts/compare_repeated_evaluations.py \
+  --benchmark data/grpo/validation.jsonl --limit 50 \
+  --baseline outputs/eval/sft-50x3/raw.jsonl \
+  --candidate outputs/eval/terminal-grpo-50x3/raw.jsonl \
+  --attempts-per-task 3 --bootstrap-samples 10000 --seed 2026 \
+  --baseline-label SFT --candidate-label Terminal-GRPO \
+  --output outputs/eval/sft-vs-terminal-50x3/comparison.json \
+  --markdown-output outputs/eval/sft-vs-terminal-50x3/report.md \
+  --csv-output outputs/eval/sft-vs-terminal-50x3/report.csv
+```
 
-- environment, observation, tool, or Reward version/hash preflight fails;
-- `reward_valid=false`, infrastructure-invalid samples, or footer failures appear;
-- repeated dynamic-sampling batches contain no usable reward variation;
-- CUDA OOM occurs or peak allocation leaves too little serving headroom;
-- disk free space falls below 20 GB;
-- loss/reward becomes non-finite;
-- the provider time or spending cap is reached.
+Headline claims require 100% attempt coverage, no infrastructure-invalid attempts,
+no critical footer failures, and a paired bootstrap interval. Report the observed
+effect and interval even when McNemar is not significant. Difficulty strata are
+exploratory; do not select a model from a favorable subgroup.
 
-After a failure, retain the command, resolved config, `nvidia-smi`, stdout/stderr,
-latest valid checkpoint, and ShopSimulator logs before deleting the instance.
+## 4. Optional training variance
 
-## 6. Artifacts to bring back
+Only if budget permits, train short Terminal-GRPO runs with three seeds and evaluate
+each checkpoint with the same 50-task protocol. Report inference variance within a
+checkpoint separately from variance across training seeds. This optional experiment
+must not delay or alter the primary matched SFT-vs-GRPO comparison.
 
-Download the resolved config, commands, environment versions, model/checkpoint hash,
-raw JSONL rollouts, summaries, paired statistics report, training curves, failure
-taxonomy, runtime, peak memory, and rental duration. These are the evidence needed
-for both reproducibility and internship interviews.
+## 5. Final-200 boundary
 
+Final-200 remains one deterministic attempt per task after configuration and model
+freeze. It is not used for setting selection and is never repeated after results are
+visible. Starting Final-200 still requires explicit user authorization.

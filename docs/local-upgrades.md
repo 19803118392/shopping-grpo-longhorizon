@@ -1,86 +1,61 @@
-# Local upgrades for the next GPU run
+# Statistical evaluation upgrade
 
-This branch adds three opt-in experiment capabilities without changing the frozen
-ShopSimulator Environment v2.1 or Reward v3 contract.
+This branch evaluates SFT and GRPO as a paired repeated-measures experiment. It does
+not treat a one-off percentage difference as evidence of an algorithmic gain.
 
-## 1. Public Evidence Memory
+The first completed 50×3 run reports SFT 66.7% versus Terminal-GRPO 74.7%, a
+paired difference of +8.0 percentage points with bootstrap 95% CI
+[+2.0, +14.7] and exact McNemar p=0.0118. See the
+[experiment card](../experiments/validation-50x3/README.md); this is a validation
+result, not Final-200.
 
-`shopping-evidence-memory-v1` keeps a bounded task-local ledger of search queries,
-candidates, prices, attributes, selected options, and visited information subpages.
-It accepts only `shopping-observation-v2`; the existing renderer rejects hidden
-goal, reward, answer, and target fields before they can enter memory. The current
-observation remains the only action-validity boundary.
+## Repeated sampling
 
-Evaluation ablation:
+Each `(task_id, attempt_index)` has a deterministic actor seed derived from the base
+seed, task ID and attempt index. A replay check compares two independently written
+runs after removing timestamps, trajectory UUIDs and server-generated tool-call IDs.
+The current local vLLM stack passed exact message/action replay, so matched attempts
+are interpreted as common random numbers.
 
-```bash
-python scripts/evaluate_shop_benchmark.py \
-  --benchmark data/evaluation/tasks.jsonl \
-  --output outputs/eval/sft-memory/raw.jsonl \
-  --summary outputs/eval/sft-memory/summary.json \
-  --model outputs/models/sft-merged \
-  --llm-base-url http://127.0.0.1:8000/v1 \
-  --api-key EMPTY \
-  --attempts-per-task 5 \
-  --temperature 0.7 \
-  --top-p 0.9 \
-  --evidence-memory
-```
+Missing attempts remain in the fixed denominator. Reports include:
 
-Run the control with identical arguments and without `--evidence-memory`. For GRPO
-training, set `SHOPPING_EVIDENCE_MEMORY_ENABLE=true`; the default is `false`, so
-existing runs retain their original prompt distribution.
+- pooled strict success and Wilson 95% interval;
+- success for every attempt index;
+- empirical `pass@k`: at least one strict success in `k` attempts;
+- empirical `pass^k`: strict success in all `k` attempts;
+- task-level win/tie/loss and paired bootstrap interval;
+- exact McNemar test over matched attempts;
+- loop, no-purchase, Guard, Reward, infrastructure and Observation diagnostics.
 
-## 2. Repeated-run statistics
+## Difficulty and behaviour strata
 
-The evaluator uses every `(task_id, attempt_index)` as a resumable key. Missing
-attempts stay in the fixed denominator. Compare two complete JSONL files with:
+Static strata use only the actor-visible Query. Gold ASIN, target-product fields and
+Reward details are prohibited. The report groups tasks by:
 
-```bash
-python scripts/compare_repeated_evaluations.py \
-  --benchmark data/evaluation/tasks.jsonl \
-  --baseline outputs/eval/sft-control/raw.jsonl \
-  --candidate outputs/eval/sft-memory/raw.jsonl \
-  --attempts-per-task 5 \
-  --bootstrap-samples 10000 \
-  --seed 2026 \
-  --baseline-label sft-control \
-  --candidate-label sft-evidence-memory \
-  --output outputs/eval/sft-memory-vs-control.json
-```
+- estimated constraint count: `1`, `2-3`, `4+`;
+- explicit option/specification selection: yes/no;
+- explicit price constraint: yes/no;
+- frozen reference length (`short/medium/long`) when the benchmark supplies it.
 
-The JSON report includes attempt coverage, strict success with a Wilson 95%
-interval, empirical `pass@k` and `pass^k`, task-level wins/ties/losses, a paired
-bootstrap confidence interval, an exact McNemar test, and SHA-256 input provenance.
+Search-call count and executed trajectory length are model behaviours rather than
+task attributes. They are therefore reported separately for each model and are not
+used as causal paired strata. All subgroup results are exploratory and have no
+multiple-comparison correction.
 
-## 3. Length curriculum preparation
-
-The curriculum planner uses only teacher probe step counts already checked into
-`data/grpo/train.jsonl`. It does not inspect hidden goals. The default cumulative
-stages contain 695 short tasks, 896 short+medium tasks, and all 1000 tasks.
+## Command
 
 ```bash
-python scripts/prepare_grpo_curriculum.py \
-  --metadata data/grpo/train.jsonl \
-  --source-parquet data/grpo/train.parquet \
-  --output-dir outputs/curriculum \
-  --dry-run
+.venv/bin/python scripts/compare_repeated_evaluations.py \
+  --benchmark data/grpo/validation.jsonl --limit 50 \
+  --baseline outputs/eval/sft-50x3/raw.jsonl \
+  --candidate outputs/eval/terminal-grpo-50x3/raw.jsonl \
+  --attempts-per-task 3 --bootstrap-samples 10000 --seed 2026 \
+  --baseline-label SFT --candidate-label Terminal-GRPO \
+  --output outputs/eval/sft-vs-terminal-50x3/comparison.json \
+  --markdown-output outputs/eval/sft-vs-terminal-50x3/report.md \
+  --csv-output outputs/eval/sft-vs-terminal-50x3/report.csv
 ```
 
-Run this inside the pinned GRPO environment (which includes PyArrow via veRL) and
-remove `--dry-run` to materialize three Parquet files and a hash manifest. Staged
-checkpoint resume has not yet been validated
-against the pinned veRL 0.8 runtime, so curriculum data is experimental and must
-not replace the primary GRPO recipe until a resume smoke test passes.
-
-## Local acceptance
-
-```bash
-python -m pip install -e ".[dev]"
-python -m pytest -q
-python -m compileall -q src scripts
-shopping-grpo smoke --json
-```
-
-veRL/PyTorch patch tests skip in a CPU-only environment and run automatically when
-the pinned GPU training packages are installed.
+`scripts/render_statistical_report.py` can re-render an existing comparison JSON.
+Final-200 remains frozen and deterministic; method selection uses only the 50-task
+GRPO validation set.

@@ -2,6 +2,8 @@ import unittest
 
 from shopping_grpo.training.grpo.curriculum import (
     build_curriculum_plan,
+    task_ids_sha256,
+    validate_no_task_overlap,
     validate_length_metadata,
 )
 
@@ -41,6 +43,13 @@ class GrpoCurriculumTest(unittest.TestCase):
                 ROWS,
                 stages=(("first", ("short", "medium")), ("second", ("long",))),
             )
+
+    def test_held_out_overlap_is_rejected_and_ids_are_hashed_in_order(self):
+        audit = validate_no_task_overlap([1, 2, 3], [4, 5])
+        self.assertEqual(audit["overlap_tasks"], 0)
+        self.assertNotEqual(task_ids_sha256([1, 2]), task_ids_sha256([2, 1]))
+        with self.assertRaisesRegex(ValueError, "overlaps"):
+            validate_no_task_overlap([1, 2, 3], [3, 4])
 
 
 if __name__ == "__main__":  # pragma: no cover

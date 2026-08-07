@@ -4,6 +4,7 @@ from shopping_grpo.evaluation.statistics import (
     compare_repeated_runs,
     mcnemar_exact,
     paired_bootstrap_mean_delta,
+    summarize_failure_profile,
     summarize_repeated_run,
 )
 
@@ -60,6 +61,10 @@ class RepeatedEvaluationStatisticsTest(unittest.TestCase):
         self.assertEqual(report["empirical_pass_power_k"], 0.25)
         self.assertEqual(report["attempt_coverage_rate"], 1.0)
         self.assertEqual(report["missing_attempts"], [])
+        self.assertEqual(
+            [attempt["strict_success_rate"] for attempt in report["by_attempt_index"]],
+            [0.5, 0.5],
+        )
         interval = report["strict_success_rate_wilson_95"]
         self.assertLess(interval["low"], 0.5)
         self.assertGreater(interval["high"], 0.5)
@@ -147,6 +152,28 @@ class RepeatedEvaluationStatisticsTest(unittest.TestCase):
         self.assertEqual(paired["excluded_unpaired_attempts"], 1)
         self.assertEqual(paired["discordant_pairs"], 0)
 
+    def test_failure_profile_keeps_reward_and_runtime_failures_separate(self):
+        failed = trajectory(1, 0, False)
+        failed["blocked_tool_calls"] = [{"reason": "asin_not_visible"}]
+        failed["steps"] = [
+            {"projection": {"critical_footer_preserved": False}}
+        ]
+        infrastructure = trajectory(2, 0, False)
+        infrastructure["status"] = "error"
+        infrastructure["terminal_result"] = {}
+        infrastructure["error"] = {
+            "type": "TimeoutError",
+            "message": "model server timed out",
+        }
+
+        profile = summarize_failure_profile([failed, infrastructure])
+
+        self.assertEqual(profile["strict_failures"], 2)
+        self.assertEqual(profile["reward_type_counts"], {"missing": 1, "wrong_purchase": 1})
+        self.assertEqual(profile["infrastructure_invalid_attempts"], 1)
+        self.assertEqual(profile["guard_reason_counts"], {"asin_not_visible": 1})
+        self.assertEqual(profile["critical_footer_failures"], 1)
+        self.assertEqual(profile["loop_rate"], 0.0)
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

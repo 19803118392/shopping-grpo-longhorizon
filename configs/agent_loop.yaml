@@ -12,9 +12,9 @@
   context_preserve_recent_groups: 1
   context_compaction_enable: false
   observation_token_budget: 1536
-  observation_detail_token_budget: 4096
+  observation_detail_token_budget: 2048
   observation_generic_token_budget: 768
   observation_search_top_k: 20
   evidence_memory_enable: ${oc.decode:${oc.env:SHOPPING_EVIDENCE_MEMORY_ENABLE,false}}
   evidence_memory_max_candidates: 5
-  evidence_memory_max_chars: 2000
+  evidence_memory_max_chars: 384

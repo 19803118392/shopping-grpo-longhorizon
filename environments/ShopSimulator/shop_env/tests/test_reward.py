@@ -230,9 +230,23 @@ class RewardV3Test(unittest.TestCase):
         )
         self.assertEqual(resolution["price"], 1999)
 
-    def test_multiple_effective_price_axes_are_unverifiable_when_budget_matters(self):
+    def test_multiple_effective_price_axes_use_selected_price_consensus(self):
         candidate = product()
         candidate["customization_options"]["颜色分类"][1]["price"] = 2099
+        resolution = resolve_variant_price(
+            candidate,
+            {"颜色分类": "白色", "尺码": "XL"},
+        )
+        self.assertEqual(resolution["status"], PASS)
+        self.assertEqual(
+            resolution["method"],
+            "selected_effective_axes_consensus",
+        )
+        self.assertEqual(resolution["price"], 1999)
+
+    def test_conflicting_selected_axis_prices_are_unverifiable(self):
+        candidate = product()
+        candidate["customization_options"]["颜色分类"][0]["price"] = 2099
         result = evaluate_purchase(
             candidate,
             goal(),

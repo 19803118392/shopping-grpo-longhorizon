@@ -43,7 +43,10 @@ def make_runtime_state(task_id: int, max_steps: int) -> dict:
         "reward_type": None,
         "reward_valid": True,
         "reward_unverifiable": False,
-        "reward_detail": None,
+        # Only the allow-listed result of ``validate_reward`` is retained here.
+        # Keep it under a distinct name so raw environment reward_detail can
+        # never be mistaken for actor-visible or otherwise trusted state.
+        "reward_public": None,
         "infrastructure_invalid": False,
         "error": None,
         "context_compactions": 0,
@@ -89,10 +92,12 @@ def record_observation_projection(state: dict, meta: dict) -> None:
     )
 
 
-def record_action_attempt(state: dict, tool_name: str, parameters: dict, observation: str) -> None:
+def record_action_attempt(
+    state: dict, tool_name: str, parameters: dict, observation: str
+) -> bool:
     """记录环境动作尝试，并统计最近三次中的重复签名。"""
     if tool_name == "think":
-        return
+        return False
     canonical_parameters = json.dumps(
         parameters,
         ensure_ascii=False,
@@ -103,10 +108,12 @@ def record_action_attempt(state: dict, tool_name: str, parameters: dict, observa
     signature = (str(tool_name), canonical_parameters, observation_fingerprint)
     recent = state["recent_action_signatures"]
     state["action_attempt_count"] += 1
-    if signature in recent:
+    repeated = signature in recent
+    if repeated:
         state["repeat_action_count"] += 1
     recent.append(signature)
     del recent[:-3]
+    return repeated
 
 
 def validate_reward(raw_detail: object) -> dict:
@@ -224,7 +231,7 @@ def reward_breakdown(state: dict) -> dict[str, float | bool]:
         native = 0.0
 
     if state.get("reward_version") == "shopsimulator-reward-v3":
-        detail = state.get("reward_detail") or {}
+        detail = state.get("reward_public") or {}
         reward_valid = bool(state.get("reward_valid", True))
         invalid_reward = not reward_valid
         gates = detail.get("hard_gates") or {}

@@ -145,6 +145,40 @@ class ObservationProjectionTest(unittest.TestCase):
         self.assertEqual(visible, raw)
         self.assertFalse(meta.truncated)
 
+    def test_long_product_page_deduplicates_options_without_losing_buttons(self):
+        options = [f"规格-{index:02d}-" + "很长的公开规格描述" * 3 for index in range(30)]
+        raw = render_structured_observation(
+            {
+                "observation_version": "shopping-observation-v2",
+                "page_type": "product_detail",
+                "search_available": False,
+                "actions": ["back to search", "Buy Now", *options],
+                "product": {
+                    "asin": "100000000001",
+                    "title": "Product",
+                    "brand": "brand",
+                    "category": "category",
+                    "price": 20,
+                    "key_attributes": ["attribute"],
+                },
+                "selected_options": {},
+                "available_options": {"颜色分类": options},
+            }
+        )
+        visible, meta = project_observation(
+            "open_product",
+            raw,
+            count_tokens=len,
+            detail_token_budget=2400,
+        )
+
+        self.assertTrue(meta.truncated)
+        self.assertLessEqual(len(visible), 2400)
+        self.assertNotIn("available_options:", visible)
+        self.assertIn("available_option_groups_1based:", visible)
+        self.assertEqual(clickable_buttons(visible), clickable_buttons(raw))
+        self.assertTrue(meta.critical_footer_preserved)
+
     def test_generic_projection_keeps_complete_footer(self):
         raw = render_structured_observation(
             {

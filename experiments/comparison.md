@@ -1,7 +1,25 @@
-# Baseline → SFT → GRPO
+# Experiment comparison
 
-All three models were evaluated with one deterministic rollout on the same 200
-held-out tasks.
+## Current branch: paired Validation-50×3
+
+The current branch compares SFT and Terminal-GRPO after 30 updates on 50
+development tasks with three paired attempts per task.
+
+| Model | Strict success | Wilson 95% CI | `pass@3` | `pass^3` | Loop rate | Mean steps |
+|---|---:|---:|---:|---:|---:|---:|
+| SFT | 66.7% | [58.8%, 73.7%] | 78.0% | 54.0% | 10.0% | 10.95 |
+| Terminal-GRPO (30 updates) | **74.7%** | **[67.2%, 81.0%]** | **84.0%** | **62.0%** | **8.7%** | **10.80** |
+
+The paired delta is **+8.0 percentage points**, with task win/tie/loss `9/39/2`,
+task-paired bootstrap 95% CI **[+2.0, +14.7] points**, and exact McNemar
+`p=0.0118`. This is a development-set result, not Final-200. See the
+[experiment card](validation-50x3/README.md) for the full protocol and hashes.
+
+## Imported upstream: single-pass Final-200
+
+This is an imported upstream report, not a rerun of the current branch. The
+record states that all three models were evaluated with one deterministic
+rollout on the same 200 held-out tasks.
 
 | Model | Done | Strict success | Purchase success | Mean reward | Mean steps | Guard rejections |
 |---|---:|---:|---:|---:|---:|---:|

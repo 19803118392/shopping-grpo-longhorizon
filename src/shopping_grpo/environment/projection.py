@@ -59,7 +59,7 @@ def project_observation(
     *,
     count_tokens,
     token_budget=1536,
-    detail_token_budget=4096,
+    detail_token_budget=2048,
     generic_token_budget=768,
     parameters=None,
     search_top_k=20,
@@ -100,6 +100,15 @@ def project_observation(
                 count_tokens=count_tokens,
                 token_budget=effective_budget,
                 search_top_k=search_top_k,
+            )
+        elif (
+            page_type == "product_detail"
+            and "[SHOPPING_OBSERVATION_V2]" in observation
+        ):
+            visible = _project_structured_product_detail(
+                observation,
+                count_tokens=count_tokens,
+                token_budget=effective_budget,
             )
         else:
             visible = _project_generic_page(
@@ -325,6 +334,101 @@ def _project_structured_search_results(
     if best is None:
         raise ObservationProjectionError(
             "all structured current-page products cannot fit the observation token budget"
+        )
+    return best
+
+
+def _project_structured_product_detail(observation, *, count_tokens, token_budget):
+    """Remove the duplicate option-value copy while preserving every action.
+
+    A large variant catalogue is present both in ``available_options`` and in the
+    actionable footer.  Repeating that catalogue on every visit can exhaust the
+    fixed 24K trajectory window.  The projected form keeps the footer verbatim
+    and maps each option axis to 1-based footer positions, so both the Actor and
+    observable progress reward can reconstruct the same public option state.
+    """
+    body, footer = _split_footer(observation)
+    raw_lines = body.splitlines()
+    available_line = next(
+        (line for line in raw_lines if line.startswith("available_options:")),
+        "",
+    )
+    try:
+        available = json.loads(available_line.split(":", 1)[1].strip())
+    except (IndexError, json.JSONDecodeError):
+        available = None
+    if not isinstance(available, dict):
+        raise ObservationProjectionError(
+            "structured product detail has invalid available_options"
+        )
+
+    buttons = clickable_buttons(observation)
+    groups = []
+    for raw_axis, raw_values in available.items():
+        if not isinstance(raw_values, list):
+            raise ObservationProjectionError(
+                "structured product detail option values must be a list"
+            )
+        values = [str(value) for value in raw_values]
+        positions = []
+        for value in values:
+            matching = [index + 1 for index, button in enumerate(buttons) if button == value]
+            if len(matching) != 1:
+                raise ObservationProjectionError(
+                    "each structured product option must map to exactly one footer button"
+                )
+            positions.append(matching[0])
+        group = {"axis": str(raw_axis), "count": len(positions)}
+        if positions:
+            expected = list(range(positions[0], positions[-1] + 1))
+            if positions == expected:
+                group["button_range_1based"] = [positions[0], positions[-1]]
+            else:
+                group["button_indices_1based"] = positions
+        groups.append(group)
+
+    replacements = {
+        "available_options:": (
+            "available_option_groups_1based: "
+            + json.dumps(groups, ensure_ascii=False, sort_keys=True)
+        )
+    }
+    compactable = {"title:", "brand:", "category:", "key_attributes:"}
+
+    def render(character_limit):
+        rendered = []
+        for line in raw_lines:
+            prefix = line.split(":", 1)[0] + ":" if ":" in line else ""
+            if prefix in replacements:
+                rendered.append(replacements[prefix])
+            elif prefix in compactable:
+                value = line.split(":", 1)[1].strip()
+                rendered.append(prefix + " " + _compact_title(value, character_limit))
+            else:
+                rendered.append(line)
+        rendered.append(f"{TRUNCATION_MARKER} option_values_deduplicated=true")
+        return "\n".join(rendered) + "\n\n" + footer
+
+    maximum = max(
+        (
+            len(line.split(":", 1)[1].strip())
+            for line in raw_lines
+            if line.split(":", 1)[0] + ":" in compactable
+        ),
+        default=0,
+    )
+    low, high, best = 0, maximum, None
+    while low <= high:
+        middle = (low + high) // 2
+        candidate = render(middle)
+        if int(count_tokens(candidate)) <= token_budget:
+            best = candidate
+            low = middle + 1
+        else:
+            high = middle - 1
+    if best is None:
+        raise ObservationProjectionError(
+            "structured product actions cannot fit the detail observation token budget"
         )
     return best
 

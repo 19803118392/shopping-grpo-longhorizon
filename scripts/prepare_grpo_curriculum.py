@@ -8,7 +8,13 @@ import hashlib
 import json
 from pathlib import Path
 
-from shopping_grpo.training.grpo.curriculum import build_curriculum_plan
+from shopping_grpo.training.grpo.curriculum import (
+    build_curriculum_plan,
+    task_ids_sha256,
+    validate_no_task_overlap,
+)
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def parse_args():
@@ -16,6 +22,12 @@ def parse_args():
     parser.add_argument("--metadata", type=Path, required=True)
     parser.add_argument("--source-parquet", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument(
+        "--held-out",
+        type=Path,
+        default=ROOT / "data/evaluation/tasks.jsonl",
+        help="frozen Final-200 task IDs that must have zero overlap",
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -45,6 +57,20 @@ def _display_plan(plan: dict) -> dict:
 def main():
     args = parse_args()
     plan = build_curriculum_plan(_read_jsonl(args.metadata))
+    expected_counts = [695, 896, 1000]
+    actual_counts = [int(stage["tasks"]) for stage in plan["stages"]]
+    if actual_counts != expected_counts:
+        raise SystemExit(
+            f"canonical length curriculum counts must be {expected_counts}, got {actual_counts}"
+        )
+    held_out_rows = _read_jsonl(args.held_out)
+    try:
+        plan["held_out_audit"] = validate_no_task_overlap(
+            plan["stages"][-1]["task_ids"],
+            [row["task_id"] for row in held_out_rows],
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
     plan["source_parquet_sha256"] = _sha256(args.source_parquet)
     plan["metadata_sha256"] = _sha256(args.metadata)
     if args.dry_run:
@@ -67,6 +93,8 @@ def main():
         pq.write_table(selected, output, compression="zstd")
         stage["parquet"] = output.name
         stage["parquet_sha256"] = _sha256(output)
+        stage["rows"] = selected.num_rows
+        stage["task_ids_sha256"] = task_ids_sha256(stage["task_ids"])
     manifest = args.output_dir / "manifest.json"
     manifest.write_text(
         json.dumps(plan, ensure_ascii=False, indent=2) + "\n",

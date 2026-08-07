@@ -24,8 +24,13 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
       - name: Run CPU test suite
         run: python -m pytest -q
+      - name: Run embedded ShopSimulator contract tests
+        run: >-
+          env PYTHONPATH=environments/ShopSimulator/shop_env
+          python -m unittest discover
+          -s environments/ShopSimulator/shop_env/tests -q
       - name: Compile public modules and scripts
-        run: python -m compileall -q src scripts
+        run: python -m compileall -q src scripts environments/ShopSimulator/shop_env
       - name: Validate the curriculum plan without GPU dependencies
         run: >-
           python scripts/prepare_grpo_curriculum.py

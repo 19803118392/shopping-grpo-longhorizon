@@ -80,7 +80,10 @@ class EvidenceMemoryTest(unittest.TestCase):
             candidate["key_attributes"], ["天然乳胶", "可拆洗"]
         )
         self.assertEqual(candidate["subpages"]["features"], "天然乳胶，可拆洗。")
-        self.assertIn('available_options={"高度": ["8cm", "10cm"]}', memory.render())
+        rendered = memory.render()
+        self.assertIn('selected_options={"高度": "10cm"}', rendered)
+        self.assertNotIn("available_options", rendered)
+        self.assertNotIn(ASIN, rendered)
 
     def test_snapshot_does_not_mutate_after_later_observations(self):
         memory = EvidenceMemory()
@@ -123,6 +126,53 @@ class EvidenceMemoryTest(unittest.TestCase):
 
         self.assertTrue(augmented.startswith(EVIDENCE_MEMORY_HEADER))
         self.assertTrue(augmented.endswith('可点击的按钮: ["100000000001", "back to search"]'))
+
+    def test_unchanged_snapshot_is_not_repeated_into_history(self):
+        memory = EvidenceMemory()
+        state = search_state()
+        memory.observe(state)
+        observation = render_structured_observation(state)
+
+        first = augment_observation_with_evidence(observation, memory)
+        second = augment_observation_with_evidence(observation, memory)
+
+        self.assertTrue(first.startswith(EVIDENCE_MEMORY_HEADER))
+        self.assertEqual(second, observation)
+        self.assertEqual(memory.last_emission_chars, 0)
+
+    def test_search_candidates_are_selected_by_rank_not_asin_order(self):
+        memory = EvidenceMemory(max_candidates=2)
+        state = search_state()
+        state["products"] = [
+            {
+                **state["products"][0],
+                "rank": 1,
+                "asin": "999999999999",
+                "title": "rank one",
+            },
+            {
+                **state["products"][0],
+                "rank": 2,
+                "asin": "888888888888",
+                "title": "rank two",
+            },
+            {
+                **state["products"][0],
+                "rank": 3,
+                "asin": "000000000001",
+                "title": "rank three",
+            },
+        ]
+        state["actions"] = [product["asin"] for product in state["products"]]
+        state["total_results"] = 3
+        state["rank_end"] = 3
+
+        memory.observe(state)
+
+        self.assertEqual(
+            [candidate["asin"] for candidate in memory.snapshot()["candidates"]],
+            ["999999999999", "888888888888"],
+        )
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -1,32 +1,40 @@
-import unittest
 import json
-from pathlib import Path
 import tempfile
+import unittest
+from pathlib import Path
 
 from shopping_grpo.environment.manifest import (
     MANIFEST_VERSION,
+    RUNTIME_FILES,
     shopsimulator_source_commit,
     validate_manifest,
+    validate_runtime_files,
 )
+
+
+def valid_manifest():
+    return {
+        "manifest_version": MANIFEST_VERSION,
+        "environment_version": "shopsimulator-environment-v2.1",
+        "shopsimulator_commit": "a" * 40,
+        "product_data_sha256": "c" * 64,
+        "lease_contract": "explicit-client-release-v1",
+        "runtime_files_sha256": {name: "d" * 64 for name in RUNTIME_FILES},
+        "search": {
+            "version": "shopsimulator-multifield-bm25-v2",
+            "page_size": 20,
+        },
+        "reward": {"version": "shopsimulator-reward-v3"},
+        "observation_version": "shopping-observation-v2",
+        "tool_version": "shopping-tools-v2",
+        "max_steps": 35,
+        "seed": 20260726,
+    }
 
 
 class EnvironmentManifestTest(unittest.TestCase):
     def test_current_environment_contract_is_validated(self):
-        manifest = {
-            "manifest_version": MANIFEST_VERSION,
-            "environment_version": "shopsimulator-environment-v2.1",
-            "shopsimulator_commit": "a" * 40,
-            "product_data_sha256": "c" * 64,
-            "search": {
-                "version": "shopsimulator-multifield-bm25-v2",
-                "page_size": 20,
-            },
-            "reward": {"version": "shopsimulator-reward-v3"},
-            "observation_version": "shopping-observation-v2",
-            "tool_version": "shopping-tools-v2",
-            "max_steps": 35,
-            "seed": 20260726,
-        }
+        manifest = valid_manifest()
         self.assertIs(validate_manifest(manifest), manifest)
 
     def test_page_size_mismatch_is_rejected(self):
@@ -34,43 +42,25 @@ class EnvironmentManifestTest(unittest.TestCase):
             validate_manifest({})
 
     def test_current_environment_requires_reward_v3(self):
-        manifest = {
-            "manifest_version": MANIFEST_VERSION,
-            "environment_version": "shopsimulator-environment-v2.1",
-            "shopsimulator_commit": "a" * 40,
-            "product_data_sha256": "c" * 64,
-            "search": {
-                "version": "shopsimulator-multifield-bm25-v2",
-                "page_size": 20,
-            },
-            "reward": {"version": "shopsimulator-reward-v3"},
-            "observation_version": "shopping-observation-v2",
-            "tool_version": "shopping-tools-v2",
-            "max_steps": 35,
-            "seed": 20260726,
-        }
+        manifest = valid_manifest()
         self.assertIs(validate_manifest(manifest), manifest)
         manifest["reward"] = {"version": "unsupported-reward"}
         with self.assertRaisesRegex(ValueError, "requires shopsimulator-reward-v3"):
             validate_manifest(manifest)
 
     def test_wrong_tool_contract_is_rejected(self):
-        manifest = {
-            "manifest_version": MANIFEST_VERSION,
-            "shopsimulator_commit": "a" * 40,
-            "product_data_sha256": "c" * 64,
-            "search": {
-                "version": "shopsimulator-multifield-bm25-v2",
-                "page_size": 20,
-            },
-            "reward": {"version": "shopsimulator-reward-v3"},
-            "observation_version": "shopping-observation-v2",
-            "tool_version": "unsupported-tools",
-            "max_steps": 35,
-            "seed": 20260726,
-        }
+        manifest = valid_manifest()
+        manifest["tool_version"] = "unsupported-tools"
         with self.assertRaisesRegex(ValueError, "Tool v2"):
             validate_manifest(manifest)
+
+    def test_checked_in_runtime_files_match_the_frozen_manifest(self):
+        root = Path(__file__).resolve().parents[1]
+        manifest = json.loads((root / "data/environment.json").read_text(encoding="utf-8"))
+
+        verified = validate_runtime_files(manifest, root)
+
+        self.assertEqual(set(verified), set(RUNTIME_FILES))
 
     def test_embedded_shopsimulator_commit_is_read_without_nested_git(self):
         with tempfile.TemporaryDirectory() as directory:

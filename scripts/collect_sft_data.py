@@ -85,7 +85,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--context-safety-margin", type=int, default=512)
     parser.add_argument("--context-compaction", action="store_true")
     parser.add_argument("--observation-token-budget", type=int, default=0)
-    parser.add_argument("--observation-detail-token-budget", type=int, default=4096)
+    parser.add_argument("--observation-detail-token-budget", type=int, default=2048)
     parser.add_argument("--observation-generic-token-budget", type=int, default=768)
     parser.add_argument("--observation-search-top-k", type=int, default=20)
     return parser.parse_args()

@@ -9,12 +9,146 @@ from __future__ import annotations
 
 import math
 import random
+from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 
 from shopping_grpo.evaluation.summary import is_strict_success
 
 REPEATED_RUN_SCHEMA_VERSION = "shopping-repeated-run-statistics-v1"
 PAIRED_STATISTICS_SCHEMA_VERSION = "shopping-paired-statistics-v1"
+FAILURE_PROFILE_SCHEMA_VERSION = "shopping-failure-profile-v1"
+
+
+def summarize_failure_profile(trajectories: Iterable[Mapping]) -> dict:
+    """Describe failure modes without changing the strict-success denominator.
+
+    The profile deliberately uses only fields already present in saved rollout
+    records.  It is diagnostic metadata, not an alternative success metric.
+    """
+    rows = list(trajectories)
+    statuses = Counter(str(row.get("status") or "missing") for row in rows)
+    reward_types = Counter()
+    termination_reasons = Counter()
+    reward_validity = Counter()
+    error_types = Counter()
+    guard_reasons = Counter()
+    infrastructure_invalid_attempts = 0
+    projection_footer_failures = 0
+    projected_observations = 0
+    strict_successes = 0
+    total_steps = 0
+    no_purchase_attempts = 0
+    loop_attempts = 0
+    repeat_action_attempts = 0
+    information_subpage_steps = 0
+    search_steps = 0
+
+    infrastructure_error_types = {
+        "URLError",
+        "RemoteDisconnected",
+        "TimeoutError",
+        "ShopHttpError",
+    }
+    for row in rows:
+        strict_successes += bool(is_strict_success(row))
+        steps = row.get("steps") or []
+        total_steps += len(steps)
+        detail = (row.get("terminal_result") or {}).get("reward_detail") or {}
+        reward_types[str(detail.get("reward_type") or "missing")] += 1
+        reward_type = str(detail.get("reward_type") or "")
+        no_purchase_attempts += reward_type in {
+            "graceful_stop",
+            "early_abstain",
+            "repeat_loop",
+            "max_steps",
+        }
+        loop_attempts += reward_type == "repeat_loop"
+        termination_reasons[str(detail.get("termination_reason") or "missing")] += 1
+        reward_valid = detail.get("reward_valid")
+        if reward_valid is True:
+            validity_key = "true"
+        elif reward_valid is False:
+            validity_key = "false"
+        else:
+            validity_key = "missing"
+        reward_validity[validity_key] += 1
+
+        error = row.get("error") or {}
+        release_error = row.get("release_error") or {}
+        error_type = str(error.get("type") or "")
+        release_error_type = str(release_error.get("type") or "")
+        if error_type:
+            error_types[error_type] += 1
+        if release_error_type:
+            error_types[f"release:{release_error_type}"] += 1
+        environment_unavailable = (
+            error_type == "ShopEnvironmentError"
+            and "Unable to get available environment resource" in str(error.get("message") or "")
+        )
+        infrastructure_invalid_attempts += bool(
+            row.get("infrastructure_invalid")
+            or release_error
+            or error_type in infrastructure_error_types
+            or environment_unavailable
+        )
+
+        guard_reasons.update(
+            str(blocked.get("reason") or "unknown")
+            for blocked in row.get("blocked_tool_calls") or []
+        )
+        action_signatures = []
+        for step in steps:
+            search_steps += str(step.get("tool_name") or "") == "search_products"
+            signature = (
+                str(step.get("tool_name") or ""),
+                repr(sorted((step.get("parameters") or {}).items())),
+            )
+            repeat_action_attempts += signature in action_signatures[-3:]
+            action_signatures.append(signature)
+            information_subpage_steps += str(step.get("tool_name") or "").startswith("view_")
+            projection = step.get("projection")
+            if isinstance(projection, Mapping):
+                projected_observations += 1
+                projection_footer_failures += not bool(
+                    projection.get("critical_footer_preserved", False)
+                )
+
+    attempts = len(rows)
+    strict_failures = attempts - strict_successes
+    return {
+        "schema_version": FAILURE_PROFILE_SCHEMA_VERSION,
+        "attempts": attempts,
+        "strict_successes": strict_successes,
+        "strict_failures": strict_failures,
+        "strict_failure_rate": strict_failures / attempts if attempts else 0.0,
+        "status_counts": dict(sorted(statuses.items())),
+        "reward_type_counts": dict(sorted(reward_types.items())),
+        "termination_reason_counts": dict(sorted(termination_reasons.items())),
+        "reward_validity_counts": dict(sorted(reward_validity.items())),
+        "error_type_counts": dict(sorted(error_types.items())),
+        "infrastructure_invalid_attempts": infrastructure_invalid_attempts,
+        "guard_rejections": sum(guard_reasons.values()),
+        "guard_rejection_rate": (sum(guard_reasons.values()) / attempts if attempts else 0.0),
+        "guard_reason_counts": dict(sorted(guard_reasons.items())),
+        "average_steps": total_steps / attempts if attempts else 0.0,
+        "projected_observations": projected_observations,
+        "critical_footer_failures": projection_footer_failures,
+        "footer_failure_rate": (
+            projection_footer_failures / projected_observations if projected_observations else 0.0
+        ),
+        "no_purchase_attempts": no_purchase_attempts,
+        "no_purchase_rate": no_purchase_attempts / attempts if attempts else 0.0,
+        "loop_attempts": loop_attempts,
+        "loop_rate": loop_attempts / attempts if attempts else 0.0,
+        "search_steps": search_steps,
+        "search_steps_per_attempt": search_steps / attempts if attempts else 0.0,
+        "repeat_action_attempts": repeat_action_attempts,
+        "repeat_action_rate": repeat_action_attempts / attempts if attempts else 0.0,
+        "information_subpage_steps": information_subpage_steps,
+        "information_subpage_steps_per_attempt": (
+            information_subpage_steps / attempts if attempts else 0.0
+        ),
+    }
 
 
 def _expected_ids(expected_task_ids: Iterable[int]) -> list[int]:
@@ -42,9 +176,7 @@ def _attempt_matrix(
             raise ValueError(f"unexpected task_id {task_id}")
         attempt_index = int(trajectory.get("attempt_index", 0))
         if not 0 <= attempt_index < attempts_per_task:
-            raise ValueError(
-                f"attempt_index {attempt_index} is outside [0, {attempts_per_task})"
-            )
+            raise ValueError(f"attempt_index {attempt_index} is outside [0, {attempts_per_task})")
         key = (task_id, attempt_index)
         if key in observed:
             raise ValueError(
@@ -60,9 +192,7 @@ def _attempt_matrix(
             key = (task_id, attempt_index)
             matrix[task_id].append(observed.get(key, False))
             if key not in observed:
-                missing.append(
-                    {"task_id": task_id, "attempt_index": attempt_index}
-                )
+                missing.append({"task_id": task_id, "attempt_index": attempt_index})
     return matrix, missing, set(observed)
 
 
@@ -87,10 +217,7 @@ def wilson_interval(successes: int, trials: int, confidence: float = 0.95) -> di
     center = (proportion + z * z / (2.0 * trials)) / denominator
     radius = (
         z
-        * math.sqrt(
-            proportion * (1.0 - proportion) / trials
-            + z * z / (4.0 * trials * trials)
-        )
+        * math.sqrt(proportion * (1.0 - proportion) / trials + z * z / (4.0 * trials * trials))
         / denominator
     )
     return {
@@ -108,19 +235,34 @@ def summarize_repeated_run(
 ) -> dict:
     """Summarize repeated attempts with fixed task and attempt denominators."""
     expected = _expected_ids(expected_task_ids)
-    matrix, missing, _ = _attempt_matrix(
-        expected, trajectories, attempts_per_task
-    )
+    matrix, missing, _ = _attempt_matrix(expected, trajectories, attempts_per_task)
     attempts_per_task = int(attempts_per_task)
     total_attempts = len(expected) * attempts_per_task
-    success_counts = {
-        task_id: sum(outcomes) for task_id, outcomes in matrix.items()
-    }
+    success_counts = {task_id: sum(outcomes) for task_id, outcomes in matrix.items()}
     strict_successes = sum(success_counts.values())
     any_successes = sum(count > 0 for count in success_counts.values())
-    all_successes = sum(
-        count == attempts_per_task for count in success_counts.values()
-    )
+    all_successes = sum(count == attempts_per_task for count in success_counts.values())
+    by_attempt_index = []
+    for attempt_index in range(attempts_per_task):
+        successes = sum(matrix[task_id][attempt_index] for task_id in expected)
+        completed = sum(
+            not any(
+                missing_attempt["task_id"] == task_id
+                and missing_attempt["attempt_index"] == attempt_index
+                for missing_attempt in missing
+            )
+            for task_id in expected
+        )
+        by_attempt_index.append(
+            {
+                "attempt_index": attempt_index,
+                "expected_tasks": len(expected),
+                "completed_tasks": completed,
+                "strict_successes": successes,
+                "strict_success_rate": successes / len(expected),
+                "strict_success_rate_wilson_95": wilson_interval(successes, len(expected)),
+            }
+        )
     return {
         "schema_version": REPEATED_RUN_SCHEMA_VERSION,
         "expected_tasks": len(expected),
@@ -131,13 +273,14 @@ def summarize_repeated_run(
         "attempt_coverage_rate": (total_attempts - len(missing)) / total_attempts,
         "strict_successes": strict_successes,
         "strict_success_rate": strict_successes / total_attempts,
-        "strict_success_rate_wilson_95": wilson_interval(
-            strict_successes, total_attempts
-        ),
+        "strict_success_rate_wilson_95": wilson_interval(strict_successes, total_attempts),
         "empirical_pass_at_k": any_successes / len(expected),
         "empirical_pass_power_k": all_successes / len(expected),
+        "pass@k": any_successes / len(expected),
+        "pass^k": all_successes / len(expected),
         "tasks_with_any_success": any_successes,
         "tasks_with_all_successes": all_successes,
+        "by_attempt_index": by_attempt_index,
         "per_task": [
             {
                 "task_id": task_id,
@@ -159,10 +302,7 @@ def _percentile(sorted_values: Sequence[float], probability: float) -> float:
     if lower == upper:
         return float(sorted_values[lower])
     weight = position - lower
-    return (
-        float(sorted_values[lower]) * (1.0 - weight)
-        + float(sorted_values[upper]) * weight
-    )
+    return float(sorted_values[lower]) * (1.0 - weight) + float(sorted_values[upper]) * weight
 
 
 def paired_bootstrap_mean_delta(
@@ -184,8 +324,7 @@ def paired_bootstrap_mean_delta(
     rng = random.Random(int(seed))
     size = len(values)
     distribution = sorted(
-        sum(values[rng.randrange(size)] for _ in range(size)) / size
-        for _ in range(samples)
+        sum(values[rng.randrange(size)] for _ in range(size)) / size for _ in range(samples)
     )
     alpha = (1.0 - confidence) / 2.0
     return {
@@ -196,10 +335,7 @@ def paired_bootstrap_mean_delta(
         "mean_delta": sum(values) / size,
         "low": _percentile(distribution, alpha),
         "high": _percentile(distribution, 1.0 - alpha),
-        "probability_delta_above_zero": sum(
-            value > 0.0 for value in distribution
-        )
-        / samples,
+        "probability_delta_above_zero": sum(value > 0.0 for value in distribution) / samples,
     }
 
 
@@ -214,9 +350,9 @@ def mcnemar_exact(baseline_only: int, candidate_only: int) -> dict:
         p_value = 1.0
     else:
         tail = min(baseline_only, candidate_only)
-        lower_tail = sum(
-            math.comb(discordant, index) for index in range(tail + 1)
-        ) / (2**discordant)
+        lower_tail = sum(math.comb(discordant, index) for index in range(tail + 1)) / (
+            2**discordant
+        )
         p_value = min(1.0, 2.0 * lower_tail)
     return {
         "method": "mcnemar_exact_two_sided",
@@ -268,9 +404,7 @@ def compare_repeated_runs(
         wins += delta > 0.0
         ties += delta == 0.0
         losses += delta < 0.0
-        for attempt_index, (left_success, right_success) in enumerate(
-            zip(left, right)
-        ):
+        for attempt_index, (left_success, right_success) in enumerate(zip(left, right)):
             key = (task_id, attempt_index)
             if key not in baseline_observed or key not in candidate_observed:
                 continue
@@ -287,12 +421,14 @@ def compare_repeated_runs(
         "schema_version": PAIRED_STATISTICS_SCHEMA_VERSION,
         "baseline": baseline,
         "candidate": candidate,
+        "failure_profiles": {
+            "baseline": summarize_failure_profile(baseline_rows),
+            "candidate": summarize_failure_profile(candidate_rows),
+        },
         "paired_task_delta": {
             "unit": "strict_success_rate",
             "candidate_minus_baseline": bootstrap["mean_delta"],
-            "candidate_minus_baseline_percentage_points": (
-                100.0 * bootstrap["mean_delta"]
-            ),
+            "candidate_minus_baseline_percentage_points": (100.0 * bootstrap["mean_delta"]),
             "wins": wins,
             "ties": ties,
             "losses": losses,
@@ -300,12 +436,9 @@ def compare_repeated_runs(
         },
         "paired_attempt_test": {
             **mcnemar_exact(baseline_only, candidate_only),
-            "paired_completed_attempts": len(
-                baseline_observed & candidate_observed
-            ),
+            "paired_completed_attempts": len(baseline_observed & candidate_observed),
             "excluded_unpaired_attempts": (
-                len(expected) * int(attempts_per_task)
-                - len(baseline_observed & candidate_observed)
+                len(expected) * int(attempts_per_task) - len(baseline_observed & candidate_observed)
             ),
         },
     }

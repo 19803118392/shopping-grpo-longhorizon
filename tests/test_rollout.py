@@ -808,8 +808,34 @@ class RolloutTest(unittest.TestCase):
         self.assertEqual(captured["payload"]["tools"], [{"type": "function"}])
         self.assertEqual(captured["payload"]["max_tokens"], 512)
         self.assertEqual(captured["payload"]["temperature"], 0.2)
+        self.assertEqual(captured["payload"]["seed"], 2026)
         self.assertEqual(captured["headers"]["Authorization"], "Bearer secret")
         self.assertEqual(captured["headers"]["User-Agent"], "shopping-grpo-longhorizon/0.1")
+
+    def test_openai_client_derives_reproducible_seed_per_attempt(self):
+        captured = []
+
+        def transport(url, payload, headers, timeout):
+            captured.append(payload["seed"])
+            return {"choices": [{"message": {"role": "assistant", "content": "ok"}}]}
+
+        client = OpenAIChatClient(
+            model="local-model",
+            base_url="http://127.0.0.1:8000/v1",
+            api_key="EMPTY",
+            seed=17,
+            transport=transport,
+        )
+        first_attempt_seed = client.begin_attempt(42, 1)
+        client.complete([{"role": "user", "content": "hi"}], tools=[])
+        client.complete([{"role": "user", "content": "hi"}], tools=[])
+        replay_seed = client.begin_attempt(42, 1)
+        client.complete([{"role": "user", "content": "hi"}], tools=[])
+        next_attempt_seed = client.begin_attempt(42, 2)
+
+        self.assertEqual(first_attempt_seed, replay_seed)
+        self.assertNotEqual(first_attempt_seed, next_attempt_seed)
+        self.assertEqual(captured, [first_attempt_seed, first_attempt_seed + 1, replay_seed])
 
     def test_openai_client_allows_bounded_completion_override(self):
         """本地推理服务必须收到单次生成上限，避免无工具文本耗尽上下文。"""

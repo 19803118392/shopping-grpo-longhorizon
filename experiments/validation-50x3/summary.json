@@ -1,0 +1,58 @@
+{
+  "schema_version": "shopping-validation-50x3-summary-v1",
+  "sft": {
+    "strict_successes": 100,
+    "attempts": 150,
+    "strict_success_rate": 0.6666666666666666,
+    "wilson_95": [0.5878975668678504, 0.7371123516761239],
+    "pass_at_3": 0.78,
+    "pass_power_3": 0.54,
+    "loop_rate": 0.1,
+    "average_steps": 10.953333333333333,
+    "guard_rejection_rate": 0.24666666666666667,
+    "context_budget_errors": 6,
+    "infrastructure_invalid_attempts": 0,
+    "critical_footer_failures": 0
+  },
+  "terminal_grpo_30": {
+    "strict_successes": 112,
+    "attempts": 150,
+    "strict_success_rate": 0.7466666666666667,
+    "wilson_95": [0.6715059067359275, 0.8095087727091548],
+    "pass_at_3": 0.84,
+    "pass_power_3": 0.62,
+    "loop_rate": 0.08666666666666667,
+    "average_steps": 10.8,
+    "guard_rejection_rate": 0.2866666666666667,
+    "context_budget_errors": 3,
+    "infrastructure_invalid_attempts": 0,
+    "critical_footer_failures": 0
+  },
+  "paired_comparison": {
+    "candidate_minus_baseline": 0.08,
+    "candidate_minus_baseline_percentage_points": 8.0,
+    "task_wins": 9,
+    "task_ties": 39,
+    "task_losses": 2,
+    "paired_bootstrap": {
+      "samples": 10000,
+      "seed": 2026,
+      "confidence": 0.95,
+      "low": 0.02,
+      "high": 0.14666666666666667,
+      "probability_delta_above_zero": 0.9953
+    },
+    "mcnemar_exact_two_sided": {
+      "baseline_only_successes": 4,
+      "candidate_only_successes": 16,
+      "discordant_pairs": 20,
+      "p_value": 0.01181793212890625
+    }
+  },
+  "scope": {
+    "split": "development_validation",
+    "final_200": false,
+    "strata_are_exploratory": true,
+    "multiplicity_correction": false
+  }
+}

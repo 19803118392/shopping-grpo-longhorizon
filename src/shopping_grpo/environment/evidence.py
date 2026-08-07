@@ -29,7 +29,7 @@ def _string_list(value, *, item_limit=120):
 class EvidenceMemory:
     """Merge public candidate evidence across pages without retaining hidden goals."""
 
-    def __init__(self, *, max_candidates=5, max_chars=2_000):
+    def __init__(self, *, max_candidates=5, max_chars=384):
         self.max_candidates = int(max_candidates)
         self.max_chars = int(max_chars)
         if self.max_candidates < 1:
@@ -40,6 +40,8 @@ class EvidenceMemory:
         self.candidates = {}
         self.current_asin = None
         self.event_count = 0
+        self._last_emitted_render = None
+        self.last_emission_chars = 0
 
     def observe(self, state: Mapping, *, event_id=None, tool_name=None) -> dict:
         """Validate and merge one canonical public observation state."""
@@ -111,6 +113,8 @@ class EvidenceMemory:
                 "available_options": {},
                 "subpages": {},
                 "sources": [],
+                "best_search_rank": None,
+                "detail_visits": 0,
                 "last_event_id": event_id,
             },
         )
@@ -124,14 +128,42 @@ class EvidenceMemory:
         )
         if source not in candidate["sources"]:
             candidate["sources"].append(source)
+        if source == "search_results":
+            try:
+                rank = int(product.get("rank"))
+            except (TypeError, ValueError):
+                rank = 0
+            if rank > 0:
+                previous_rank = candidate["best_search_rank"]
+                candidate["best_search_rank"] = (
+                    rank if previous_rank is None else min(int(previous_rank), rank)
+                )
+        else:
+            candidate["detail_visits"] += 1
         candidate["last_event_id"] = event_id
         return candidate
+
+    def _candidate_priority(self, candidate):
+        evidence_score = (
+            len(candidate["key_attributes"])
+            + len(candidate["selected_options"])
+            + len(candidate["subpages"])
+        )
+        search_rank = candidate["best_search_rank"]
+        return (
+            candidate["asin"] != self.current_asin,
+            not bool(candidate["detail_visits"]),
+            -evidence_score,
+            -int(candidate["last_event_id"]),
+            int(search_rank) if search_rank is not None else 10**9,
+            candidate["asin"],
+        )
 
     def snapshot(self) -> dict:
         """Return a deterministic, JSON-serializable public snapshot."""
         candidates = sorted(
             self.candidates.values(),
-            key=lambda item: (-int(item["last_event_id"]), item["asin"]),
+            key=self._candidate_priority,
         )[: self.max_candidates]
         return {
             "schema_version": EVIDENCE_MEMORY_VERSION,
@@ -143,53 +175,68 @@ class EvidenceMemory:
         }
 
     def render(self) -> str:
-        """Render a bounded model-visible ledger; the newest candidates come first."""
+        """Render a bounded, action-inert ledger; newest evidence comes first."""
         snapshot = self.snapshot()
         lines = [
             EVIDENCE_MEMORY_HEADER,
-            "queries: " + json.dumps(snapshot["queries"], ensure_ascii=False),
-            (
-                f"candidate_count: {snapshot['candidate_count']}; "
-                f"current_asin: {snapshot['current_asin'] or ''}"
-            ),
+            "历史证据只用于比较，不可点击；仅使用 CURRENT_OBSERVATION footer。",
+            f"candidate_count: {snapshot['candidate_count']}",
         ]
+        header_line_count = len(lines)
         for candidate in snapshot["candidates"]:
-            lines.append(
-                "candidate "
-                + " | ".join(
-                    (
-                        f"asin={candidate['asin']}",
-                        f"title={candidate['title']}",
-                        f"brand={candidate['brand']}",
-                        f"category={candidate['category']}",
-                        f"price={candidate['selected_price'] or candidate['price']}",
-                        "attributes=" + ", ".join(candidate["key_attributes"]),
-                        "selected_options="
-                        + json.dumps(
-                            candidate["selected_options"],
-                            ensure_ascii=False,
-                            sort_keys=True,
-                        ),
-                        "available_options="
-                        + json.dumps(
-                            candidate["available_options"],
-                            ensure_ascii=False,
-                            sort_keys=True,
-                        ),
-                    )
+            evidence = "; ".join(
+                f"{name}={_text(content, 48)}"
+                for name, content in sorted(candidate["subpages"].items())
+            )
+            selected_options = _text(
+                json.dumps(
+                    candidate["selected_options"],
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                72,
+            )
+            candidate_line = "candidate " + " | ".join(
+                (
+                    f"title={_text(candidate['title'], 64)}",
+                    f"brand={_text(candidate['brand'], 24)}",
+                    f"category={_text(candidate['category'], 24)}",
+                    f"price={_text(candidate['selected_price'] or candidate['price'], 24)}",
+                    "attributes="
+                    + ", ".join(_text(value, 32) for value in candidate["key_attributes"][:2]),
+                    "selected_options=" + selected_options,
+                    f"evidence={_text(evidence, 72)}",
                 )
             )
-            for subpage, content in sorted(candidate["subpages"].items()):
-                lines.append(
-                    f"evidence asin={candidate['asin']} subpage={subpage}: {content}"
-                )
+            candidate_render = "\n".join([*lines, candidate_line])
+            if len(candidate_render) > self.max_chars:
+                break
+            lines.append(candidate_line)
+        marker = "[EVIDENCE_MEMORY_TRUNCATED]"
         rendered = "\n".join(lines)
-        if len(rendered) <= self.max_chars:
-            return rendered
-        marker = "\n[EVIDENCE_MEMORY_TRUNCATED]"
-        return rendered[: self.max_chars - len(marker)].rstrip() + marker
+        if len(lines) - header_line_count < len(snapshot["candidates"]):
+            with_marker = rendered + "\n" + marker
+            if len(with_marker) <= self.max_chars:
+                rendered = with_marker
+        if len(rendered) > self.max_chars:
+            # Headers are deliberately short, but retain a deterministic fallback.
+            rendered = rendered[: self.max_chars - len(marker) - 1].rstrip() + "\n" + marker
+        return rendered
+
+    def render_update(self) -> str:
+        """Emit a snapshot only when its actor-visible contents changed."""
+        rendered = self.render()
+        if rendered == self._last_emitted_render:
+            self.last_emission_chars = 0
+            return ""
+        self._last_emitted_render = rendered
+        self.last_emission_chars = len(rendered)
+        return rendered
 
 
 def augment_observation_with_evidence(observation: str, memory: EvidenceMemory) -> str:
     """Place memory before the current page so the actionable footer remains last."""
-    return memory.render() + "\n\n[CURRENT_OBSERVATION]\n" + str(observation)
+    update = memory.render_update()
+    if not update:
+        return str(observation)
+    return update + "\n\n[CURRENT_OBSERVATION]\n" + str(observation)

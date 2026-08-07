@@ -88,3 +88,8 @@ bash scripts/export_grpo.sh \
 
 The reported comparison uses step 100. Select checkpoints using validation
 metrics rather than assuming that the final training step is best.
+
+The exporter first reconstructs veRL's FSDP state and then applies the emitted
+LoRA adapter with `merge_and_unload`. The final directory is standalone and must
+not contain a nested `lora_adapter/`; serving the intermediate veRL export would
+silently evaluate the unchanged base weights.

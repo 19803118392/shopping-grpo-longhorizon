@@ -47,12 +47,12 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         context_preserve_recent_groups=1,
         context_compaction_enable=False,
         observation_token_budget=1536,
-        observation_detail_token_budget=4096,
+        observation_detail_token_budget=2048,
         observation_generic_token_budget=768,
         observation_search_top_k=20,
         evidence_memory_enable=False,
         evidence_memory_max_candidates=5,
-        evidence_memory_max_chars=2_000,
+        evidence_memory_max_chars=384,
         env_factory=None,
         **kwargs,
     ):
@@ -172,11 +172,12 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
                 int(bounded_sampling_params["max_tokens"]),
                 self.context_generation_reserve_tokens,
             )
-        return await super()._handle_generating_state(
+        next_state = await super()._handle_generating_state(
             agent_data,
             bounded_sampling_params,
             ignore_termination=ignore_termination,
         )
+        return next_state
 
     async def _call_tool(self, tool_call, tools_kwargs, agent_data):
         """把工具适配器拿到的原始 observation 压缩成模型真正可见的版本。"""
@@ -275,10 +276,19 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
             env_factory=self.env_factory,
         )
         state = await session.start(task_id)
-        if self.evidence_memory_enable:
+        evidence_memory_enable = bool(
+            getattr(self, "evidence_memory_enable", False)
+        )
+        evidence_memory_max_candidates = int(
+            getattr(self, "evidence_memory_max_candidates", 5)
+        )
+        evidence_memory_max_chars = int(
+            getattr(self, "evidence_memory_max_chars", 384)
+        )
+        if evidence_memory_enable:
             evidence_memory = EvidenceMemory(
-                max_candidates=self.evidence_memory_max_candidates,
-                max_chars=self.evidence_memory_max_chars,
+                max_candidates=evidence_memory_max_candidates,
+                max_chars=evidence_memory_max_chars,
             )
             initial_observation_state = state.get("latest_observation_state")
             if initial_observation_state is not None:
@@ -301,7 +311,8 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
                 state["terminate"] = True
             # 父类结束后统一从环境状态结算，避免把中途异常当作正常终局奖励。
             breakdown = reward_breakdown(state)
-            output.reward_score = terminal_reward(state, mode=self.reward_mode)
+            terminal_score = terminal_reward(state, mode=self.reward_mode)
+            output.reward_score = terminal_score
             output.extra_fields["shopping"] = {
                 "task_id": task_id,
                 "steps": len(state["steps"]),
@@ -318,7 +329,7 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
                 "reward_unverifiable": bool(state.get("reward_unverifiable")),
                 "reward": breakdown,
                 "evidence_memory": {
-                    "enabled": self.evidence_memory_enable,
+                    "enabled": evidence_memory_enable,
                     "event_count": int(
                         state.get("evidence_memory_event_count", 0)
                     ),

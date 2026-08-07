@@ -14,16 +14,57 @@ Reproducible post-training and evaluation for long-horizon shopping agents
 [![LoRA SFT](https://img.shields.io/badge/Post--training-LoRA%20SFT-7B61FF)](docs/sft.md)
 [![veRL](https://img.shields.io/badge/veRL-0.8.0-0E8A16)](https://github.com/verl-project/verl)
 [![ShopSimulator](https://img.shields.io/badge/Environment-ShopSimulator%20v2.1-4C78A8)](https://arxiv.org/pdf/2601.18225)
-[![Benchmark](https://img.shields.io/badge/Benchmark-Frozen%20200--task-F59E0B)](docs/evaluation.md)
+[![Evaluation](https://img.shields.io/badge/Evaluation-Paired%2050%C3%973-F59E0B)](experiments/validation-50x3/README.md)
 
 <br />
 
-Teacher rollouts and LoRA SFT → online GRPO with veRL → auditable comparison on
-a frozen benchmark
+Teacher rollouts and LoRA SFT → online GRPO with veRL → paired repeated sampling
+and statistical tests
 
 </div>
 
 ![Shopping GRPO project overview](docs/images/project-overview-pipeline.png)
+
+## Current result
+
+The current branch evaluates SFT and Terminal-GRPO (30 updates) on 50 development
+tasks from `data/grpo/validation.jsonl`, with three paired attempts per task.
+Both models use the same task, attempt, derived seed, and
+`temperature/top-p=0.7/0.9`; strict success has a fixed denominator of 150
+attempts per model.
+
+| Model | Strict success | Wilson 95% CI | Win/tie/loss vs SFT | `pass@3` | `pass^3` | Loop rate | Mean steps |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| SFT | 66.7% | [58.8%, 73.7%] | — | 78.0% | 54.0% | 10.0% | 10.95 |
+| Terminal-GRPO (30 updates) | **74.7%** | **[67.2%, 81.0%]** | **9/39/2** | **84.0%** | **62.0%** | **8.7%** | **10.80** |
+
+The paired difference is **+8.0 percentage points**. A 10,000-sample task-paired
+bootstrap gives a 95% CI of **[+2.0, +14.7] points**, and the exact McNemar test
+gives `p=0.0118`. Both runs have 100% attempt coverage, zero infrastructure-invalid
+attempts, and zero critical footer failures. See the
+[Validation-50×3 experiment card](experiments/validation-50x3/README.md) for
+configuration, hashes, and limitations.
+
+> This is a development-set method comparison, not a Final-200 score. It must
+> not be subtracted directly from the upstream single-pass 60.5%/62.0% results;
+> Final-200 remains frozen and is not used for tuning.
+
+## Contributions and result ownership
+
+| Upgrade | Implementation |
+|---|---|
+| Repeated sampling | task/attempt-derived seeds, fixed denominators, resumable collection; local seed replay matched 10/10 |
+| Statistical tests | Wilson CI, `pass@k` / `pass^k`, task-paired bootstrap, exact McNemar, win/tie/loss |
+| Stratified diagnostics | constraint, option, price, and reference-length strata derived only from Query fields |
+| Failure audit | separate infrastructure, Reward validity, Guard, footer, loop, termination, and context errors |
+| Reproducibility | JSON/Markdown/CSV reports, model/data/config SHA-256, deterministic training seeds, explicit checkpoint resume |
+
+This repository continues the commit history of
+[YYHDBL/shopping-grpo-longhorizon](https://github.com/YYHDBL/shopping-grpo-longhorizon).
+The imported 200-task results, runtime, and memory figures are labelled separately
+below and are not new measurements from this branch. No license file was present
+in the imported repository; read [NOTICE](NOTICE.md) and confirm the upstream
+terms before redistribution or portfolio use.
 
 ## What is ShopSimulator?
 
@@ -50,7 +91,7 @@ does not depend on a separately running third-party repository.
 | Baseline | Evaluate the untouched base model | `bash scripts/baseline.sh` | [Evaluation](docs/evaluation.md) |
 | SFT | Learn tool use from accepted teacher trajectories | `bash scripts/sft.sh` | [SFT](docs/sft.md) |
 | GRPO | Optimize terminal Reward v3 with online rollouts | `bash scripts/grpo.sh` | [GRPO](docs/grpo.md) |
-| Evaluation | Run the same frozen 200-task protocol | `bash scripts/evaluate.sh NAME` | [Evaluation](docs/evaluation.md) |
+| Evaluation | Use one strict-success contract for repeated validation and frozen Final-200 | `bash scripts/evaluate.sh NAME` | [Evaluation](docs/evaluation.md) |
 
 The checked-in SFT data was produced by a separate collection stage documented
 in [Data collection](docs/data-collection.md). The custom constraint-aware
@@ -63,7 +104,7 @@ flowchart LR
     C --> D[LoRA SFT]
     D --> E[Online GRPO with veRL]
     F[Frozen ShopSimulator v2.1] --> E
-    G[200 held-out tasks] --> H[Shared evaluation pipeline]
+    G[Validation-50 / frozen Final-200] --> H[Shared evaluation pipeline]
     I[Baseline] --> H
     D --> H
     E --> H
@@ -102,50 +143,34 @@ small SHA-256-checked patch. See the [GRPO guide](docs/grpo.md) for details.
 
 ### How evaluation works
 
-Formal evaluation combines deterministic checks with two LLM-as-Judge roles.
-DeepSeek V4 Flash curates a frozen requirement Rubric from code-generated
-category, brand, model, function, option and price candidates. It may select and
-deduplicate candidates, but cannot invent fields or expected values. The same
-Rubric is shared by Baseline, SFT and GRPO.
-
-After each Actor completes a rollout, code normalizes events and computes
-Reward, legality, repetition, context and infrastructure checks. Valid
-trajectories then go to DeepSeek V4 Pro with the original Query, frozen Rubric,
-Actor-visible trajectory, neutral terminal flags and allowlisted behavioral
-metrics. Reward values, hidden Gold fields, raw observations, success labels and
-other models' results are excluded.
+The primary evaluator on this branch replays real Actor interactions in
+ShopSimulator and uses deterministic Reward v3 for terminal outcomes. Strict
+success requires a complete `gold_purchase` with `reward_valid=true`; missing
+rows, task errors, Guard rejections, and infrastructure failures remain in the
+fixed denominator.
 
 ```mermaid
 flowchart TD
-    A[Benchmark task ID] --> B[Private TaskFacts]
-    B --> C[Code-generated candidates]
-    C --> D[V4 Flash frozen Rubric]
-    A --> E[Actor rollout]
-    E --> F[Normalization and hard checks]
-    F -->|valid| G[Judge-safe payload]
-    D --> G
-    G --> H[V4 Pro requirement and five-dimension judgment]
-    F -->|infrastructure invalid| I[not_judged]
-    H --> J[Four-panel aggregation]
-    I --> J
-    J --> K[Paired Baseline / SFT / GRPO comparison]
+    A[50 validation tasks] --> B[3 derived seeds per task]
+    B --> C[Paired SFT and GRPO rollouts]
+    C --> D[Reward v3 strict outcome and failure profile]
+    D --> E[Fixed denominator / Wilson / pass@3 / pass^3]
+    E --> F[Paired bootstrap / McNemar / W-T-L]
+    F --> G[JSON / Markdown / CSV]
 ```
 
-V4 Pro scores Search Strategy, Candidate Utilization, Evidence Verification,
-Decision Quality and Termination Efficiency independently on a 0/1/2 scale. It
-also assesses each Rubric and assigns errors from a frozen taxonomy. The final
-report keeps Reward/terminal, requirement Rubric, trajectory quality and
-deterministic behavior as four separate panels—there is no composite score.
-Failed, missing and not-judged tasks remain in the 200-task denominator. The
-[evaluation guide](docs/evaluation.md) contains the complete prompts, one
-worked benchmark example, input-isolation rules and aggregation contract. An
-interactive static view is available in the [Final-200 Benchmark Dashboard](docs/evaluation-dashboard.html).
+Constraint, option, price, and reference-length strata use only public Query or
+metadata fields—never a Gold ASIN or target-product field. Search-step and
+trajectory-length buckets are model-conditional behavioral diagnostics, not
+causal explanations.
 
-> **Reserved figure — Training and evaluation pipeline.** A full-width diagram
-> showing teacher data collection, LoRA SFT, online GRPO rollouts and the shared
-> held-out evaluation path, with artifacts produced at each boundary.
+The repository retains the upstream offline Rubric Curator and Trajectory Judge
+modules and static dashboard, but the public entry point does not rerun that
+complete Judge pipeline in one command. They are therefore not evidence for the
+new result on this branch. See the [evaluation guide](docs/evaluation.md) for
+the imported protocol and input-isolation rules.
 
-## Results
+## Upstream reported results
 
 One deterministic rollout per task on the same 200 held-out tasks:
 
@@ -163,18 +188,21 @@ GRPO improves over SFT by only 3/200 strict-success tasks (+1.5 percentage
 points), with one rollout per task, so this table alone does not establish a
 statistically significant gain. The repeated-run evaluator now reports a fixed
 attempt denominator, Wilson 95% intervals, empirical `pass@k` / `pass^k`, a
-task-paired bootstrap interval, and an exact McNemar test. This comparison should
-be rerun after GPU provisioning.
+task-paired bootstrap interval, and an exact McNemar test. The development-set
+result above is the first complete rerun under that protocol. It uses a different
+task set, checkpoint, and sampling design from the upstream single-pass Final-200
+table, so the two tables must not be subtracted directly.
 
-## Training hardware and time
+## Upstream reported training hardware and time
 
-All training used a single NVIDIA RTX 6000 with 96 GB of GPU memory.
+The upstream record used one NVIDIA RTX 6000 with 96 GB of GPU memory. This
+branch has not remeasured the figures.
 
 ### LoRA SFT training (379 training examples, 3 epochs)
 
 | Stage | Time | Peak GPU memory |
 |---|---:|---:|
-| One epoch (56 steps) | ~62 min | 89 GiB |
+| One epoch (47 steps) | ~62 min | 89 GiB |
 | Full 3-epoch training | ~3 h | 89 GiB |
 
 ### GRPO training (veRL 0.8, 8 environment workers)
@@ -209,9 +237,9 @@ The main environment uses Python 3.12. ShopSimulator is isolated on Python 3.10.
 `verl==0.8.0` dependency**; its source is not copied into this repository. Only
 the Shopping Agent adapter and a small version-checked patch live here.
 
-See [local experiment upgrades](docs/local-upgrades.md) for Evidence Memory,
-repeated-run statistics, and curriculum preparation, and the
-[96 GB GPU runbook](docs/gpu-runbook.md) for provisioning and stop conditions.
+See [the statistical evaluation upgrade](docs/local-upgrades.md) for metric and
+stratification definitions, and the [96 GB GPU runbook](docs/gpu-runbook.md) for
+the matched SFT-vs-GRPO execution protocol and stop rules.
 
 ## Quick start
 
@@ -295,6 +323,24 @@ bash scripts/evaluate.sh grpo
 Generated checkpoints, rollouts and logs are written under `outputs/`, which is
 ignored by Git.
 
+### 6. Generate the paired statistics report
+
+See the [GPU runbook](docs/gpu-runbook.md) for repeated SFT and GRPO rollout
+collection. Once both JSONL files exist, create the machine-readable comparison
+and presentation tables with one command:
+
+```bash
+python scripts/compare_repeated_evaluations.py \
+  --benchmark data/grpo/validation.jsonl --limit 50 \
+  --baseline outputs/eval/sft-50x3/raw.jsonl \
+  --candidate outputs/eval/terminal-grpo-50x3/raw.jsonl \
+  --attempts-per-task 3 --bootstrap-samples 10000 --seed 2026 \
+  --baseline-label SFT --candidate-label Terminal-GRPO \
+  --output outputs/eval/sft-vs-terminal-50x3/comparison.json \
+  --markdown-output outputs/eval/sft-vs-terminal-50x3/report.md \
+  --csv-output outputs/eval/sft-vs-terminal-50x3/report.csv
+```
+
 ## Reward V3 overview
 
 Reward v3 is a deterministic terminal reward; it does not rely on another
@@ -327,6 +373,7 @@ data/
 docs/                            one guide for each tutorial stage and Reward v3
 environments/ShopSimulator/      embedded environment and product archive
 experiments/
+  validation-50x3/               current paired evaluation card and hashes
   baseline/                      baseline config and result summary
   sft/                           SFT config and result summary
   grpo/                          GRPO config and result summary
@@ -336,7 +383,7 @@ src/shopping_grpo/
   environment/                   HTTP client, tools, actions and observations
   training/sft/                  SFT dataset masking and collation
   training/grpo/                 veRL adapter, compatibility and sampling logic
-  evaluation/                    hard checks, Rubrics, trajectory Judge and metrics
+  evaluation/                    repeated sampling, paired statistics, strata, and imported Judge modules
 tests/                           focused unit, launcher and packaging checks
 ```
 
@@ -379,13 +426,18 @@ bash scripts/grpo.sh --logger swanlab
 - [LoRA SFT](docs/sft.md)
 - [GRPO with veRL](docs/grpo.md)
 - [Held-out evaluation](docs/evaluation.md)
+- [Statistical evaluation upgrade](docs/local-upgrades.md)
+- [50×3 GPU runbook](docs/gpu-runbook.md)
+- [Current Validation-50×3 experiment card](experiments/validation-50x3/README.md)
 - [Final-200 Benchmark Dashboard](docs/evaluation-dashboard.html)
 - [Reward v3 design](docs/reward-v3.md)
 - [Auditable experiment results](experiments/comparison.md)
 
 ## References and acknowledgements
 
-This tutorial builds on the
+This repository is a derivative of
+[YYHDBL/shopping-grpo-longhorizon](https://github.com/YYHDBL/shopping-grpo-longhorizon)
+and builds on the
 [ShopSimulator paper](https://arxiv.org/pdf/2601.18225) and source project,
 [veRL](https://github.com/verl-project/verl), and
 [Qwen](https://github.com/QwenLM/Qwen3).

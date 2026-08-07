@@ -14,15 +14,49 @@
 [![LoRA SFT](https://img.shields.io/badge/Post--training-LoRA%20SFT-7B61FF)](docs/sft.md)
 [![veRL](https://img.shields.io/badge/veRL-0.8.0-0E8A16)](https://github.com/verl-project/verl)
 [![ShopSimulator](https://img.shields.io/badge/Environment-ShopSimulator%20v2.1-4C78A8)](https://arxiv.org/pdf/2601.18225)
-[![Benchmark](https://img.shields.io/badge/Benchmark-Frozen%20200--task-F59E0B)](docs/evaluation.md)
+[![Evaluation](https://img.shields.io/badge/Evaluation-Paired%2050%C3%973-F59E0B)](experiments/validation-50x3/README.md)
 
 <br />
 
-教师轨迹与 LoRA SFT → veRL 在线 GRPO → 冻结 Benchmark 的可审计对比
+教师轨迹与 LoRA SFT → veRL 在线 GRPO → 配对重复采样与统计检验
 
 </div>
 
 ![Shopping GRPO project overview](docs/images/project-overview-pipeline.png)
+
+## 当前结果
+
+当前分支在 `data/grpo/validation.jsonl` 的 50 个开发任务上，对 SFT 和
+Terminal-GRPO（30 updates）各运行 3 次配对采样。两组使用相同 task、attempt、派生
+seed 和 `temperature/top-p=0.7/0.9`，严格成功固定以 150 次 attempt 为分母。
+
+| 模型 | Strict Success | Wilson 95% CI | 相对 SFT 胜/平/负 | `pass@3` | `pass^3` | 循环率 | 平均步数 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| SFT | 66.7% | [58.8%, 73.7%] | — | 78.0% | 54.0% | 10.0% | 10.95 |
+| Terminal-GRPO（30 updates） | **74.7%** | **[67.2%, 81.0%]** | **9/39/2** | **84.0%** | **62.0%** | **8.7%** | **10.80** |
+
+配对差异为 **+8.0 个百分点**；10,000 次任务级 paired bootstrap 的 95% CI 为
+**[+2.0, +14.7] 个百分点**，精确 McNemar `p=0.0118`。两组 attempt coverage 均为
+100%，基础设施错误和关键 footer failure 均为 0。完整配置、哈希和限制见
+[Validation-50×3 实验卡](experiments/validation-50x3/README.md)。
+
+> 这是开发集上的方法比较，不是 Final-200 成绩。它不能与上游单次 Final-200 的
+> 60.5%/62.0% 直接横向相减；Final-200 保持冻结，不用于调参。
+
+## 本分支核心改造与结果归属
+
+| 改造 | 实现 |
+|---|---|
+| 重复采样协议 | task/attempt 派生 seed、固定分母、可断点续跑；本地 seed replay 10/10 完全一致 |
+| 统计检验 | Wilson CI、`pass@k` / `pass^k`、任务级 paired bootstrap、精确 McNemar、win/tie/loss |
+| 分层诊断 | 仅从 Query 构造约束数、规格、价格和参考长度分层，不读取 Gold 商品字段 |
+| 失败审计 | 基础设施、Reward 有效性、Guard、footer、循环、终止类型和上下文错误分别统计 |
+| 可复现性 | JSON/Markdown/CSV 自动报告，模型/数据/配置 SHA-256，训练 seed 与显式 checkpoint resume |
+
+本仓库由 [YYHDBL/shopping-grpo-longhorizon](https://github.com/YYHDBL/shopping-grpo-longhorizon)
+的提交历史继续开发。上游导入的 200 题结果、训练耗时和显存数据在下文单独标注，不能
+作为当前分支的新实验结果。仓库导入时未包含许可证文件；重新发布或用于作品集前，请
+阅读 [NOTICE](NOTICE.md) 并确认上游授权条件。
 
 ## ShopSimulator 是什么？
 
@@ -56,7 +90,7 @@ flowchart LR
     C --> D[LoRA SFT]
     D --> E[veRL 在线 GRPO]
     F[ShopSimulator v2.1] --> E
-    G[冻结的 200 道测试任务] --> H[统一评估流水线]
+    G[Validation-50 / 冻结 Final-200] --> H[统一评估流水线]
     I[Base Model] --> H
     D --> H
     E --> H
@@ -67,7 +101,7 @@ flowchart LR
 | Baseline | 测量原始 Qwen3.5-2B 的工具使用能力 | `bash scripts/baseline.sh` | [评估](docs/evaluation.md) |
 | SFT | 从高质量教师轨迹学习合法、完整的购物行为 | `bash scripts/sft.sh` | [SFT](docs/sft.md) |
 | GRPO | 在真实环境 Rollout 中优化 Reward v3 | `bash scripts/grpo.sh` | [GRPO](docs/grpo.md) |
-| Evaluation | 使用同一批 200 道留出任务公平比较三个模型 | `bash scripts/evaluate.sh NAME` | [评估](docs/evaluation.md) |
+| Evaluation | 开发集重复采样与冻结 Final-200 使用同一严格成功定义 | `bash scripts/evaluate.sh NAME` | [评估](docs/evaluation.md) |
 
 ### SFT 数据是怎么收集的？
 
@@ -106,58 +140,28 @@ AgentLoop、工具适配层、运行时兼容代码和一个带 SHA-256 校验�
 
 ### 评估流水线是怎么设计的？
 
-正式评估由“代码硬检查 + 两个 LLM-as-Judge + 固定分母聚合”组成。两个 Judge
-职责不同：
-
-- **DeepSeek V4 Flash 是 Rubric Curator。** 代码先根据每道题的 Query 和私有
-  TaskFacts 提取品类、品牌、型号、功能、规格和价格候选；Flash 只能从候选中选择
-  用户真正要求的约束、去重并标注 hard/soft，不能创造新的字段或期望值。生成的
-  Rubric 冻结一次，由 Baseline、SFT 和 GRPO 共用。
-- **DeepSeek V4 Pro 是 Trajectory Judge。** 它读取用户 Query、冻结 Rubric、
-  Actor 实际看到的完整轨迹、中性终局状态和白名单代码指标，逐条判断需求是否满足，
-  并从搜索策略、候选利用、证据核验、决策质量、终止效率五个维度分别打 0/1/2 分。
-
-这里的 Rubric 是逐任务评分标准，不是向量检索式 RAG。
+当前分支的主评测入口直接回放 Actor 在 ShopSimulator 中的真实交互，并使用确定性的
+Reward v3 判断终局。严格成功只接受完整的 `gold_purchase` 且
+`reward_valid=true`；缺失、报错、Guard 拒绝和基础设施异常都保留在固定分母中。
 
 ```mermaid
 flowchart TD
-    A["Benchmark test_id"] --> B["私有 TaskFacts"]
-    B --> C["代码提取 Rubric 候选"]
-    C --> D["V4 Flash 整理并冻结 Rubric"]
-    A --> E["Actor + ShopSimulator Rollout"]
-    E --> F["轨迹规范化 + Action Guard + 确定性硬检查"]
-    F -->|基础设施无效| G["not_judged，仍计入 200 题分母"]
-    F -->|检查通过| H["移除 Reward、Gold、raw observation"]
-    D --> H
-    H --> I["V4 Pro 逐需求判断 + 五维评分 + 错误分类"]
-    G --> J["四面板结果拼装"]
-    I --> J
-    J --> K["Reward / Rubric / Trajectory / Deterministic"]
-    K --> L["Baseline、SFT、GRPO 按 task_id 配对比较"]
+    A["50 个 validation task"] --> B["每题 3 个派生 seed"]
+    B --> C["SFT 与 GRPO 配对 Rollout"]
+    C --> D["Reward v3 严格成功 + 失败画像"]
+    D --> E["固定分母 / Wilson / pass@3 / pass^3"]
+    E --> F["paired bootstrap + McNemar + W/T/L"]
+    F --> G["JSON / Markdown / CSV"]
 ```
 
-以 Final-200 中的 `task_id=8187` 为例，Query 要求“一对卡通-永结同心款的高档
-酒红色木梳、礼盒、陪嫁、20 元左右”。代码生成 7 条候选，V4 Flash 冻结为 5 条
-Rubric；SFT Actor 用 10 步完成搜索、详情核验、规格选择和购买；V4 Pro 最终给出
-`搜索策略 2 / 候选利用 1 / 证据核验 1 / 决策质量 2 / 终止效率 2`，并为每项判断
-引用真实的 `event_id`。
+约束数、规格选择、价格与参考长度分层只读取公开 Query/metadata，不使用 Gold ASIN
+或目标商品字段。搜索步数与轨迹长度桶属于模型条件行为诊断，不解释为因果效应。
 
-Pro 看不到 Reward 分数、Gold 商品私有字段、raw Observation、成功标签或其他模型
-结果，因此不能根据答案倒推轨迹质量。最终结果分为四个独立面板：
+仓库还保留了上游 Rubric Curator 和 Trajectory Judge 的离线模块及静态 Dashboard，
+但当前公开入口没有一键重跑完整 Judge 流水线，因此它们不作为本分支新结果的证据。
+输入隔离规则和上游协议见[评估文档](docs/evaluation.md)。
 
-1. Environment Reward 与终局；
-2. Query Rubric 的 hard/soft 满足情况和 Reward disagreement；
-3. Pro Judge 五维分布与错误类型；
-4. 步数、工具、Guard、重复、上下文和基础设施指标。
-
-四部分不会合成一个总分。缺失、报错和 `not_judged` 任务仍保留在 200 题分母中。
-完整数据流、两个模型的完整 Prompt、输入隔离规则、示例 Rubric 和最终统计口径见
-[评估流水线文档](docs/evaluation.md)。也可以直接打开[Final-200 Benchmark Dashboard](docs/evaluation-dashboard.html)
-查看交互式图表。
-
-
-
-## 实验结果
+## 上游报告的实验结果
 
 三个模型在相同的 200 道留出任务上各进行一次确定性 Rollout：
 
@@ -174,17 +178,18 @@ SFT 带来了主要能力提升，让模型学会合法工具调用、长程搜�
 这里的 GRPO 相对 SFT 只增加 3/200 个严格成功任务（+1.5 个百分点），而且每题仅
 运行一次，因此不能据此宣称提升具有统计显著性。新增的重复采样评测支持固定尝试数、
 Wilson 95% 区间、经验 `pass@k` / `pass^k`、任务级配对 Bootstrap 和精确 McNemar
-检验；租用 GPU 后应先用它复验该差异。
+检验。上面的当前分支结果是该协议在开发集上的第一次完整复验；它与上游的单次
+Final-200 表格数据集、checkpoint 和采样口径不同，不能直接横向相减。
 
-## 训练硬件与耗时
+## 上游报告的训练硬件与耗时
 
-所有训练均使用单张 NVIDIA RTX 6000（96 GB）完成。
+上游记录中的训练均使用单张 NVIDIA RTX 6000（96 GB）完成；当前分支尚未重新测量。
 
 ### SFT LoRA 训练（379 条训练数据，3 个 epoch）
 
 | 阶段 | 耗时 | 峰值显存 |
 |---|---:|---:|
-| 单个 epoch（56 步） | ~62 分钟 | 89 GiB |
+| 单个 epoch（47 步） | ~62 分钟 | 89 GiB |
 | 完整 3 个 epoch | ~3 小时 | 89 GiB |
 
 ### GRPO 训练（veRL 0.8，8 个环境 worker）
@@ -288,6 +293,10 @@ bash scripts/export_grpo.sh \
   outputs/models/grpo-merged
 ```
 
+该脚本会先还原 veRL FSDP 权重，再将 GRPO LoRA 真正合并进主模型。最终目录是可直接
+服务的独立模型；若只服务 veRL 生成的中间主权重、忽略其 `lora_adapter/`，实际评测的
+会是未应用 GRPO 更新的起始模型。
+
 启动并评估导出的模型：
 
 ```bash
@@ -296,6 +305,23 @@ bash scripts/evaluate.sh grpo
 ```
 
 Checkpoint、Rollout 和日志统一写入 Git 忽略的 `outputs/`。
+
+### 6. 生成配对统计报告
+
+SFT 和 GRPO 的重复轨迹采集命令见 [GPU Runbook](docs/gpu-runbook.md)。两组 JSONL
+准备完成后，使用同一个入口生成机器可读结果和展示表格：
+
+```bash
+python scripts/compare_repeated_evaluations.py \
+  --benchmark data/grpo/validation.jsonl --limit 50 \
+  --baseline outputs/eval/sft-50x3/raw.jsonl \
+  --candidate outputs/eval/terminal-grpo-50x3/raw.jsonl \
+  --attempts-per-task 3 --bootstrap-samples 10000 --seed 2026 \
+  --baseline-label SFT --candidate-label Terminal-GRPO \
+  --output outputs/eval/sft-vs-terminal-50x3/comparison.json \
+  --markdown-output outputs/eval/sft-vs-terminal-50x3/report.md \
+  --csv-output outputs/eval/sft-vs-terminal-50x3/report.csv
+```
 
 ## Reward v3 简介
 
@@ -313,9 +339,8 @@ Reward v3 是一个确定性的终局 Reward，不依赖另一个大模型进行
 
 完整公式、终止条件和证据要求见 [Reward v3 设计文档](docs/reward-v3.md)。
 
-本地新增的 Evidence Memory、重复采样统计和课程数据准备见
-[下一轮 GPU 实验说明](docs/local-upgrades.md)；租卡后的执行顺序、停机条件和产物清单见
-[96 GB GPU Runbook](docs/gpu-runbook.md)。
+重复采样、难度分层和配对统计的定义见[统计评测升级](docs/local-upgrades.md)；租卡后的
+SFT-vs-GRPO 执行命令、停机条件和产物清单见 [96 GB GPU Runbook](docs/gpu-runbook.md)。
 
 ## 仓库结构
 
@@ -328,6 +353,7 @@ data/
 docs/                            数据、SFT、GRPO、评估与 Reward 文档
 environments/ShopSimulator/      内嵌环境源码和商品数据
 experiments/
+  validation-50x3/               当前分支 50×3 配对评测卡与哈希
   baseline/                      Baseline 配置与结果
   sft/                           SFT 配置与结果
   grpo/                          GRPO 配置与结果
@@ -337,7 +363,7 @@ src/shopping_grpo/
   environment/                   环境客户端、动作、工具和 Observation
   training/sft/                  SFT 数据渲染与 Mask
   training/grpo/                 veRL AgentLoop、适配和动态采样
-  evaluation/                    硬检查、Rubric、轨迹 Judge 和指标汇总
+  evaluation/                    重复采样、配对统计、分层诊断与上游 Judge 模块
 tests/                           核心单元、入口和 Wheel 安装检查
 ```
 
@@ -373,23 +399,18 @@ bash scripts/grpo.sh --logger swanlab
 - [LoRA SFT](docs/sft.md)
 - [使用 veRL 进行 GRPO](docs/grpo.md)
 - [留出集评估](docs/evaluation.md)
+- [统计评测升级](docs/local-upgrades.md)
+- [50×3 GPU 执行手册](docs/gpu-runbook.md)
+- [当前 Validation-50×3 实验卡](experiments/validation-50x3/README.md)
 - [Final-200 Benchmark Dashboard](docs/evaluation-dashboard.html)
 - [Reward v3 设计](docs/reward-v3.md)
 - [可审计实验结果](experiments/comparison.md)
 
-## Star History
-
-<a href="https://www.star-history.com/?repos=YYHDBL%2Fshopping-grpo-longhorizon&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=YYHDBL/shopping-grpo-longhorizon&type=date&theme=dark&legend=top-left&sealed_token=wgQ1K2TiIB2luvZFJ54oMEhME-cxYmFv_wNoNXnT7lMZHsuQUy7NThQAG2VwpEeiUBoRxd09ASiB60cvvBaEvqVqyv49wYKZSF2H_Jft3Iq1ZZ0c5Sk2SQQejxHxMQwayMTRroOh5JhcWgXk6w8HHwjP6UgTquINRr40c7XysMi_j2BksVwqOWSIz8Ny" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=YYHDBL/shopping-grpo-longhorizon&type=date&legend=top-left&sealed_token=wgQ1K2TiIB2luvZFJ54oMEhME-cxYmFv_wNoNXnT7lMZHsuQUy7NThQAG2VwpEeiUBoRxd09ASiB60cvvBaEvqVqyv49wYKZSF2H_Jft3Iq1ZZ0c5Sk2SQQejxHxMQwayMTRroOh5JhcWgXk6w8HHwjP6UgTquINRr40c7XysMi_j2BksVwqOWSIz8Ny" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=YYHDBL/shopping-grpo-longhorizon&type=date&legend=top-left&sealed_token=wgQ1K2TiIB2luvZFJ54oMEhME-cxYmFv_wNoNXnT7lMZHsuQUy7NThQAG2VwpEeiUBoRxd09ASiB60cvvBaEvqVqyv49wYKZSF2H_Jft3Iq1ZZ0c5Sk2SQQejxHxMQwayMTRroOh5JhcWgXk6w8HHwjP6UgTquINRr40c7XysMi_j2BksVwqOWSIz8Ny" />
- </picture>
-</a>
-
 ## 引用与致谢
 
-本项目建立在
+本仓库首先是
+[YYHDBL/shopping-grpo-longhorizon](https://github.com/YYHDBL/shopping-grpo-longhorizon)
+的二次开发，并建立在
 [ShopSimulator 论文](https://arxiv.org/pdf/2601.18225)及其开源环境、
 [veRL](https://github.com/verl-project/verl) 和
 [Qwen](https://github.com/QwenLM/Qwen3) 之上。

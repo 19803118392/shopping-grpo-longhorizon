@@ -11,14 +11,26 @@ MANIFEST_VERSION = "shopping-environment-manifest-v1"
 EMBEDDED_SOURCE_FILE = "EMBEDDED_SOURCE.json"
 REQUIRED_KEYS = {
     "manifest_version",
+    "environment_version",
     "shopsimulator_commit",
     "product_data_sha256",
+    "lease_contract",
+    "runtime_files_sha256",
     "search",
     "reward",
     "observation_version",
     "tool_version",
     "max_steps",
     "seed",
+}
+RUNTIME_FILES = {
+    "observation.py": "environments/ShopSimulator/shop_env/web_agent_site/engine/observation.py",
+    "pack_api.py": "environments/ShopSimulator/shop_env/shop_env/pack_api.py",
+    "reward.py": "environments/ShopSimulator/shop_env/web_agent_site/engine/reward.py",
+    "slot_lease_pool.py": "environments/ShopSimulator/shop_env/shop_env/slot_lease_pool.py",
+    "web_agent_text_env.py": (
+        "environments/ShopSimulator/shop_env/web_agent_site/envs/web_agent_text_env.py"
+    ),
 }
 
 
@@ -63,10 +75,7 @@ def validate_manifest(manifest):
         raise ValueError("manifest does not select Observation v2")
     if manifest["tool_version"] != "shopping-tools-v2":
         raise ValueError("manifest does not select Tool v2")
-    environment_version = manifest.get(
-        "environment_version",
-        "shopsimulator-environment-v2.1",
-    )
+    environment_version = manifest["environment_version"]
     if environment_version != "shopsimulator-environment-v2.1":
         raise ValueError("manifest has an unsupported environment_version")
     if manifest["reward"].get("version") != "shopsimulator-reward-v3":
@@ -79,6 +88,11 @@ def validate_manifest(manifest):
         raise ValueError("Environment v2 page_size must equal 20")
     if int(manifest["max_steps"]) <= 0:
         raise ValueError("max_steps must be positive")
+    if manifest["lease_contract"] != "explicit-client-release-v1":
+        raise ValueError("Environment v2.1 requires explicit-client-release-v1")
+    runtime_hashes = manifest["runtime_files_sha256"]
+    if not isinstance(runtime_hashes, dict) or set(runtime_hashes) != set(RUNTIME_FILES):
+        raise ValueError("manifest runtime_files_sha256 is missing or incomplete")
     for name in (
         "shopsimulator_commit",
         "product_data_sha256",
@@ -91,4 +105,34 @@ def validate_manifest(manifest):
             or any(character not in "0123456789abcdef" for character in value)
         ):
             raise ValueError(f"manifest {name} is not a lowercase hexadecimal digest")
+    for name, value in runtime_hashes.items():
+        if (
+            not isinstance(value, str)
+            or len(value) != 64
+            or any(character not in "0123456789abcdef" for character in value)
+        ):
+            raise ValueError(f"manifest runtime hash for {name} is invalid")
     return manifest
+
+
+def validate_runtime_files(manifest, root):
+    """Verify every frozen runtime file against the Environment v2.1 manifest."""
+    validate_manifest(manifest)
+    root = Path(root)
+    mismatches = {}
+    for name, relative_path in RUNTIME_FILES.items():
+        path = root / relative_path
+        actual = sha256_file(path)
+        expected = manifest["runtime_files_sha256"][name]
+        if actual != expected:
+            mismatches[name] = {
+                "path": str(path),
+                "expected": expected,
+                "actual": actual,
+            }
+    if mismatches:
+        raise ValueError(
+            "Environment v2.1 runtime file hash mismatch: "
+            + json.dumps(mismatches, sort_keys=True)
+        )
+    return {name: manifest["runtime_files_sha256"][name] for name in sorted(RUNTIME_FILES)}

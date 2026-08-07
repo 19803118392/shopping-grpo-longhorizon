@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
+import hashlib
 
 CURRICULUM_SCHEMA_VERSION = "shopping-length-curriculum-v1"
 BUCKET_ORDER = ("short", "medium", "long")
@@ -123,3 +124,35 @@ def select_parquet_rows(table, task_ids: Sequence[int]):
             f"missing={missing[:10]} selected_rows={selected.num_rows}"
         )
     return selected
+
+
+def task_ids_sha256(task_ids: Sequence[int]) -> str:
+    """Hash an ordered task-id sequence with an unambiguous canonical encoding."""
+    digest = hashlib.sha256()
+    for task_id in task_ids:
+        digest.update(f"{int(task_id)}\n".encode("ascii"))
+    return digest.hexdigest()
+
+
+def validate_no_task_overlap(
+    training_task_ids: Sequence[int], held_out_task_ids: Sequence[int]
+) -> dict:
+    training = [int(value) for value in training_task_ids]
+    held_out = [int(value) for value in held_out_task_ids]
+    if len(training) != len(set(training)):
+        raise ValueError("training task IDs contain duplicates")
+    if len(held_out) != len(set(held_out)):
+        raise ValueError("held-out task IDs contain duplicates")
+    overlap = sorted(set(training).intersection(held_out))
+    if overlap:
+        raise ValueError(
+            "curriculum training data overlaps held-out evaluation tasks: "
+            f"{overlap[:10]}"
+        )
+    return {
+        "training_tasks": len(training),
+        "held_out_tasks": len(held_out),
+        "overlap_tasks": 0,
+        "training_task_ids_sha256": task_ids_sha256(training),
+        "held_out_task_ids_sha256": task_ids_sha256(held_out),
+    }

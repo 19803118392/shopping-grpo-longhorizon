@@ -59,30 +59,21 @@ def aggregate_shopping_metrics(shopping_infos: Sequence[object]) -> dict[str, fl
         max_steps.append(float(info.get("termination_reason") == "max_steps"))
         infrastructure_invalid.append(float(bool(info.get("infrastructure_invalid"))))
         reward_unverifiable.append(float(bool(info.get("reward_unverifiable"))))
-        terminal_utilities.append(
-            float(reward.get("terminal_utility", reward["total"]))
-        )
-        purchase_success.append(
-            float(bool(reward.get("purchase_success", reward["full"])))
-        )
+        terminal_utilities.append(float(reward.get("terminal_utility", reward["total"])))
+        purchase_success.append(float(bool(reward.get("purchase_success", reward["full"]))))
         sampling_invalid.append(
             float(
                 bool(
                     reward.get(
                         "sampling_invalid",
-                        info.get("infrastructure_invalid")
-                        or info.get("reward_unverifiable"),
+                        info.get("infrastructure_invalid") or info.get("reward_unverifiable"),
                     )
                 )
             )
         )
         match_scores.append(float(reward.get("match_score", reward["r_att"])))
-        evidence_coverage.append(
-            float(reward.get("evidence_coverage", 0.0))
-        )
-        partial_purchase.append(
-            float(info.get("reward_type") == "partial_alternative_purchase")
-        )
+        evidence_coverage.append(float(reward.get("evidence_coverage", 0.0)))
+        partial_purchase.append(float(info.get("reward_type") == "partial_alternative_purchase"))
 
     def mean(values):
         return sum(values) / len(values)
@@ -143,9 +134,7 @@ def extract_shopping_group_signals(
             )
         raw_purchase_success = info["reward"].get("purchase_success")
         if not isinstance(raw_purchase_success, (bool, int, float)):
-            raise ValueError(
-                f"shopping extra field at index {index} is missing purchase_success"
-            )
+            raise ValueError(f"shopping extra field at index {index} is missing purchase_success")
         if "infrastructure_invalid" not in info:
             raise ValueError(
                 f"shopping extra field at index {index} is missing infrastructure_invalid"
@@ -155,9 +144,7 @@ def extract_shopping_group_signals(
             reasons.append("infrastructure_invalid")
         if bool(info.get("reward_unverifiable")):
             reasons.append("reward_unverifiable")
-        reward_sampling_invalid = bool(
-            info["reward"].get("sampling_invalid", False)
-        )
+        reward_sampling_invalid = bool(info["reward"].get("sampling_invalid", False))
         if reward_sampling_invalid and not reasons:
             reasons.append("reward_sampling_invalid")
         terminal_utilities.append(terminal_utility)
@@ -205,19 +192,11 @@ def select_reward_varying_groups(
     if tolerance < 0 or not math.isfinite(tolerance):
         raise ValueError(f"tolerance must be a finite non-negative number, got {tolerance!r}")
 
-    utility_values = (
-        terminal_utilities if terminal_utilities is not None else seq_rewards
-    )
-    success_values = (
-        purchase_success if purchase_success is not None else [False] * len(uids)
-    )
-    invalid_values = (
-        sampling_invalid if sampling_invalid is not None else [False] * len(uids)
-    )
+    utility_values = terminal_utilities if terminal_utilities is not None else seq_rewards
+    success_values = purchase_success if purchase_success is not None else [False] * len(uids)
+    invalid_values = sampling_invalid if sampling_invalid is not None else [False] * len(uids)
     reason_values = (
-        sampling_invalid_reasons
-        if sampling_invalid_reasons is not None
-        else [()] * len(uids)
+        sampling_invalid_reasons if sampling_invalid_reasons is not None else [()] * len(uids)
     )
     grouped: dict[Hashable, dict[str, Any]] = {}
     for index, (
@@ -248,9 +227,7 @@ def select_reward_varying_groups(
             raise ValueError(f"seq_reward at index {index} is not finite: {raw_reward!r}")
         utility = float(raw_utility)
         if not math.isfinite(utility):
-            raise ValueError(
-                f"terminal_utility at index {index} is not finite: {raw_utility!r}"
-            )
+            raise ValueError(f"terminal_utility at index {index} is not finite: {raw_utility!r}")
 
         group = grouped.setdefault(
             uid,
@@ -318,39 +295,24 @@ def select_reward_varying_groups(
         "dropped_group_count": len(dropped_uids),
         "kept_uids": tuple(kept_uids),
         "dropped_uids": tuple(dropped_uids),
-        "all_equal_group_count": sum(
-            not group["reward_varying"] for group in groups
-        ),
+        "all_equal_group_count": sum(not group["reward_varying"] for group in groups),
         "all_zero_utility_group_count": sum(
             max(abs(value) for value in group["terminal_utilities"]) <= tolerance
             for group in groups
         ),
-        "all_purchase_success_group_count": sum(
-            all(group["purchase_success"])
-            for group in groups
-        ),
+        "all_purchase_success_group_count": sum(all(group["purchase_success"]) for group in groups),
         "no_purchase_success_group_count": sum(
             not any(group["purchase_success"]) for group in groups
         ),
-        "sampling_invalid_group_count": sum(
-            group["sampling_invalid"] for group in groups
-        ),
+        "sampling_invalid_group_count": sum(group["sampling_invalid"] for group in groups),
         "sampling_invalid_reason_counts": {
-            reason: sum(
-                reason in group["sampling_invalid_reasons"] for group in groups
-            )
+            reason: sum(reason in group["sampling_invalid_reasons"] for group in groups)
             for reason in sorted(
-                {
-                    reason
-                    for group in groups
-                    for reason in group["sampling_invalid_reasons"]
-                }
+                {reason for group in groups for reason in group["sampling_invalid_reasons"]}
             )
         },
         # Compatibility aliases for existing monitoring code.
-        "infrastructure_invalid_group_count": sum(
-            group["sampling_invalid"] for group in groups
-        ),
+        "infrastructure_invalid_group_count": sum(group["sampling_invalid"] for group in groups),
         "groups": tuple(groups),
     }
     return trajectory_indices, stats

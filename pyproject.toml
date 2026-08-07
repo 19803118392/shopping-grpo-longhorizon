@@ -21,6 +21,7 @@ sft = [
   "accelerate>=1,<2",
   "torchvision",
   "pillow",
+  "httpx[socks]>=0.28,<1",
   "swanlab>=0.8,<1",
 ]
 sft-accelerated = [

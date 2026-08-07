@@ -156,6 +156,8 @@ class VerlPatchScriptTest(unittest.TestCase):
                 fit_source.index("SHOPPING_GRPO_DYNAMIC_SAMPLING_SKIPPED"),
                 fit_source.index("self.checkpoint_manager.sleep_replicas()", ready),
             )
+            full_source = target.read_text(encoding="utf-8")
+            self.assertIn("SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V3", full_source)
 
     def test_select_and_concat_keep_all_trajectory_fields_aligned(self):
         def make_batch(offset: int, uid_prefix: str) -> DataProto:

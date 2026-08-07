@@ -9,9 +9,7 @@ import importlib.metadata
 import py_compile
 import shutil
 import subprocess
-import sys
 from pathlib import Path
-
 
 EXPECTED_VERL_VERSION = "0.8.0"
 EXPECTED_ORIGINAL_SHA256 = "de58d295cf86656a28196b0718168d4a11666f3e30957b7e166914496c2a6d66"
