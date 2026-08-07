@@ -24,11 +24,6 @@ from shopping_grpo.environment.context import (
     VllmTextTokenCounter,
     compact_chat_messages,
 )
-from shopping_grpo.environment.evidence import (
-    EVIDENCE_MEMORY_VERSION,
-    EvidenceMemory,
-    augment_observation_with_evidence,
-)
 from shopping_grpo.environment.observation import render_structured_observation
 from shopping_grpo.environment.projection import project_observation
 from shopping_grpo.environment.tools import (
@@ -83,9 +78,6 @@ class OpenAIChatClient:
         observation_search_top_k=20,
         token_counter=None,
         observation_token_counter=None,
-        evidence_memory_enable=False,
-        evidence_memory_max_candidates=5,
-        evidence_memory_max_chars=384,
         transport=None,
     ):
         self.model = model
@@ -111,13 +103,6 @@ class OpenAIChatClient:
         self.observation_search_top_k = int(observation_search_top_k)
         self.observation_detail_token_budget = int(observation_detail_token_budget)
         self.observation_generic_token_budget = int(observation_generic_token_budget)
-        self.evidence_memory_enable = bool(evidence_memory_enable)
-        self.evidence_memory_max_candidates = int(evidence_memory_max_candidates)
-        self.evidence_memory_max_chars = int(evidence_memory_max_chars)
-        if self.evidence_memory_max_candidates < 1:
-            raise ValueError("evidence_memory_max_candidates must be positive")
-        if self.evidence_memory_max_chars < 256:
-            raise ValueError("evidence_memory_max_chars must be at least 256")
         if self.context_window is not None:
             if self.context_window <= self.max_tokens + self.context_safety_margin:
                 raise ValueError("context_window must exceed max_tokens plus context_safety_margin")
@@ -333,20 +318,7 @@ def collect_for_task(
             "base_seed": getattr(client, "seed", None),
             "attempt_seed": attempt_seed,
         },
-        "evidence_memory": {
-            "enabled": bool(getattr(client, "evidence_memory_enable", False)),
-            "schema_version": EVIDENCE_MEMORY_VERSION,
-            "events": [],
-            "final_snapshot": None,
-            "rendered_chars": 0,
-        },
     }
-    evidence_memory = None
-    if trajectory["evidence_memory"]["enabled"]:
-        evidence_memory = EvidenceMemory(
-            max_candidates=getattr(client, "evidence_memory_max_candidates", 5),
-            max_chars=getattr(client, "evidence_memory_max_chars", 2_000),
-        )
     env = env_factory(base_url=base_url)
     try:
         # reset 建立任务状态；后续每一轮只允许一个工具调用。
@@ -357,12 +329,6 @@ def collect_for_task(
             latest_observation = initial.get("instruction", initial.get("observation", ""))
         trajectory["initial_result"] = initial
         trajectory["initial_observation"] = latest_observation
-        if evidence_memory is not None and initial.get("observation_state") is not None:
-            event = evidence_memory.observe(
-                initial["observation_state"], event_id=0, tool_name="reset"
-            )
-            trajectory["evidence_memory"]["events"].append(event)
-            trajectory["evidence_memory"]["final_snapshot"] = evidence_memory.snapshot()
         messages = _initial_messages(task, initial)
         trajectory["messages"] = messages
         tool_schemas = tools or SHOP_TOOL_SCHEMAS
@@ -448,21 +414,6 @@ def collect_for_task(
                     step["raw_observation"] = raw_observation
                     step["observation"] = visible_observation
                     step["projection"] = projection
-            observation_state = (step.get("result") or {}).get("observation_state")
-            if evidence_memory is not None and observation_state is not None:
-                event = evidence_memory.observe(
-                    observation_state,
-                    event_id=len(trajectory["steps"]) + 1,
-                    tool_name=step["tool_name"],
-                )
-                step["evidence_memory_event"] = event
-                step["model_observation"] = augment_observation_with_evidence(
-                    step["observation"], evidence_memory
-                )
-                step["evidence_memory_chars"] = evidence_memory.last_emission_chars
-                trajectory["evidence_memory"]["rendered_chars"] += step["evidence_memory_chars"]
-                trajectory["evidence_memory"]["events"].append(event)
-                trajectory["evidence_memory"]["final_snapshot"] = evidence_memory.snapshot()
             trajectory["steps"].append(step)
             consecutive_blocked_calls = 0
             latest_observation = step["observation"]

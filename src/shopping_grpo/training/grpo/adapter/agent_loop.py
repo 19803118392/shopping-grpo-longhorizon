@@ -11,10 +11,6 @@ import json
 from verl.experimental.agent_loop.tool_agent_loop import AgentState, ToolAgentLoop
 
 from shopping_grpo.environment.context import ContextBudgetError, compact_token_trajectory
-from shopping_grpo.environment.evidence import (
-    EvidenceMemory,
-    augment_observation_with_evidence,
-)
 from shopping_grpo.environment.projection import (
     ObservationProjectionError,
     project_observation,
@@ -50,9 +46,6 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         observation_detail_token_budget=2048,
         observation_generic_token_budget=768,
         observation_search_top_k=20,
-        evidence_memory_enable=False,
-        evidence_memory_max_candidates=5,
-        evidence_memory_max_chars=384,
         env_factory=None,
         **kwargs,
     ):
@@ -72,9 +65,6 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         self.observation_detail_token_budget = int(observation_detail_token_budget)
         self.observation_generic_token_budget = int(observation_generic_token_budget)
         self.observation_search_top_k = int(observation_search_top_k)
-        self.evidence_memory_enable = bool(evidence_memory_enable)
-        self.evidence_memory_max_candidates = int(evidence_memory_max_candidates)
-        self.evidence_memory_max_chars = int(evidence_memory_max_chars)
         maximum_context_input = (
             self.context_window_tokens
             - self.context_generation_reserve_tokens
@@ -95,10 +85,6 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
             raise ValueError("all observation token budgets must be at least 64")
         if self.observation_search_top_k < 1:
             raise ValueError("observation_search_top_k must be positive")
-        if self.evidence_memory_max_candidates < 1:
-            raise ValueError("evidence_memory_max_candidates must be positive")
-        if self.evidence_memory_max_chars < 256:
-            raise ValueError("evidence_memory_max_chars must be at least 256")
         if self.reward_mode not in {"native", "constraint_aware"}:
             raise ValueError(f"unknown shopping reward mode: {self.reward_mode!r}")
         self.env_factory = env_factory
@@ -190,7 +176,6 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         if state is None:
             return response, reward, step
         raw_observation = state.pop("_pending_raw_observation", None)
-        observation_state = state.pop("_pending_observation_state", None)
         if raw_observation is None:
             return response, reward, step
         try:
@@ -228,27 +213,7 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         record_observation_projection(state, projection_meta)
         if isinstance(step, dict):
             step["projection"] = projection_meta
-        evidence_memory = state.get("_evidence_memory")
-        if evidence_memory is not None and observation_state is not None:
-            evidence_memory.observe(
-                observation_state,
-                event_id=len(state["steps"]),
-                tool_name=tool_call.name,
-            )
-            response.text = augment_observation_with_evidence(
-                visible_observation, evidence_memory
-            )
-            if len(response.text) > self.max_tool_response_length:
-                response.text = visible_observation
-                state["evidence_memory_omitted_count"] = int(
-                    state.get("evidence_memory_omitted_count", 0)
-                ) + 1
-            state["evidence_memory_event_count"] = evidence_memory.event_count
-            state["evidence_memory_candidate_count"] = len(
-                evidence_memory.candidates
-            )
-        else:
-            response.text = visible_observation
+        response.text = visible_observation
         return response, reward, step
 
     async def _handle_processing_tools_state(self, agent_data):
@@ -276,33 +241,6 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
             env_factory=self.env_factory,
         )
         state = await session.start(task_id)
-        evidence_memory_enable = bool(
-            getattr(self, "evidence_memory_enable", False)
-        )
-        evidence_memory_max_candidates = int(
-            getattr(self, "evidence_memory_max_candidates", 5)
-        )
-        evidence_memory_max_chars = int(
-            getattr(self, "evidence_memory_max_chars", 384)
-        )
-        if evidence_memory_enable:
-            evidence_memory = EvidenceMemory(
-                max_candidates=evidence_memory_max_candidates,
-                max_chars=evidence_memory_max_chars,
-            )
-            initial_observation_state = state.get("latest_observation_state")
-            if initial_observation_state is not None:
-                evidence_memory.observe(
-                    initial_observation_state,
-                    event_id=0,
-                    tool_name="reset",
-                )
-            state["_evidence_memory"] = evidence_memory
-            state["evidence_memory_event_count"] = evidence_memory.event_count
-            state["evidence_memory_candidate_count"] = len(
-                evidence_memory.candidates
-            )
-            state["evidence_memory_omitted_count"] = 0
         try:
             output = await super().run(sampling_params, **kwargs)
             if not state["done"] and not state["error"]:
@@ -328,18 +266,6 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
                 "reward_valid": bool(state.get("reward_valid", True)),
                 "reward_unverifiable": bool(state.get("reward_unverifiable")),
                 "reward": breakdown,
-                "evidence_memory": {
-                    "enabled": evidence_memory_enable,
-                    "event_count": int(
-                        state.get("evidence_memory_event_count", 0)
-                    ),
-                    "candidate_count": int(
-                        state.get("evidence_memory_candidate_count", 0)
-                    ),
-                    "omitted_for_response_limit": int(
-                        state.get("evidence_memory_omitted_count", 0)
-                    ),
-                },
                 "context_compactions": int(state["context_compactions"]),
                 "context_tokens_removed": int(state["context_tokens_removed"]),
                 "context_max_input_tokens": int(state["context_max_input_tokens"]),

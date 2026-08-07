@@ -60,26 +60,12 @@ class ShopSimulatorTool(BaseTool):
         # think 不触碰环境，只记录一次模型决策；其余工具必须经过动作守卫。
         if self.name == "think":
             step = _append_step(state, self.name, parameters)
-            progress_tracker = state.get("_progress_tracker")
-            if progress_tracker is not None:
-                progress_tracker.record_step(
-                    turn_index=int(state.get("active_assistant_turn", 0)),
-                    step_index=len(state["steps"]),
-                )
             if len(state["steps"]) >= state["max_steps"]:
                 _terminate(state, "max_steps")
                 return ToolResponse(text="Error: maximum executed tool steps reached."), 0.0, step
             return ToolResponse(text="Reasoning recorded. Continue with one environment tool call."), 0.0, step
         observation = state.get("latest_observation", "")
-        repeated = record_action_attempt(state, self.name, parameters, observation)
-        progress_tracker = state.get("_progress_tracker")
-        turn_index = int(state.get("active_assistant_turn", 0))
-        next_step_index = len(state["steps"]) + 1
-        if repeated and progress_tracker is not None:
-            progress_tracker.record_repeat(
-                turn_index=turn_index,
-                step_index=next_step_index,
-            )
+        record_action_attempt(state, self.name, parameters, observation)
         state["action_attempt_after_truncation_count"] += int(
             bool(state.get("latest_observation_truncated"))
         )
@@ -90,11 +76,6 @@ class ShopSimulatorTool(BaseTool):
                 bool(state.get("latest_observation_truncated"))
             )
             state["consecutive_guard_rejections"] += 1
-            if progress_tracker is not None:
-                progress_tracker.record_guard_rejection(
-                    turn_index=turn_index,
-                    step_index=next_step_index,
-                )
             if state["consecutive_guard_rejections"] >= 3:
                 _terminate(state, "too_many_guard_rejections")
                 return ToolResponse(text="Error: maximum consecutive action guard rejections reached."), 0.0, {
@@ -107,7 +88,6 @@ class ShopSimulatorTool(BaseTool):
             action = tool_call_to_action(self.name, parameters)
             result = await asyncio.to_thread(env.step, action)
             if result.get("observation_state") is not None:
-                state["_pending_observation_state"] = result["observation_state"]
                 observation = render_structured_observation(
                     result["observation_state"]
                 )
@@ -122,11 +102,6 @@ class ShopSimulatorTool(BaseTool):
                 done=bool(result.get("done", False)),
                 reward=float(result.get("reward", 0.0)),
             )
-            if progress_tracker is not None:
-                progress_tracker.record_step(
-                    turn_index=turn_index,
-                    step_index=len(state["steps"]),
-                )
         except Exception as exc:
             _terminate(
                 state,

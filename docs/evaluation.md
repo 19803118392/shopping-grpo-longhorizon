@@ -72,7 +72,7 @@ Final-200 的约束如下：
 
 项目文档和静态 Dashboard 已披露 `task_id=8187` 的 Query 与案例分析，因此这个集合
 应称为“训练零重叠的留出集”，不能再严格称为完全盲测集。项目不得根据该案例或任何
-Final-200 结果调整 Prompt、Reward、课程、Evidence Memory 或 checkpoint。
+Final-200 结果调整 Prompt、Reward 或 checkpoint。
 
 ## 3. 第一位 LLM：V4 Flash 生成冻结 Rubric
 

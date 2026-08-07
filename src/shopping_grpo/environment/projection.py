@@ -344,8 +344,8 @@ def _project_structured_product_detail(observation, *, count_tokens, token_budge
     A large variant catalogue is present both in ``available_options`` and in the
     actionable footer.  Repeating that catalogue on every visit can exhaust the
     fixed 24K trajectory window.  The projected form keeps the footer verbatim
-    and maps each option axis to 1-based footer positions, so both the Actor and
-    observable progress reward can reconstruct the same public option state.
+    and maps each option axis to 1-based footer positions, so the Actor and action
+    guard can reconstruct the same public option state.
     """
     body, footer = _split_footer(observation)
     raw_lines = body.splitlines()

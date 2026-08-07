@@ -7,7 +7,7 @@ This runbook measures whether Terminal-GRPO improves over SFT. Model selection u
 only `data/grpo/validation.jsonl`. The frozen `data/evaluation/tasks.jsonl` is not
 opened for repeated sampling or tuning.
 
-The protocol has been completed once on the current branch. Its compact result,
+The protocol has been completed once for the project. Its compact result,
 configuration, and hashes are stored in the
 [Validation-50×3 experiment card](../experiments/validation-50x3/README.md).
 

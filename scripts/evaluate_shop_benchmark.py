@@ -42,7 +42,7 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument(
         "--protocol",
-        choices=("custom", "seed-replay", "memory-pilot", "dev50x3", "dev50x5"),
+        choices=("custom", "seed-replay", "dev50x3", "dev50x5"),
         default="custom",
     )
     parser.add_argument(
@@ -69,13 +69,6 @@ def parse_args():
     parser.add_argument("--observation-detail-token-budget", type=int, default=2048)
     parser.add_argument("--observation-generic-token-budget", type=int, default=768)
     parser.add_argument("--observation-search-top-k", type=int, default=20)
-    parser.add_argument(
-        "--evidence-memory",
-        action="store_true",
-        help="启用仅由公开 observation v2 构建的有界候选证据账本。",
-    )
-    parser.add_argument("--evidence-memory-max-candidates", type=int, default=5)
-    parser.add_argument("--evidence-memory-max-chars", type=int, default=384)
     return parser.parse_args()
 
 
@@ -223,7 +216,6 @@ def main():
             raise SystemExit("Final-200 output and summary must be new")
     protocol_expectations = {
         "seed-replay": (5, 2),
-        "memory-pilot": (20, 2),
         "dev50x3": (50, 3),
         "dev50x5": (50, 5),
     }
@@ -259,9 +251,6 @@ def main():
         observation_detail_token_budget=args.observation_detail_token_budget,
         observation_generic_token_budget=args.observation_generic_token_budget,
         observation_search_top_k=args.observation_search_top_k,
-        evidence_memory_enable=args.evidence_memory,
-        evidence_memory_max_candidates=args.evidence_memory_max_candidates,
-        evidence_memory_max_chars=args.evidence_memory_max_chars,
     )
     collect_tasks(
         tasks,
@@ -310,9 +299,6 @@ def main():
         "observation_detail_token_budget": args.observation_detail_token_budget,
         "observation_generic_token_budget": args.observation_generic_token_budget,
         "observation_search_top_k": args.observation_search_top_k,
-        "evidence_memory": args.evidence_memory,
-        "evidence_memory_max_candidates": args.evidence_memory_max_candidates,
-        "evidence_memory_max_chars": args.evidence_memory_max_chars,
     }
     args.summary.parent.mkdir(parents=True, exist_ok=True)
     args.summary.write_text(

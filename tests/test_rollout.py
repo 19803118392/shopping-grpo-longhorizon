@@ -298,39 +298,6 @@ class RolloutTest(unittest.TestCase):
         self.assertEqual(traj["terminal_result"]["purchase"]["asin"], "A1")
         self.assertTrue(any(message["role"] == "tool" for message in traj["messages"]))
 
-    def test_collect_for_task_can_add_public_evidence_memory_without_changing_guard_state(self):
-        client = MockClient(
-            [
-                assistant_tool("search_products", {"query": "乳胶枕"}, "call_search"),
-                assistant_tool("open_product", {"asin": PRODUCT_ASIN}, "call_open"),
-                assistant_tool("buy_now", {}, "call_buy"),
-            ]
-        )
-        client.evidence_memory_enable = True
-        client.evidence_memory_max_candidates = 3
-        client.evidence_memory_max_chars = 1_000
-
-        trajectory = collect_for_task(
-            {"task_id": 17},
-            client=client,
-            env_factory=FakeEnv,
-            base_url="http://shop.test",
-        )
-
-        self.assertEqual(trajectory["status"], "done")
-        first_step = trajectory["steps"][0]
-        self.assertTrue(first_step["observation"].startswith("[SHOPPING_OBSERVATION_V2]"))
-        self.assertTrue(
-            first_step["model_observation"].startswith(
-                "[SHOPPING_EVIDENCE_MEMORY_V1]"
-            )
-        )
-        self.assertEqual(
-            trajectory["evidence_memory"]["final_snapshot"]["candidate_count"],
-            1,
-        )
-        self.assertEqual(trajectory["blocked_tool_calls"], [])
-
     def test_environment_exposes_finish_without_purchase_to_agent(self):
         class EnvironmentV21(FakeEnv):
             def reset(self, task_id):

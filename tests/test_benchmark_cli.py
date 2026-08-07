@@ -52,9 +52,6 @@ class BenchmarkCliTest(unittest.TestCase):
         self.assertEqual(args.observation_detail_token_budget, 2048)
         self.assertEqual(args.observation_generic_token_budget, 768)
         self.assertEqual(args.observation_search_top_k, 20)
-        self.assertFalse(args.evidence_memory)
-        self.assertEqual(args.evidence_memory_max_candidates, 5)
-        self.assertEqual(args.evidence_memory_max_chars, 384)
 
     def test_final_candidate_is_rehashed_before_evaluation(self):
         with tempfile.TemporaryDirectory() as directory:
