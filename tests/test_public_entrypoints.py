@@ -115,6 +115,7 @@ class PublicEntrypointTest(unittest.TestCase):
         self.assertEqual(environment["GRPO_TRAIN_FILE"], str(train))
         self.assertEqual(environment["GRPO_VAL_FILE"], str(validation))
         self.assertEqual(environment["SHOPPING_OPTIMIZATION_REWARD_PROFILE"], "environment_v3")
+        self.assertEqual(environment["RAY_ENABLE_UV_RUN_RUNTIME_ENV"], "0")
         self.assertIn("trainer.logger=[console]", command)
 
     def test_grpo_preflight_reuses_the_exact_training_overrides(self):

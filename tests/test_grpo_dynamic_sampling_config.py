@@ -45,15 +45,20 @@ class DynamicSamplingConfigTest(unittest.TestCase):
             validate_training_memory_budget(dynamic_rollout_log_prob)
 
     def test_hydra_overrides_resolve_project_top_level_config(self):
-        config = compose_runtime_config(
-            [
-                "shopping_dynamic_sampling.enable=true",
-                "shopping_dynamic_sampling.metric=seq_reward",
-                "shopping_dynamic_sampling.max_num_gen_batches=3",
-                "shopping_dynamic_sampling.max_consecutive_skipped_updates=10",
-                "shopping_dynamic_sampling.reward_tolerance=1e-8",
-            ]
-        )
+        project_root = Path(__file__).resolve().parents[1]
+        with patch.dict("os.environ", {"SHOPPING_GRPO_ROOT": str(project_root)}):
+            config = compose_runtime_config(
+                [
+                    "shopping_dynamic_sampling.enable=true",
+                    "shopping_dynamic_sampling.metric=seq_reward",
+                    "shopping_dynamic_sampling.max_num_gen_batches=3",
+                    "shopping_dynamic_sampling.max_consecutive_skipped_updates=10",
+                    "shopping_dynamic_sampling.reward_tolerance=1e-8",
+                ]
+            )
+            working_dir = Path(
+                config.ray_kwargs.ray_init.runtime_env.working_dir
+            ).resolve()
         self.assertTrue(config.shopping_dynamic_sampling.enable)
         self.assertEqual(config.shopping_dynamic_sampling.metric, "seq_reward")
         self.assertEqual(config.shopping_dynamic_sampling.max_num_gen_batches, 3)
@@ -61,6 +66,7 @@ class DynamicSamplingConfigTest(unittest.TestCase):
         self.assertEqual(config.shopping_dynamic_sampling.reward_tolerance, 1.0e-8)
         self.assertTrue(config.algorithm.rollout_correction.bypass_mode)
         self.assertTrue(config.actor_rollout_ref.rollout.calculate_log_probs)
+        self.assertEqual(working_dir, project_root)
 
     def test_enabled_config_requires_installed_patch_marker(self):
         config = compose_runtime_config(["shopping_dynamic_sampling.enable=true"])

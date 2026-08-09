@@ -13,11 +13,13 @@ from pathlib import Path
 
 EXPECTED_VERL_VERSION = "0.8.0"
 EXPECTED_ORIGINAL_SHA256 = "de58d295cf86656a28196b0718168d4a11666f3e30957b7e166914496c2a6d66"
-EXPECTED_PATCHED_SHA256 = "fc3564cc5680a9fa92ca7b0a9bc3ae87ccdc90c498ab1bfe34c6796d6c54fb5a"
-PATCH_MARKER = "SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V3"
+EXPECTED_V3_PATCHED_SHA256 = "fc3564cc5680a9fa92ca7b0a9bc3ae87ccdc90c498ab1bfe34c6796d6c54fb5a"
+EXPECTED_PATCHED_SHA256 = "d1878b94515d9af300a4d329dc6fae2b94ffb00178e18f69846029b9c7e0aafe"
+PATCH_MARKER = "SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V4"
 BACKUP_SUFFIX = ".shopping-grpo-dynamic-sampling.orig"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PATCH_FILE = PROJECT_ROOT / "patches/verl-0.8.0-shopping-dynamic-sampling.patch"
+STATE_PATCH_FILE = PROJECT_ROOT / "patches/verl-0.8.0-shopping-dynamic-sampling-state.patch"
 
 
 def sha256(path: Path) -> str:
@@ -81,8 +83,9 @@ def apply_patch(target: Path) -> None:
             "refusing to patch unknown ray_trainer.py: "
             f"expected original SHA256 {EXPECTED_ORIGINAL_SHA256}, got {target_hash}"
         )
-    if not PATCH_FILE.is_file():
-        raise RuntimeError(f"patch file is missing: {PATCH_FILE}")
+    for patch_file in (PATCH_FILE, STATE_PATCH_FILE):
+        if not patch_file.is_file():
+            raise RuntimeError(f"patch file is missing: {patch_file}")
 
     patch_program = shutil.which("patch")
     if patch_program is None:
@@ -97,11 +100,24 @@ def apply_patch(target: Path) -> None:
     rollback_source = backup
 
     try:
-        subprocess.run(
-            [patch_program, "--batch", "--forward", "--silent", str(target), str(PATCH_FILE)],
-            check=True,
-            cwd=PROJECT_ROOT,
-        )
+        for patch_file in (PATCH_FILE, STATE_PATCH_FILE):
+            subprocess.run(
+                [
+                    patch_program,
+                    "--batch",
+                    "--forward",
+                    "--silent",
+                    str(target),
+                    str(patch_file),
+                ],
+                check=True,
+                cwd=PROJECT_ROOT,
+            )
+            if patch_file == PATCH_FILE and sha256(target) != EXPECTED_V3_PATCHED_SHA256:
+                raise RuntimeError(
+                    "intermediate V3 patch hash mismatch: "
+                    f"expected {EXPECTED_V3_PATCHED_SHA256}, got {sha256(target)}"
+                )
         verify_patched(target)
     except Exception:
         shutil.copy2(rollback_source, target)

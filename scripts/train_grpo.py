@@ -292,6 +292,10 @@ def build_command(args: argparse.Namespace) -> tuple[list[str], dict[str, str]]:
                 if args.optimization_reward == "v3"
                 else "optimization_v4"
             ),
+            # Ray 2.56 otherwise mirrors the outer `uv run` command into a
+            # fresh worker environment that does not contain the pinned GRPO
+            # runtime. Workers must inherit this already-preflighted venv.
+            "RAY_ENABLE_UV_RUN_RUNTIME_ENV": "0",
             "PYTHONHASHSEED": str(args.seed),
         }
     )

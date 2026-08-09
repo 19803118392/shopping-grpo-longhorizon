@@ -125,6 +125,9 @@ reward_model:
 ray_kwargs:
   ray_init:
     runtime_env:
+      # Ray 2.56's uv hook rejects veRL's inherited `working_dir: null`.
+      # train_grpo.py fixes cwd to the project root, so this stays machine-neutral.
+      working_dir: .
       worker_process_setup_hook: shopping_grpo.training.grpo.compat.install_torch_padding_fallback
 
 trainer:
