@@ -82,6 +82,45 @@ def render_markdown_report(report: Mapping) -> str:
         ]
     )
 
+    v4 = report.get("constraint_complete_v4") or {}
+    if v4:
+        v4_delta = v4["paired_task_delta"]
+        v4_bootstrap = v4_delta["bootstrap"]
+        v4_mcnemar = v4["paired_attempt_test"]
+        lines.extend(
+            [
+                "",
+                "## Auxiliary constraint-complete outcome",
+                "",
+                "This ASIN-neutral outcome is reported separately and does not replace Reward v3 strict success.",
+                "",
+                "| Method | Constraint complete | Wilson 95% CI | pass@k | pass^k |",
+                "|---|---:|---:|---:|---:|",
+            ]
+        )
+        labels = report.get("labels") or {}
+        for side in ("baseline", "candidate"):
+            values = v4[side]
+            interval = values["success_rate_wilson_95"]
+            lines.append(
+                f"| {labels.get(side, side)} | {_percent(values['success_rate'])} | "
+                f"[{_percent(interval['low'])}, {_percent(interval['high'])}] | "
+                f"{_percent(values['pass@k'])} | {_percent(values['pass^k'])} |"
+            )
+        lines.extend(
+            [
+                "",
+                (
+                    f"Constraint-complete paired delta: "
+                    f"`{v4_delta['candidate_minus_baseline_percentage_points']:+.1f} pp`; "
+                    f"task-bootstrap 95% CI "
+                    f"`[{100 * float(v4_bootstrap['low']):+.1f}, "
+                    f"{100 * float(v4_bootstrap['high']):+.1f}] pp`; "
+                    f"exact McNemar `p={float(v4_mcnemar['p_value']):.4f}`."
+                ),
+            ]
+        )
+
     stratified = report.get("stratified_statistics") or {}
     static = stratified.get("static_task_strata") or {}
     if static:

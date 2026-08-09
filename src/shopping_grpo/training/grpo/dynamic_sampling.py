@@ -18,6 +18,10 @@ def aggregate_shopping_metrics(shopping_infos: Sequence[object]) -> dict[str, fl
         "native",
         "semantic",
         "total",
+        "environment_reward_v3",
+        "optimization_reward_v4",
+        "optimization_reward",
+        "constraint_complete_purchase_v4",
         "efficiency",
         "penalty_overlong",
         "penalty_unfinished",
@@ -89,6 +93,12 @@ def aggregate_shopping_metrics(shopping_infos: Sequence[object]) -> dict[str, fl
         "reward/terminal_utility_min": min(terminal_utilities),
         "reward/terminal_utility_mean": mean(terminal_utilities),
         "reward/terminal_utility_max": max(terminal_utilities),
+        "reward/environment_v3_mean": mean(rewards["environment_reward_v3"]),
+        "reward/optimization_v4_mean": mean(rewards["optimization_reward_v4"]),
+        "reward/optimization_mean": mean(rewards["optimization_reward"]),
+        "reward/constraint_complete_v4_rate": mean(
+            rewards["constraint_complete_purchase_v4"]
+        ),
         "reward/purchase_success_rate": mean(purchase_success),
         "reward/partial_purchase_rate": mean(partial_purchase),
         "reward/match_score_mean": mean(match_scores),

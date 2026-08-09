@@ -69,6 +69,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--experiment-name", default="shopping-agent-grpo")
     parser.add_argument("--seed", type=int, default=2026)
+    parser.add_argument(
+        "--optimization-reward",
+        choices=("v3", "v4"),
+        default="v3",
+        help="v3 uses the environment utility; v4 uses the adapter-only ASIN-neutral objective",
+    )
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
@@ -173,6 +179,7 @@ def _frozen_settings(args: argparse.Namespace) -> dict:
     return {
         "model_path": str(args.model.expanduser().resolve()),
         "seed": int(args.seed),
+        "optimization_reward": str(args.optimization_reward),
         "hydra_overrides": _extra_overrides(args),
     }
 
@@ -280,6 +287,11 @@ def build_command(args: argparse.Namespace) -> tuple[list[str], dict[str, str]]:
             "GRPO_CONFIG_NAME": config.stem,
             "GRPO_CONFIG_PATH": str(config),
             "SHOPPING_TRAINING_SEED": str(args.seed),
+            "SHOPPING_OPTIMIZATION_REWARD_PROFILE": (
+                "environment_v3"
+                if args.optimization_reward == "v3"
+                else "optimization_v4"
+            ),
             "PYTHONHASHSEED": str(args.seed),
         }
     )
@@ -315,6 +327,7 @@ def main() -> None:
         "logger": args.logger,
         "config": str(args.config.resolve()),
         "seed": args.seed,
+        "optimization_reward": args.optimization_reward,
     }
     print(json.dumps(audit, ensure_ascii=False, indent=2))
     if args.dry_run:

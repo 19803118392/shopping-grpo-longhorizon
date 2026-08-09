@@ -16,6 +16,8 @@ from shopping_grpo.environment.projection import (
     project_observation,
 )
 from shopping_grpo.training.grpo.adapter.runtime import (
+    ENVIRONMENT_REWARD_V3,
+    SUPPORTED_REWARD_MODES,
     current_runtime_state,
     record_observation_projection,
     reward_breakdown,
@@ -35,7 +37,7 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         timeout=60,
         max_steps=35,
         required_environment_version=None,
-        reward_mode="native",
+        reward_mode=ENVIRONMENT_REWARD_V3,
         context_window_tokens=24576,
         context_generation_reserve_tokens=512,
         context_safety_margin_tokens=512,
@@ -85,7 +87,7 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
             raise ValueError("all observation token budgets must be at least 64")
         if self.observation_search_top_k < 1:
             raise ValueError("observation_search_top_k must be positive")
-        if self.reward_mode not in {"native", "constraint_aware"}:
+        if self.reward_mode not in SUPPORTED_REWARD_MODES:
             raise ValueError(f"unknown shopping reward mode: {self.reward_mode!r}")
         self.env_factory = env_factory
 
@@ -248,7 +250,7 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
                 state["termination_reason"] = state["error"]
                 state["terminate"] = True
             # 父类结束后统一从环境状态结算，避免把中途异常当作正常终局奖励。
-            breakdown = reward_breakdown(state)
+            breakdown = reward_breakdown(state, mode=self.reward_mode)
             terminal_score = terminal_reward(state, mode=self.reward_mode)
             output.reward_score = terminal_score
             output.extra_fields["shopping"] = {

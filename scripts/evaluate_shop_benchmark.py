@@ -40,9 +40,16 @@ def parse_args():
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top-p", type=float, default=1.0)
     parser.add_argument("--seed", type=int, default=2026)
+    parser.add_argument("--tool-choice", choices=("auto", "required"), default="auto")
     parser.add_argument(
         "--protocol",
-        choices=("custom", "seed-replay", "dev50x3", "dev50x5"),
+        choices=(
+            "custom",
+            "seed-replay",
+            "dev50x3",
+            "dev50x5",
+            "single-seed-dev50x3",
+        ),
         default="custom",
     )
     parser.add_argument(
@@ -215,12 +222,13 @@ def main():
         if (args.output.exists() and args.output.stat().st_size) or args.summary.exists():
             raise SystemExit("Final-200 output and summary must be new")
     protocol_expectations = {
-        "seed-replay": (5, 2),
-        "dev50x3": (50, 3),
-        "dev50x5": (50, 5),
+        "seed-replay": (5, 2, 2026),
+        "dev50x3": (50, 3, 2026),
+        "dev50x5": (50, 5, 2026),
+        "single-seed-dev50x3": (50, 3, 42),
     }
     if args.protocol != "custom":
-        expected_tasks, expected_attempts = protocol_expectations[args.protocol]
+        expected_tasks, expected_attempts, expected_seed = protocol_expectations[args.protocol]
         actual = (
             len(tasks),
             args.attempts_per_task,
@@ -229,7 +237,7 @@ def main():
             args.max_steps,
             args.seed,
         )
-        expected = (expected_tasks, expected_attempts, 0.7, 0.9, 35, 2026)
+        expected = (expected_tasks, expected_attempts, 0.7, 0.9, 35, expected_seed)
         if actual != expected:
             raise SystemExit(
                 f"protocol {args.protocol} requires tasks/attempts/temperature/top_p/"
@@ -242,6 +250,7 @@ def main():
         temperature=args.temperature,
         top_p=args.top_p,
         seed=args.seed,
+        tool_choice=args.tool_choice,
         timeout=args.timeout,
         max_tokens=args.max_tokens,
         context_window=args.context_window,
@@ -284,6 +293,7 @@ def main():
         "temperature": args.temperature,
         "top_p": args.top_p,
         "seed": args.seed,
+        "tool_choice": args.tool_choice,
         "protocol_name": args.protocol,
         "final_200": bool(args.final_200),
         "frozen_artifact_manifest": (

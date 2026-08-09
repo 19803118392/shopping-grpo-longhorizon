@@ -12,7 +12,10 @@ import random
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 
-from shopping_grpo.evaluation.summary import is_strict_success
+from shopping_grpo.evaluation.summary import (
+    is_constraint_complete_purchase_v4,
+    is_strict_success,
+)
 
 REPEATED_RUN_SCHEMA_VERSION = "shopping-repeated-run-statistics-v1"
 PAIRED_STATISTICS_SCHEMA_VERSION = "shopping-paired-statistics-v1"
@@ -164,6 +167,7 @@ def _attempt_matrix(
     expected: Sequence[int],
     trajectories: Iterable[Mapping],
     attempts_per_task: int,
+    success_fn=is_strict_success,
 ) -> tuple[dict[int, list[bool]], list[dict[str, int]], set[tuple[int, int]]]:
     attempts_per_task = int(attempts_per_task)
     if attempts_per_task < 1:
@@ -182,7 +186,7 @@ def _attempt_matrix(
             raise ValueError(
                 f"duplicate trajectory for task_id={task_id}, attempt_index={attempt_index}"
             )
-        observed[key] = is_strict_success(trajectory)
+        observed[key] = bool(success_fn(trajectory))
 
     matrix: dict[int, list[bool]] = {}
     missing: list[dict[str, int]] = []
@@ -232,10 +236,13 @@ def summarize_repeated_run(
     expected_task_ids: Iterable[int],
     trajectories: Iterable[Mapping],
     attempts_per_task: int,
+    success_fn=is_strict_success,
 ) -> dict:
     """Summarize repeated attempts with fixed task and attempt denominators."""
     expected = _expected_ids(expected_task_ids)
-    matrix, missing, _ = _attempt_matrix(expected, trajectories, attempts_per_task)
+    matrix, missing, _ = _attempt_matrix(
+        expected, trajectories, attempts_per_task, success_fn=success_fn
+    )
     attempts_per_task = int(attempts_per_task)
     total_attempts = len(expected) * attempts_per_task
     success_counts = {task_id: sum(outcomes) for task_id, outcomes in matrix.items()}
@@ -363,6 +370,108 @@ def mcnemar_exact(baseline_only: int, candidate_only: int) -> dict:
     }
 
 
+def _paired_binary_outcome(
+    *,
+    expected: Sequence[int],
+    baseline_rows: Sequence[Mapping],
+    candidate_rows: Sequence[Mapping],
+    attempts_per_task: int,
+    success_fn,
+    metric: str,
+    bootstrap_samples: int,
+    confidence: float,
+    seed: int,
+) -> dict:
+    baseline_summary = summarize_repeated_run(
+        expected_task_ids=expected,
+        trajectories=baseline_rows,
+        attempts_per_task=attempts_per_task,
+        success_fn=success_fn,
+    )
+    candidate_summary = summarize_repeated_run(
+        expected_task_ids=expected,
+        trajectories=candidate_rows,
+        attempts_per_task=attempts_per_task,
+        success_fn=success_fn,
+    )
+    baseline_matrix, _, baseline_observed = _attempt_matrix(
+        expected, baseline_rows, attempts_per_task, success_fn=success_fn
+    )
+    candidate_matrix, _, candidate_observed = _attempt_matrix(
+        expected, candidate_rows, attempts_per_task, success_fn=success_fn
+    )
+    task_deltas = []
+    wins = ties = losses = 0
+    baseline_only = candidate_only = 0
+    for task_id in expected:
+        left = baseline_matrix[task_id]
+        right = candidate_matrix[task_id]
+        delta = (sum(right) - sum(left)) / int(attempts_per_task)
+        task_deltas.append(delta)
+        wins += delta > 0.0
+        ties += delta == 0.0
+        losses += delta < 0.0
+        for attempt_index, (left_success, right_success) in enumerate(zip(left, right)):
+            key = (task_id, attempt_index)
+            if key not in baseline_observed or key not in candidate_observed:
+                continue
+            baseline_only += left_success and not right_success
+            candidate_only += right_success and not left_success
+    bootstrap = paired_bootstrap_mean_delta(
+        task_deltas,
+        samples=bootstrap_samples,
+        confidence=confidence,
+        seed=seed,
+    )
+
+    def neutral(summary):
+        return {
+            "expected_tasks": summary["expected_tasks"],
+            "attempts_per_task": summary["attempts_per_task"],
+            "expected_attempts": summary["expected_attempts"],
+            "completed_attempts": summary["completed_attempts"],
+            "missing_attempts": summary["missing_attempts"],
+            "attempt_coverage_rate": summary["attempt_coverage_rate"],
+            "successes": summary["strict_successes"],
+            "success_rate": summary["strict_success_rate"],
+            "success_rate_wilson_95": summary["strict_success_rate_wilson_95"],
+            "pass@k": summary["pass@k"],
+            "pass^k": summary["pass^k"],
+            "per_task": [
+                {
+                    "task_id": item["task_id"],
+                    "successes": item["strict_successes"],
+                    "attempts": item["attempts"],
+                    "success_rate": item["success_rate"],
+                }
+                for item in summary["per_task"]
+            ],
+        }
+
+    return {
+        "metric": metric,
+        "baseline": neutral(baseline_summary),
+        "candidate": neutral(candidate_summary),
+        "paired_task_delta": {
+            "unit": metric,
+            "candidate_minus_baseline": bootstrap["mean_delta"],
+            "candidate_minus_baseline_percentage_points": 100.0 * bootstrap["mean_delta"],
+            "wins": wins,
+            "ties": ties,
+            "losses": losses,
+            "bootstrap": bootstrap,
+        },
+        "paired_attempt_test": {
+            **mcnemar_exact(baseline_only, candidate_only),
+            "paired_completed_attempts": len(baseline_observed & candidate_observed),
+            "excluded_unpaired_attempts": (
+                len(expected) * int(attempts_per_task)
+                - len(baseline_observed & candidate_observed)
+            ),
+        },
+    }
+
+
 def compare_repeated_runs(
     *,
     expected_task_ids: Iterable[int],
@@ -417,7 +526,7 @@ def compare_repeated_runs(
         confidence=confidence,
         seed=seed,
     )
-    return {
+    report = {
         "schema_version": PAIRED_STATISTICS_SCHEMA_VERSION,
         "baseline": baseline,
         "candidate": candidate,
@@ -442,3 +551,15 @@ def compare_repeated_runs(
             ),
         },
     }
+    report["constraint_complete_v4"] = _paired_binary_outcome(
+        expected=expected,
+        baseline_rows=baseline_rows,
+        candidate_rows=candidate_rows,
+        attempts_per_task=attempts_per_task,
+        success_fn=is_constraint_complete_purchase_v4,
+        metric="constraint_complete_purchase_v4_rate",
+        bootstrap_samples=bootstrap_samples,
+        confidence=confidence,
+        seed=seed,
+    )
+    return report

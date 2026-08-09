@@ -40,6 +40,12 @@ def parse_args():
     parser.add_argument("--gradient-accumulation-steps", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=1e-4)
     parser.add_argument("--warmup-ratio", type=float, default=0.03)
+    parser.add_argument("--warmup-steps", type=int, default=0)
+    parser.add_argument(
+        "--lr-scheduler-type",
+        choices=("linear", "constant_with_warmup"),
+        default="linear",
+    )
     parser.add_argument("--lora-r", type=int, default=16)
     parser.add_argument("--lora-alpha", type=int, default=32)
     parser.add_argument("--lora-dropout", type=float, default=0.05)
@@ -71,6 +77,12 @@ def parse_args():
     parser.add_argument("--gradient-checkpointing", action="store_true")
     parser.add_argument("--logging-steps", type=int, default=5)
     parser.add_argument("--save-total-limit", type=int, default=2)
+    parser.add_argument(
+        "--save-steps",
+        type=int,
+        default=0,
+        help="positive value switches checkpoint and validation cadence from epochs to steps",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--resume-from-checkpoint", default=None)
     parser.add_argument("--max-steps", type=int, default=-1, help="最大训练步数（-1=完整 epoch）；用于冒烟测试")
@@ -306,6 +318,12 @@ def main():
     args = parse_args()
     if args.max_length < 1 or args.epochs <= 0:
         raise SystemExit("--max-length 与 --epochs 必须为正数")
+    if args.warmup_steps < 0 or args.save_steps < 0:
+        raise SystemExit("--warmup-steps 与 --save-steps 不能为负数")
+    if args.max_steps == 0:
+        raise SystemExit("--max-steps 必须为 -1 或正数")
+    if args.output.exists() and any(args.output.iterdir()) and not args.resume_from_checkpoint:
+        raise SystemExit(f"输出目录必须为空或显式使用 --resume-from-checkpoint: {args.output}")
     _validate_optional_training_dependencies(args)
     (
         torch,
@@ -451,14 +469,22 @@ def main():
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         learning_rate=args.learning_rate,
         warmup_ratio=args.warmup_ratio,
+        warmup_steps=args.warmup_steps,
+        lr_scheduler_type=args.lr_scheduler_type,
         bf16=dtype_name == "bf16",
         fp16=dtype_name == "fp16",
         gradient_checkpointing=args.gradient_checkpointing,
         use_liger_kernel=args.liger_kernel,
         logging_steps=args.logging_steps,
-        save_strategy="epoch",
+        save_strategy="steps" if args.save_steps > 0 else "epoch",
+        save_steps=args.save_steps if args.save_steps > 0 else 500,
         save_total_limit=args.save_total_limit,
-        eval_strategy="epoch" if validation_examples else "no",
+        eval_strategy=(
+            ("steps" if args.save_steps > 0 else "epoch")
+            if validation_examples
+            else "no"
+        ),
+        eval_steps=args.save_steps if args.save_steps > 0 else None,
         report_to=report_to,
         run_name=run_name,
         max_steps=args.max_steps if args.max_steps > 0 else -1,
@@ -488,6 +514,8 @@ def main():
     train_summary = {
         "train_examples": len(train_examples),
         "validation_examples": len(validation_examples),
+        "train_data_stats": train_stats,
+        "validation_data_stats": validation_stats if args.validation else None,
         "train_loss": result.training_loss,
         "metrics": result.metrics,
         "peak_gpu_memory_gib": round(gpu_peak, 2),

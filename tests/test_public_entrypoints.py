@@ -114,6 +114,7 @@ class PublicEntrypointTest(unittest.TestCase):
         self.assertEqual(environment["GRPO_MODEL_PATH"], str(model))
         self.assertEqual(environment["GRPO_TRAIN_FILE"], str(train))
         self.assertEqual(environment["GRPO_VAL_FILE"], str(validation))
+        self.assertEqual(environment["SHOPPING_OPTIMIZATION_REWARD_PROFILE"], "environment_v3")
         self.assertIn("trainer.logger=[console]", command)
 
     def test_grpo_preflight_reuses_the_exact_training_overrides(self):
@@ -194,6 +195,7 @@ class PublicEntrypointTest(unittest.TestCase):
                         "frozen_settings": {
                             "model_path": str(model.resolve()),
                             "seed": 2026,
+                            "optimization_reward": "v3",
                             "hydra_overrides": [],
                         },
                     }

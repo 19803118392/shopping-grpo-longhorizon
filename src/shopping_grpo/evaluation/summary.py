@@ -2,6 +2,12 @@
 
 from collections import Counter
 
+from shopping_grpo.training.grpo.adapter.runtime import (
+    constraint_complete_purchase_v4,
+    optimization_reward_v4,
+    validate_reward,
+)
+
 REWARD_V3 = "shopsimulator-reward-v3"
 REWARD_V3_TYPES = (
     "gold_purchase",
@@ -29,6 +35,9 @@ def summarize_trajectories(expected_task_ids, trajectories):
     completed_ids = sorted(by_task)
     missing_ids = sorted(expected_set - set(completed_ids))
     strict_successes = [task_id for task_id, item in by_task.items() if _is_strict_success(item)]
+    constraint_complete_v4 = [
+        task_id for task_id, item in by_task.items() if is_constraint_complete_purchase_v4(item)
+    ]
     done_tasks = [task_id for task_id, item in by_task.items() if item.get("done")]
     reward_details = [_reward_detail(item) for item in by_task.values()]
     reward_type_counts = Counter(
@@ -58,6 +67,7 @@ def summarize_trajectories(expected_task_ids, trajectories):
     weighted_scores = [
         float(detail.get("weighted_score", 0.0)) for detail in reward_details
     ]
+    v4_rewards = [optimization_reward_v4_from_trajectory(item) for item in by_task.values()]
     steps = [len(item.get("steps") or []) for item in by_task.values()]
     guard_reasons = Counter(
         blocked.get("reason", "unknown")
@@ -107,6 +117,11 @@ def summarize_trajectories(expected_task_ids, trajectories):
         "strict_successes": len(strict_successes),
         "strict_success_task_ids": sorted(strict_successes),
         "strict_success_rate": len(strict_successes) / denominator if denominator else 0.0,
+        "constraint_complete_v4_successes": len(constraint_complete_v4),
+        "constraint_complete_v4_task_ids": sorted(constraint_complete_v4),
+        "constraint_complete_v4_rate": (
+            len(constraint_complete_v4) / denominator if denominator else 0.0
+        ),
         "reward_contract": REWARD_V3,
         "reward_version_counts": dict(sorted(reward_version_counts.items())),
         "reward_type_counts": dict(sorted(reward_type_counts.items())),
@@ -137,6 +152,9 @@ def summarize_trajectories(expected_task_ids, trajectories):
             sum(weighted_scores) / len(weighted_scores)
             if weighted_scores
             else 0.0
+        ),
+        "mean_optimization_reward_v4": (
+            sum(v4_rewards) / denominator if denominator else 0.0
         ),
         "average_steps": sum(steps) / len(steps) if steps else 0.0,
         "status_counts": dict(sorted(statuses.items())),
@@ -223,6 +241,46 @@ def is_strict_success(trajectory):
         and detail.get("purchase_success") is True
         and detail.get("termination_reason") == "gold_purchase"
     )
+
+
+def _validated_v3_detail(trajectory):
+    detail = _reward_detail(trajectory)
+    try:
+        return validate_reward(detail)
+    except (TypeError, ValueError):
+        return None
+
+
+def is_constraint_complete_purchase_v4(trajectory):
+    """Return the auxiliary ASIN-neutral full-constraint purchase outcome."""
+    terminal = trajectory.get("terminal_result") or {}
+    if not (
+        trajectory.get("status") == "done"
+        and trajectory.get("done") is True
+        and terminal.get("done") is True
+        and terminal.get("over") is True
+        and not trajectory.get("infrastructure_invalid")
+        and not trajectory.get("error")
+    ):
+        return False
+    detail = _validated_v3_detail(trajectory)
+    return bool(detail and constraint_complete_purchase_v4(detail))
+
+
+def optimization_reward_v4_from_trajectory(trajectory):
+    """Offline-score a trajectory while preserving invalid attempts in the denominator."""
+    terminal = trajectory.get("terminal_result") or {}
+    if not (
+        trajectory.get("status") == "done"
+        and trajectory.get("done") is True
+        and terminal.get("done") is True
+        and terminal.get("over") is True
+        and not trajectory.get("infrastructure_invalid")
+        and not trajectory.get("error")
+    ):
+        return 0.0
+    detail = _validated_v3_detail(trajectory)
+    return float(optimization_reward_v4(detail)) if detail else 0.0
 
 
 # Retain the internal name for callers created before the public statistics API.

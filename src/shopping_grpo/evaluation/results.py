@@ -257,11 +257,13 @@ def summarize_evaluations(
     missing = sorted(expected_set - set(by_task))
     reward_type_counts = Counter()
     strict_successes = []
+    constraint_complete_v4 = []
     purchase_successes = 0
     reward_valid = 0
     total_reward = 0.0
     total_terminal_utility = 0.0
     total_weighted_score = 0.0
+    total_optimization_reward_v4 = 0.0
     rubric_status = Counter()
     rubric_status_by_hardness = defaultdict(Counter)
     disagreement_tasks = []
@@ -286,6 +288,8 @@ def summarize_evaluations(
         reward_type_counts[str(reward.get("reward_type") or "unknown")] += 1
         if reward.get("strict_gold_success") is True:
             strict_successes.append(task_id)
+        if reward.get("constraint_complete_purchase_v4") is True:
+            constraint_complete_v4.append(task_id)
         purchase_successes += reward.get("purchase_success") is True
         reward_valid += reward.get("reward_valid") is True
         total_reward += float(reward.get("final_reward", 0.0) or 0.0)
@@ -294,6 +298,9 @@ def summarize_evaluations(
         )
         total_weighted_score += float(
             reward.get("weighted_score", 0.0) or 0.0
+        )
+        total_optimization_reward_v4 += float(
+            reward.get("optimization_reward_v4", 0.0) or 0.0
         )
 
         rubric = record["requirement_rubric"]
@@ -366,6 +373,11 @@ def summarize_evaluations(
             "strict_gold_successes": len(strict_successes),
             "strict_gold_task_ids": sorted(strict_successes),
             "gold_purchase_rate": _mean(len(strict_successes), denominator),
+            "constraint_complete_v4_successes": len(constraint_complete_v4),
+            "constraint_complete_v4_task_ids": sorted(constraint_complete_v4),
+            "constraint_complete_v4_rate": _mean(
+                len(constraint_complete_v4), denominator
+            ),
             "purchase_successes": purchase_successes,
             "purchase_success_rate": _mean(
                 purchase_successes, denominator
@@ -382,6 +394,9 @@ def summarize_evaluations(
             ),
             "mean_weighted_score_fixed_denominator": _mean(
                 total_weighted_score, denominator
+            ),
+            "mean_optimization_reward_v4_fixed_denominator": _mean(
+                total_optimization_reward_v4, denominator
             ),
         },
         "requirement_rubric": {

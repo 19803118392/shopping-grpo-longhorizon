@@ -134,7 +134,14 @@ def load_supervised_examples(path, tokenizer, max_length=8192, chat_template=Non
         _tqdm = lambda it, **kw: it
 
     examples = []
-    stats = {"total": 0, "kept": 0, "dropped": 0}
+    stats = {
+        "total": 0,
+        "kept": 0,
+        "dropped": 0,
+        "input_tokens": 0,
+        "assistant_loss_tokens": 0,
+        "max_input_tokens": 0,
+    }
     text = Path(path).read_text(encoding="utf-8")
     lines = [l for l in text.splitlines() if l.strip()]
     stats["total"] = len(lines)
@@ -157,6 +164,11 @@ def load_supervised_examples(path, tokenizer, max_length=8192, chat_template=Non
         example["trajectory_id"] = row.get("trajectory_id")
         examples.append(example)
         stats["kept"] += 1
+        input_tokens = len(example["input_ids"])
+        assistant_tokens = sum(label != IGNORE_INDEX for label in example["labels"])
+        stats["input_tokens"] += input_tokens
+        stats["assistant_loss_tokens"] += assistant_tokens
+        stats["max_input_tokens"] = max(stats["max_input_tokens"], input_tokens)
     return examples, stats
 
 

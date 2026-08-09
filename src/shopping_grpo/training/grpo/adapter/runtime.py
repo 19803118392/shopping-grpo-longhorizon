@@ -22,6 +22,21 @@ REWARD_V3_TYPES = {
     "max_steps",
     "reward_unverifiable",
 }
+ENVIRONMENT_REWARD_V3 = "environment_v3"
+OPTIMIZATION_REWARD_V4 = "optimization_v4"
+SUPPORTED_REWARD_MODES = {ENVIRONMENT_REWARD_V3, OPTIMIZATION_REWARD_V4}
+PURCHASE_REWARD_TYPES = {
+    "gold_purchase",
+    "valid_alternative_purchase",
+    "partial_alternative_purchase",
+    "wrong_purchase",
+}
+V4_TERMINATION_REWARDS = {
+    "graceful_stop": -0.15,
+    "early_abstain": -0.35,
+    "max_steps": -0.50,
+    "repeat_loop": -0.65,
+}
 
 
 def make_runtime_state(task_id: int, max_steps: int) -> dict:
@@ -167,6 +182,13 @@ def validate_reward(raw_detail: object) -> dict:
             "comparator": str(raw_gate.get("comparator") or ""),
             "source_field": str(raw_gate.get("source_field") or ""),
         }
+    if reward_type in PURCHASE_REWARD_TYPES:
+        missing_gates = {"category", "budget"} - set(public_gates)
+        if missing_gates:
+            raise ValueError(
+                "purchase reward is missing required hard gate(s): "
+                + ", ".join(sorted(missing_gates))
+            )
     try:
         weighted_score = float(raw_detail.get("weighted_score", 0.0))
     except (TypeError, ValueError) as exc:
@@ -221,9 +243,66 @@ def _normal_terminal(state: dict) -> bool:
     )
 
 
-def reward_breakdown(state: dict) -> dict[str, float | bool]:
-    """计算约束感知终局奖励；基础设施无效轨迹只返回诊断，不制造学习信号。"""
-    invalid = bool(state.get("infrastructure_invalid"))
+def constraint_complete_purchase_v4(detail: Mapping) -> bool:
+    """Return the ASIN-neutral full-constraint outcome from validated v3 fields."""
+    if detail.get("reward_valid") is not True:
+        return False
+    if str(detail.get("reward_type") or "") not in PURCHASE_REWARD_TYPES:
+        return False
+    gates = detail.get("hard_gates") or {}
+    if not isinstance(gates, Mapping):
+        return False
+    if not all(bool((gates.get(name) or {}).get("passed")) for name in ("category", "budget")):
+        return False
+    try:
+        score = float(detail.get("weighted_score", 0.0))
+        coverage = float(detail.get("evidence_coverage", 0.0))
+    except (TypeError, ValueError):
+        return False
+    return math.isclose(score, 1.0, abs_tol=1.0e-8) and math.isclose(
+        coverage, 1.0, abs_tol=1.0e-8
+    )
+
+
+def optimization_reward_v4(detail: Mapping) -> float:
+    """Compute the target-ASIN-bonus-free terminal objective from public v3 fields."""
+    if detail.get("reward_valid") is not True:
+        return 0.0
+    reward_type = str(detail.get("reward_type") or "")
+    if reward_type not in REWARD_V3_TYPES:
+        raise ValueError(f"unknown Reward v3 reward_type: {reward_type!r}")
+    if reward_type not in PURCHASE_REWARD_TYPES:
+        try:
+            return V4_TERMINATION_REWARDS[reward_type]
+        except KeyError as exc:
+            raise ValueError(f"v4 has no valid terminal mapping for {reward_type!r}") from exc
+
+    gates = detail.get("hard_gates") or {}
+    missing_gates = {"category", "budget"} - set(gates)
+    if missing_gates:
+        raise ValueError(
+            "purchase reward is missing required hard gate(s): "
+            + ", ".join(sorted(missing_gates))
+        )
+    hard_pass = all(bool((gates.get(name) or {}).get("passed")) for name in ("category", "budget"))
+    if not hard_pass:
+        return -0.85
+    score = float(detail["weighted_score"])
+    coverage = float(detail["evidence_coverage"])
+    if not all(math.isfinite(value) and 0.0 <= value <= 1.0 for value in (score, coverage)):
+        raise ValueError("v4 score and evidence coverage must be finite and in [0, 1]")
+    if constraint_complete_purchase_v4(detail):
+        return 1.0
+    return min(0.25, -0.30 + 0.55 * score * coverage)
+
+
+def reward_breakdown(
+    state: dict, mode: str = ENVIRONMENT_REWARD_V3
+) -> dict[str, float | bool | str]:
+    """Compute both terminal objectives while returning only the selected training score."""
+    if mode not in SUPPORTED_REWARD_MODES:
+        raise ValueError(f"unknown shopping reward mode: {mode!r}")
+    invalid = bool(state.get("infrastructure_invalid") or state.get("error"))
     normal_terminal = _normal_terminal(state)
     native = float(state.get("final_reward", 0.0)) if normal_terminal else 0.0
     if not math.isfinite(native):
@@ -243,9 +322,20 @@ def reward_breakdown(state: dict) -> dict[str, float | bool]:
             state.get("reward_type")
             in {"gold_purchase", "valid_alternative_purchase"}
         )
-        terminal_utility = (
+        environment_reward_v3 = (
             native if normal_terminal and not invalid and not invalid_reward else 0.0
         )
+        v4_reward = (
+            optimization_reward_v4(detail)
+            if normal_terminal and not invalid and not invalid_reward
+            else 0.0
+        )
+        selected_reward = (
+            environment_reward_v3
+            if mode == ENVIRONMENT_REWARD_V3
+            else v4_reward
+        )
+        constraint_complete = constraint_complete_purchase_v4(detail)
         semantic = float(purchase_success)
         return {
             "r_type": component("category"),
@@ -265,6 +355,11 @@ def reward_breakdown(state: dict) -> dict[str, float | bool]:
             "full": full,
             "strict": strict,
             "native": native,
+            "environment_reward_v3": environment_reward_v3,
+            "optimization_reward_v4": v4_reward,
+            "optimization_reward": selected_reward,
+            "optimization_reward_profile": mode,
+            "constraint_complete_purchase_v4": float(constraint_complete),
             "semantic": semantic,
             "efficiency": 0.0,
             "penalty_overlong": 0.0,
@@ -274,8 +369,8 @@ def reward_breakdown(state: dict) -> dict[str, float | bool]:
                 int(state.get("repeat_action_count", 0))
                 / max(int(state.get("action_attempt_count", 0)), 1)
             ),
-            "total": terminal_utility,
-            "terminal_utility": terminal_utility,
+            "total": selected_reward,
+            "terminal_utility": selected_reward,
             "purchase_success": float(purchase_success),
             "sampling_invalid": bool(invalid or invalid_reward),
             "infrastructure_invalid": invalid,
@@ -298,6 +393,11 @@ def reward_breakdown(state: dict) -> dict[str, float | bool]:
         "full": 0.0,
         "strict": 0.0,
         "native": native,
+        "environment_reward_v3": 0.0,
+        "optimization_reward_v4": 0.0,
+        "optimization_reward": 0.0,
+        "optimization_reward_profile": mode,
+        "constraint_complete_purchase_v4": 0.0,
         "semantic": 0.0,
         "efficiency": 0.0,
         "penalty_overlong": 0.0,
@@ -313,15 +413,9 @@ def reward_breakdown(state: dict) -> dict[str, float | bool]:
     }
 
 
-def terminal_reward(state: dict, mode: str = "native") -> float:
-    """按实验模式返回原生或约束感知奖励。"""
-    if mode == "constraint_aware":
-        return float(reward_breakdown(state)["total"])
-    if mode != "native":
-        raise ValueError(f"unknown shopping reward mode: {mode!r}")
-    if state.get("infrastructure_invalid") or state.get("error") or not _normal_terminal(state):
-        return 0.0
-    return float(state.get("final_reward", 0.0))
+def terminal_reward(state: dict, mode: str = ENVIRONMENT_REWARD_V3) -> float:
+    """Return the selected terminal optimization score."""
+    return float(reward_breakdown(state, mode=mode)["total"])
 
 
 def task_id_from_kwargs(kwargs: dict) -> int:

@@ -3,9 +3,14 @@
 import unittest
 
 from shopping_grpo.training.grpo.adapter.runtime import (
+    ENVIRONMENT_REWARD_V3,
+    OPTIMIZATION_REWARD_V4,
+    constraint_complete_purchase_v4,
     make_runtime_state,
+    optimization_reward_v4,
     record_action_attempt,
     reward_breakdown,
+    terminal_reward,
     validate_reward,
 )
 
@@ -94,7 +99,7 @@ class ShoppingRewardTest(unittest.TestCase):
         detail = reward_detail(
             reward_type="valid_alternative_purchase",
             terminal_utility=0.55,
-            weighted_score=0.8,
+            weighted_score=1.0,
             dimension_scores={
                 "brand": 0.5,
                 "model": 0.75,
@@ -109,6 +114,65 @@ class ShoppingRewardTest(unittest.TestCase):
         self.assertEqual(result["purchase_success"], 1.0)
         self.assertEqual(result["option_score"], 0.5)
         self.assertEqual(result["total"], 0.55)
+        self.assertEqual(result["optimization_reward_v4"], 1.0)
+        self.assertEqual(result["constraint_complete_purchase_v4"], 1.0)
+
+    def test_v4_removes_only_the_target_asin_bonus(self):
+        gold = validate_reward(reward_detail())
+        alternative_raw = reward_detail(
+            reward_type="valid_alternative_purchase",
+            terminal_utility=0.55,
+        )
+        alternative_raw["target_asin_match"] = False
+        alternative = validate_reward(alternative_raw)
+
+        self.assertEqual(optimization_reward_v4(gold), 1.0)
+        self.assertEqual(optimization_reward_v4(alternative), 1.0)
+        self.assertTrue(constraint_complete_purchase_v4(gold))
+        self.assertTrue(constraint_complete_purchase_v4(alternative))
+
+    def test_v4_partial_hard_failure_and_termination_values(self):
+        partial = validate_reward(
+            reward_detail(
+                reward_type="partial_alternative_purchase",
+                terminal_utility=0.03,
+                weighted_score=0.8,
+                evidence_coverage=0.75,
+            )
+        )
+        wrong = validate_reward(
+            reward_detail(
+                reward_type="wrong_purchase",
+                terminal_utility=-0.85,
+                category_status="fail",
+            )
+        )
+        stopped = validate_reward(
+            reward_detail(
+                reward_type="graceful_stop",
+                terminal_utility=-0.15,
+            )
+        )
+
+        self.assertAlmostEqual(optimization_reward_v4(partial), 0.03)
+        self.assertEqual(optimization_reward_v4(wrong), -0.85)
+        self.assertEqual(optimization_reward_v4(stopped), -0.15)
+
+    def test_training_profile_selects_v3_or_v4_without_changing_either_metric(self):
+        detail = reward_detail(
+            reward_type="valid_alternative_purchase",
+            terminal_utility=0.55,
+        )
+        state = terminal_state(detail=detail, native_reward=0.55)
+        v3 = reward_breakdown(state, mode=ENVIRONMENT_REWARD_V3)
+        v4 = reward_breakdown(state, mode=OPTIMIZATION_REWARD_V4)
+
+        self.assertEqual(terminal_reward(state, ENVIRONMENT_REWARD_V3), 0.55)
+        self.assertEqual(terminal_reward(state, OPTIMIZATION_REWARD_V4), 1.0)
+        self.assertEqual(v3["environment_reward_v3"], v4["environment_reward_v3"])
+        self.assertEqual(v3["optimization_reward_v4"], v4["optimization_reward_v4"])
+        self.assertEqual(v3["optimization_reward_profile"], ENVIRONMENT_REWARD_V3)
+        self.assertEqual(v4["optimization_reward_profile"], OPTIMIZATION_REWARD_V4)
 
     def test_reward_unverifiable_never_creates_learning_signal(self):
         detail = reward_detail(
@@ -156,6 +220,10 @@ class ShoppingRewardTest(unittest.TestCase):
         inconsistent_sampling = reward_detail()
         inconsistent_sampling["sampling_invalid"] = True
         cases.append((inconsistent_sampling, "sampling_invalid"))
+
+        missing_gate = reward_detail()
+        missing_gate["hard_gates"].pop("budget")
+        cases.append((missing_gate, "missing required hard gate"))
 
         for raw, pattern in cases:
             with self.subTest(pattern=pattern), self.assertRaisesRegex(

@@ -65,6 +65,7 @@ class OpenAIChatClient:
         temperature=0.0,
         top_p=1.0,
         seed=2026,
+        tool_choice="auto",
         timeout=60,
         max_tokens=512,
         thinking=False,
@@ -87,6 +88,9 @@ class OpenAIChatClient:
         self.top_p = float(top_p)
         self.seed = None if seed is None else int(seed)
         self.current_attempt_seed = self.seed
+        if tool_choice not in {"auto", "required"}:
+            raise ValueError("tool_choice must be 'auto' or 'required'")
+        self.tool_choice = str(tool_choice)
         self.completion_index = 0
         self.timeout = timeout
         self.max_tokens = int(max_tokens)
@@ -167,7 +171,7 @@ class OpenAIChatClient:
             "model": self.model,
             "messages": request_messages,
             "tools": tools,
-            "tool_choice": "auto",
+            "tool_choice": self.tool_choice,
             # 约束单个 assistant 回合的输出；--max-model-len 只限制上下文，
             # 不能防止模型在未调用工具时持续生成纯文本。
             "max_tokens": self.max_tokens,

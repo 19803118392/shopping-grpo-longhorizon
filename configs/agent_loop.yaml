@@ -4,7 +4,7 @@
   timeout: 60
   max_steps: 35
   required_environment_version: shopsimulator-environment-v2.1
-  reward_mode: constraint_aware
+  reward_mode: ${oc.env:SHOPPING_OPTIMIZATION_REWARD_PROFILE,environment_v3}
   context_window_tokens: 24576
   context_generation_reserve_tokens: 512
   context_safety_margin_tokens: 512
