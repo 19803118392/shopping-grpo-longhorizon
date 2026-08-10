@@ -197,6 +197,7 @@ class PublicEntrypointTest(unittest.TestCase):
                             "model_path": str(model.resolve()),
                             "seed": 2026,
                             "optimization_reward": "v3",
+                            "checkpoint_every": None,
                             "hydra_overrides": [],
                         },
                     }
@@ -231,7 +232,47 @@ class PublicEntrypointTest(unittest.TestCase):
         self.assertIn("trainer.resume_mode=resume_path", command)
         self.assertIn(f"trainer.resume_from_path={checkpoint}", command)
         self.assertIn("trainer.total_training_steps=10", command)
+        self.assertIn("trainer.save_freq=10", command)
         self.assertEqual(environment["SHOPPING_TRAINING_SEED"], "2026")
+
+    def test_checkpoint_frequency_is_explicit_and_launcher_owned(self):
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory)
+            model = temporary / "model"
+            model.mkdir()
+            (model / "config.json").write_text("{}", encoding="utf-8")
+            (model / "model.safetensors").write_bytes(b"weights")
+            train = temporary / "train.parquet"
+            train.write_bytes(b"train")
+            validation = temporary / "validation.parquet"
+            validation.write_bytes(b"validation")
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "train_grpo.py",
+                    "--model",
+                    str(model),
+                    "--train-data",
+                    str(train),
+                    "--val-data",
+                    str(validation),
+                    "--output",
+                    str(temporary / "output"),
+                    "--config",
+                    str(root / "configs/grpo.yaml"),
+                    "--target-global-step",
+                    "100",
+                    "--checkpoint-every",
+                    "10",
+                    "--dry-run",
+                ],
+            ):
+                command, _ = build_command(parse_args())
+
+        self.assertIn("trainer.total_training_steps=100", command)
+        self.assertIn("trainer.save_freq=10", command)
 
     def test_launcher_owned_hydra_fields_cannot_be_overridden(self):
         root = Path(__file__).resolve().parents[1]

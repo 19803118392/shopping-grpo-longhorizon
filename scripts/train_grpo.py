@@ -60,7 +60,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--target-global-step",
         type=int,
-        help="set total_training_steps and save_freq to this cumulative step",
+        help="set the cumulative total_training_steps target",
+    )
+    parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        help=(
+            "save a resumable checkpoint every N effective updates; defaults to "
+            "--target-global-step"
+        ),
     )
     parser.add_argument(
         "--logger",
@@ -137,10 +145,11 @@ def _training_overrides(args: argparse.Namespace) -> list[str]:
     else:
         overrides.append("trainer.resume_mode=disable")
     if args.target_global_step is not None:
+        save_frequency = args.checkpoint_every or args.target_global_step
         overrides.extend(
             [
                 f"trainer.total_training_steps={args.target_global_step}",
-                f"trainer.save_freq={args.target_global_step}",
+                f"trainer.save_freq={save_frequency}",
             ]
         )
     overrides.extend(_extra_overrides(args))
@@ -180,6 +189,7 @@ def _frozen_settings(args: argparse.Namespace) -> dict:
         "model_path": str(args.model.expanduser().resolve()),
         "seed": int(args.seed),
         "optimization_reward": str(args.optimization_reward),
+        "checkpoint_every": args.checkpoint_every,
         "hydra_overrides": _extra_overrides(args),
     }
 
@@ -267,6 +277,15 @@ def build_command(args: argparse.Namespace) -> tuple[list[str], dict[str, str]]:
     _validate_resume(args, output, train_data, val_data)
     if args.seed < 0:
         raise SystemExit("--seed must be non-negative")
+    if args.checkpoint_every is not None:
+        if args.target_global_step is None:
+            raise SystemExit("--checkpoint-every requires --target-global-step")
+        if args.checkpoint_every <= 0:
+            raise SystemExit("--checkpoint-every must be positive")
+        if args.checkpoint_every > args.target_global_step:
+            raise SystemExit("--checkpoint-every cannot exceed --target-global-step")
+        if args.target_global_step % args.checkpoint_every:
+            raise SystemExit("--checkpoint-every must divide --target-global-step")
     if args.logger == "swanlab" and not os.environ.get("SWANLAB_API_KEY"):
         raise SystemExit("--logger swanlab requires SWANLAB_API_KEY")
 
