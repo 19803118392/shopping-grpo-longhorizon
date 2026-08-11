@@ -16,6 +16,8 @@ from shopping_grpo.environment.projection import (
     project_observation,
 )
 from shopping_grpo.training.grpo.adapter.runtime import (
+    ENVIRONMENT_REWARD_V3,
+    SUPPORTED_REWARD_MODES,
     current_runtime_state,
     record_observation_projection,
     reward_breakdown,
@@ -35,7 +37,7 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         timeout=60,
         max_steps=35,
         required_environment_version=None,
-        reward_mode="native",
+        reward_mode=ENVIRONMENT_REWARD_V3,
         context_window_tokens=24576,
         context_generation_reserve_tokens=512,
         context_safety_margin_tokens=512,
@@ -43,7 +45,7 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
         context_preserve_recent_groups=1,
         context_compaction_enable=False,
         observation_token_budget=1536,
-        observation_detail_token_budget=4096,
+        observation_detail_token_budget=2048,
         observation_generic_token_budget=768,
         observation_search_top_k=20,
         env_factory=None,
@@ -85,7 +87,7 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
             raise ValueError("all observation token budgets must be at least 64")
         if self.observation_search_top_k < 1:
             raise ValueError("observation_search_top_k must be positive")
-        if self.reward_mode not in {"native", "constraint_aware"}:
+        if self.reward_mode not in SUPPORTED_REWARD_MODES:
             raise ValueError(f"unknown shopping reward mode: {self.reward_mode!r}")
         self.env_factory = env_factory
 
@@ -158,11 +160,12 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
                 int(bounded_sampling_params["max_tokens"]),
                 self.context_generation_reserve_tokens,
             )
-        return await super()._handle_generating_state(
+        next_state = await super()._handle_generating_state(
             agent_data,
             bounded_sampling_params,
             ignore_termination=ignore_termination,
         )
+        return next_state
 
     async def _call_tool(self, tool_call, tools_kwargs, agent_data):
         """把工具适配器拿到的原始 observation 压缩成模型真正可见的版本。"""
@@ -247,8 +250,9 @@ class ShoppingToolAgentLoop(ToolAgentLoop):
                 state["termination_reason"] = state["error"]
                 state["terminate"] = True
             # 父类结束后统一从环境状态结算，避免把中途异常当作正常终局奖励。
-            breakdown = reward_breakdown(state)
-            output.reward_score = terminal_reward(state, mode=self.reward_mode)
+            breakdown = reward_breakdown(state, mode=self.reward_mode)
+            terminal_score = terminal_reward(state, mode=self.reward_mode)
+            output.reward_score = terminal_score
             output.extra_fields["shopping"] = {
                 "task_id": task_id,
                 "steps": len(state["steps"]),

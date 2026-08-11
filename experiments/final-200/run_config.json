@@ -1,0 +1,37 @@
+{
+  "schema_version": "shopping-final-200-run-config-v1",
+  "frozen_commit": "a48019f8c4cc3eb61361c88190a730c0267aa437",
+  "protocol": {
+    "benchmark": "data/evaluation/tasks.jsonl",
+    "tasks": 200,
+    "attempts_per_task": 1,
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "max_steps": 35,
+    "max_tokens": 512,
+    "base_seed": 2026,
+    "reward_contract": "shopsimulator-reward-v3",
+    "strict_success": "gold_purchase and reward_valid=true",
+    "bootstrap_samples": 10000,
+    "rerun": false
+  },
+  "models": {
+    "sft": {
+      "model_tree_sha256": "f480efe944e7cd0d80a0d59c9f839bd3fac62062fda0070560e2c6c2383deffa",
+      "checkpoint_tree_sha256": "3e5dab391c5310dd2207ae616a3d9a4a1d0afeba46158663020dde35ebf3d846",
+      "freeze_manifest_sha256": "a0d8ccedcf48718c0a392dcf18c54cb6582294245facbf47c620d70e25bcfd4c"
+    },
+    "terminal_grpo_30": {
+      "model_tree_sha256": "752bf3504a1543c4bc7a32d7dbed6920afb73c9ef37c07722f9f5bd9ad89dfce",
+      "checkpoint_tree_sha256": "83c55d73f4683039fa7c70748bf94655f66576bd9e86df11bb2658c0c89c9452",
+      "freeze_manifest_sha256": "02ead92204e511ee31bcbe54ef969b33eacc8cf83d6ea0deb57e01249da0401d"
+    }
+  },
+  "artifacts": {
+    "benchmark_sha256": "2c4ff070e13ddc30796d38e85170210e7d3c211992425a62090f2419fe8e0208",
+    "selected_task_ids_sha256": "8594eee8b616c935530b9aaed5b5e29c47f9eb6eee511ec879243d70e4cac46f",
+    "sft_raw_sha256": "1a3f6e5ec0ac27952822a09178ccd5f685caa32d8cca39559e769c259198372a",
+    "terminal_grpo_raw_sha256": "8fa7419bf12e3d505d50feb2a499f5f305bb89c4b51d120d8e7c77146d54e627",
+    "comparison_sha256": "99f47325f0936b3a20f76c2c696b4decc56a9b877aab12c7200be1a55d465503"
+  }
+}

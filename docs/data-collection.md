@@ -11,8 +11,9 @@ trajectories, not historical failed collection attempts.
 
 The final collection used ShopSimulator Environment v2.1, Reward v3 and
 `deepseek-v4-flash` as the teacher. Seven batches produced 604 raw trajectories.
-Each trajectory was replayed and accepted only when the environment returned a
-Reward v3 gold purchase.
+Every trajectory executed its actions in ShopSimulator during collection. The
+saved result was accepted only when Environment v2.1 returned a valid Reward v3
+gold purchase; no second model judged whether the trajectory succeeded.
 
 Collection audit:
 
@@ -45,6 +46,52 @@ The aggregate raw collection had SHA-256
 the accepted aggregate had SHA-256
 `aab4d81f134dfcd40e67611f5a413142e4825d5cb6ea60b697536aec2c88fab7`.
 Raw teacher responses are intentionally not part of the beginner repository.
+
+## Run a new collection
+
+Start ShopSimulator, configure an OpenAI-compatible Teacher endpoint, and run:
+
+```bash
+export OPENAI_BASE_URL=https://your-provider.example/v1
+export OPENAI_API_KEY=your-key
+
+python scripts/collect_sft_data.py \
+  --tasks data/grpo/train.jsonl \
+  --output-dir outputs/sft-collection \
+  --model deepseek-v4-flash \
+  --target-accepted 428 \
+  --workers 4
+```
+
+`raw.jsonl` is the resumable source of truth. Running the same command again
+skips completed task attempts and rebuilds all derived files:
+
+```text
+outputs/sft-collection/
+  raw.jsonl           complete Teacher responses and environment results
+  accepted.jsonl      strict Reward v3 gold trajectories
+  rejected.jsonl      task IDs and deterministic rejection reasons
+  reject_stats.json   aggregate acceptance audit
+  sft.jsonl           sanitized training rows before splitting
+  train.jsonl         task-disjoint training split
+  validation.jsonl    task-disjoint validation split
+  metadata.json       row counts, configuration and SHA-256 hashes
+```
+
+The command removes all task IDs listed in `data/evaluation/tasks.jsonl` before
+collection and checks again while building artifacts. It also keeps at most one
+accepted trajectory per task. To rebuild the derived files without contacting
+the Teacher or environment, run:
+
+```bash
+python scripts/collect_sft_data.py \
+  --build-only \
+  --output-dir outputs/sft-collection
+```
+
+Only copy `train.jsonl`, `validation.jsonl` and their metadata into `data/sft/`
+after reviewing the collection audit. Raw Teacher responses remain in
+`outputs/` and should not be committed.
 
 ## What a training row contains
 

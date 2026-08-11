@@ -21,6 +21,7 @@ sft = [
   "accelerate>=1,<2",
   "torchvision",
   "pillow",
+  "httpx[socks]>=0.28,<1",
   "swanlab>=0.8,<1",
 ]
 sft-accelerated = [
@@ -37,10 +38,14 @@ grpo = [
   "ray[default]==2.56.1",
   "tensordict==0.10.0",
   "numpy==2.2.6",
+  "pyarrow>=17,<26",
   "swanlab==0.9.1",
 ]
 dev = [
   "build>=1.2,<2",
+  "hydra-core>=1.3,<2",
+  "omegaconf>=2.3,<3",
+  "pyarrow>=17,<26",
   "pytest>=8,<10",
   "ruff>=0.9,<1",
   "mypy>=1.14,<2",
@@ -68,3 +73,7 @@ target-version = "py310"
 python_version = "3.10"
 packages = ["shopping_grpo"]
 ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "src"]

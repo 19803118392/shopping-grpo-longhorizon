@@ -40,7 +40,7 @@
   },
   "reward_feature_version": "shopping-reward-features-v1",
   "option_axis_version": "option-axis-v1",
-  "variant_price_version": "variant-price-v1",
+  "variant_price_version": "variant-price-v2",
   "comparator_version": "shopping-comparators-v1",
   "brand_alias_version": "brand-aliases-v1",
   "observation_version": "shopping-observation-v2",

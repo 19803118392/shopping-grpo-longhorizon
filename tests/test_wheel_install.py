@@ -41,8 +41,11 @@ class WheelInstallTest(unittest.TestCase):
             wheel = next(dist.glob("shopping_grpo-*.whl"))
             environment = temporary / "venv"
             binary_directory = "Scripts" if os.name == "nt" else "bin"
-            python = environment / binary_directory / "python"
-            cli = environment / binary_directory / "shopping-grpo"
+            python_name = "python.exe" if os.name == "nt" else "python"
+            pip_name = "pip.exe" if os.name == "nt" else "pip"
+            python = environment / binary_directory / python_name
+            cli_name = "shopping-grpo.exe" if os.name == "nt" else "shopping-grpo"
+            cli = environment / binary_directory / cli_name
             uv = shutil.which("uv")
             if uv:
                 subprocess.run(
@@ -67,7 +70,7 @@ class WheelInstallTest(unittest.TestCase):
                 )
             else:
                 venv.EnvBuilder(with_pip=True).create(environment)
-                pip = environment / binary_directory / "pip"
+                pip = environment / binary_directory / pip_name
                 subprocess.run(
                     [str(pip), "install", "--no-deps", str(wheel)],
                     check=True,

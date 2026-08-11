@@ -1,6 +1,5 @@
 """Observation projection preserves actionable state and bounds visible tokens."""
 
-import json
 import unittest
 
 from shopping_grpo.environment.actions import (
@@ -8,32 +7,46 @@ from shopping_grpo.environment.actions import (
     clickable_buttons,
     product_ids,
 )
+from shopping_grpo.environment.observation import render_structured_observation
 from shopping_grpo.environment.projection import (
-    ObservationProjectionError,
     TRUNCATION_MARKER,
+    ObservationProjectionError,
     project_observation,
 )
-from shopping_grpo.environment.observation import render_structured_observation
 
 
 def search_page(product_count=12, page=1):
-    segments = [
-        "Instruction:",
-        "find a useful product",
-        "Back to Search",
-        f"Page {page} (Total results: 40)",
-        "Next >",
+    products = [
+        {
+            "rank": (page - 1) * 20 + index + 1,
+            "asin": f"{100000000000 + (page - 1) * 20 + index}",
+            "title": f"product title {index} " + "x" * 40,
+            "brand": "brand",
+            "category": "category",
+            "price": index + 1,
+            "key_attributes": ["attribute"],
+        }
+        for index in range(product_count)
     ]
-    buttons = ["back to search", "next >"]
-    for index in range(product_count):
-        asin = f"{100000000000 + index}"
-        segments.extend([asin, f"product title {index} " + "x" * 40, f"{index + 1}.0"])
-        buttons.append(asin)
-    return (
-        " [SEP] ".join(segments)
-        + "\n\n搜索功能是否可用: False"
-        + "\n\n可点击的按钮: "
-        + json.dumps(buttons, ensure_ascii=False)
+    return render_structured_observation(
+        {
+            "observation_version": "shopping-observation-v2",
+            "page_type": "search_results",
+            "search_available": False,
+            "actions": [
+                "back to search",
+                "< prev" if page > 1 else "next >",
+                *[product["asin"] for product in products],
+            ],
+            "query": "useful product",
+            "normalized_query": "useful product",
+            "page": page,
+            "total_pages": 2,
+            "total_results": 40,
+            "rank_start": products[0]["rank"] if products else 0,
+            "rank_end": products[-1]["rank"] if products else 0,
+            "products": products,
+        }
     )
 
 
@@ -89,7 +102,7 @@ class ObservationProjectionTest(unittest.TestCase):
             search_top_k=20,
         )
 
-        self.assertIn("page: Page 2", visible)
+        self.assertIn("Page 2 of 2", visible)
         self.assertEqual(product_ids(visible), product_ids(raw))
 
     def test_capacity_mismatch_fails_instead_of_silently_dropping_products(self):
@@ -104,10 +117,23 @@ class ObservationProjectionTest(unittest.TestCase):
             )
 
     def test_short_product_page_is_identity_projection(self):
-        raw = (
-            "Product [SEP] price: 20 [SEP] Buy Now"
-            "\n\n搜索功能是否可用: False"
-            '\n\n可点击的按钮: ["back to search", "buy now"]'
+        raw = render_structured_observation(
+            {
+                "observation_version": "shopping-observation-v2",
+                "page_type": "product_detail",
+                "search_available": False,
+                "actions": ["back to search", "Buy Now"],
+                "product": {
+                    "asin": "100000000001",
+                    "title": "Product",
+                    "brand": "brand",
+                    "category": "category",
+                    "price": 20,
+                    "key_attributes": [],
+                },
+                "selected_options": {},
+                "available_options": {},
+            }
         )
         visible, meta = project_observation(
             "open_product",
@@ -119,11 +145,60 @@ class ObservationProjectionTest(unittest.TestCase):
         self.assertEqual(visible, raw)
         self.assertFalse(meta.truncated)
 
+    def test_long_product_page_deduplicates_options_without_losing_buttons(self):
+        options = [f"规格-{index:02d}-" + "很长的公开规格描述" * 3 for index in range(30)]
+        raw = render_structured_observation(
+            {
+                "observation_version": "shopping-observation-v2",
+                "page_type": "product_detail",
+                "search_available": False,
+                "actions": ["back to search", "Buy Now", *options],
+                "product": {
+                    "asin": "100000000001",
+                    "title": "Product",
+                    "brand": "brand",
+                    "category": "category",
+                    "price": 20,
+                    "key_attributes": ["attribute"],
+                },
+                "selected_options": {},
+                "available_options": {"颜色分类": options},
+            }
+        )
+        visible, meta = project_observation(
+            "open_product",
+            raw,
+            count_tokens=len,
+            detail_token_budget=2400,
+        )
+
+        self.assertTrue(meta.truncated)
+        self.assertLessEqual(len(visible), 2400)
+        self.assertNotIn("available_options:", visible)
+        self.assertIn("available_option_groups_1based:", visible)
+        self.assertEqual(clickable_buttons(visible), clickable_buttons(raw))
+        self.assertTrue(meta.critical_footer_preserved)
+
     def test_generic_projection_keeps_complete_footer(self):
-        raw = (
-            "Description " + "detail " * 200 + "TAIL_SPECIFICATION"
-            + "\n\n搜索功能是否可用: False"
-            + '\n\n可点击的按钮: ["back to search", "< prev"]'
+        raw = render_structured_observation(
+            {
+                "observation_version": "shopping-observation-v2",
+                "page_type": "information_subpage",
+                "search_available": False,
+                "actions": ["back to search", "< prev"],
+                "product": {
+                    "asin": "100000000001",
+                    "title": "Product",
+                    "brand": "brand",
+                    "category": "category",
+                    "price": 20,
+                    "key_attributes": [],
+                },
+                "selected_options": {},
+                "available_options": {},
+                "subpage": "description",
+                "content": "detail " * 200 + "TAIL_SPECIFICATION",
+            }
         )
         visible, meta = project_observation(
             "view_description",

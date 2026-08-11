@@ -15,7 +15,7 @@ from shopping_grpo.evaluation.contracts import (
 from shopping_grpo.evaluation.trajectory import NORMALIZED_TRAJECTORY_VERSION
 
 RUBRIC_CURATOR_PROMPT_VERSION = "rubric-curator-v1-draft-r4"
-TRAJECTORY_JUDGE_PROMPT_VERSION = "trajectory-judge-v1-draft-r3"
+TRAJECTORY_JUDGE_PROMPT_VERSION = "trajectory-judge-v1-draft-r4"
 _JUDGE_VISIBLE_ERROR_TAXONOMY = ERROR_TAXONOMY - {
     "reward_rubric_disagreement",
     "infrastructure_invalid",
@@ -85,8 +85,11 @@ Environment Reward、Reward 分项或代码判定的任务成功结论；这些�
 - decision_quality：最终选择、规格和购买/放弃决策是否合理；
 - termination_efficiency：是否过早购买/放弃、无效探索或耗尽步骤。
 
-错误类型必须从输入提供的 frozen_error_taxonomy 中选择；没有主要错误时 primary
-使用 null。只输出 JSON，不输出 Markdown。
+错误类型必须从输入提供的 frozen_error_taxonomy 中选择。primary 只选一个
+最能解释轨迹失败或低分的根因；secondary 最多两个次要错误，不得与
+primary 重复。没有明显错误时 primary 使用 null，secondary 必须为空列表。
+errors.evidence_event_ids 必须引用能支持归因的真实轨迹事件。
+只输出 JSON，不输出 Markdown。
 schema_version 必须是 {JUDGE_SCHEMA_VERSION}。禁止输出 total_score、overall_score
 或任何综合分。"""
 
@@ -237,9 +240,9 @@ def build_trajectory_judge_messages(
                 for name in JUDGE_DIMENSIONS
             },
             "errors": {
-                "primary": "字符串或 null",
-                "secondary": [],
-                "evidence_event_ids": [],
+                "primary": "一个 frozen_error_taxonomy 值或 null",
+                "secondary": ["最多两个不同的次要错误"],
+                "evidence_event_ids": ["支持主次错误归因的 event_id"],
             },
             "overall_diagnosis": "简短整体诊断",
         },

@@ -3,21 +3,100 @@ import tempfile
 import unittest
 from http.client import RemoteDisconnected
 from pathlib import Path
-from urllib.error import URLError
 from unittest.mock import patch
+from urllib.error import URLError
 
 from shopping_grpo.environment.actions import action_guard_tool_message
 from shopping_grpo.environment.client import ShopEnvironmentError
+from shopping_grpo.environment.observation import render_structured_observation
 from shopping_grpo.evaluation.rollout import (
+    SYSTEM_PROMPT,
     CollectionInfrastructureError,
     OpenAIChatClient,
-    SYSTEM_PROMPT,
-    collect_tasks,
     collect_for_task,
+    collect_tasks,
     completed_task_attempts,
     load_tasks,
     rollout_interrupted,
 )
+
+OBSERVATION_VERSION = "shopping-observation-v2"
+PRODUCT_ASIN = "100000000001"
+
+
+def search_home_state():
+    return {
+        "observation_version": OBSERVATION_VERSION,
+        "page_type": "search_home",
+        "search_available": True,
+        "actions": [],
+    }
+
+
+def search_results_state(asins=(PRODUCT_ASIN,)):
+    products = [
+        {
+            "rank": index,
+            "asin": asin,
+            "price": "¥199",
+            "brand": "Example",
+            "category": "乳胶枕",
+            "key_attributes": ["天然乳胶"],
+            "title": f"乳胶枕 {index}",
+        }
+        for index, asin in enumerate(asins, start=1)
+    ]
+    return {
+        "observation_version": OBSERVATION_VERSION,
+        "page_type": "search_results",
+        "query": "乳胶枕",
+        "normalized_query": "乳胶枕",
+        "page": 1,
+        "total_pages": 1,
+        "total_results": len(products),
+        "rank_start": 1 if products else 0,
+        "rank_end": len(products),
+        "products": products,
+        "search_available": True,
+        "actions": [*asins, "back to search"],
+    }
+
+
+def product_detail_state(
+    *,
+    actions=None,
+    selected_options=None,
+    available_options=None,
+):
+    return {
+        "observation_version": OBSERVATION_VERSION,
+        "page_type": "product_detail",
+        "product": {
+            "asin": PRODUCT_ASIN,
+            "title": "Example 天然乳胶枕",
+            "brand": "Example",
+            "category": "乳胶枕",
+            "price": "¥199",
+            "key_attributes": ["天然乳胶", "可拆洗"],
+        },
+        "selected_price": "¥199",
+        "selected_options": selected_options or {},
+        "available_options": available_options or {},
+        "search_available": False,
+        "actions": list(actions or ["Buy Now"]),
+    }
+
+
+def information_subpage_state(*, subpage="features", content="天然乳胶，可拆洗。"):
+    state = product_detail_state(actions=["< Prev"])
+    state.update(
+        {
+            "page_type": "information_subpage",
+            "subpage": subpage,
+            "content": content,
+        }
+    )
+    return state
 
 
 class FakeEnv:
@@ -26,19 +105,23 @@ class FakeEnv:
         self.released = False
 
     def reset(self, task_id):
-        return {"env_idx": 0, "instruction": f"Instruction: task {task_id}"}
+        return {
+            "env_idx": 0,
+            "instruction": f"Instruction: task {task_id}",
+            "observation_state": search_home_state(),
+        }
 
     def step(self, action):
         self.actions.append(action)
         if action == "search[乳胶枕]":
             return {
-                "instruction": "results [SEP] 100000000001 [SEP] 乳胶枕",
+                "observation_state": search_results_state(),
                 "reward": 0.0,
                 "done": False,
             }
         if action == "click[100000000001]":
             return {
-                "instruction": 'detail\n\n可点击的按钮: ["Buy Now"]',
+                "observation_state": product_detail_state(),
                 "reward": 0.0,
                 "done": False,
             }
@@ -64,7 +147,11 @@ class FailingEnv(FakeEnv):
 class NonTerminalEnv(FakeEnv):
     def step(self, action):
         self.actions.append(action)
-        return {"instruction": "keep going", "reward": 0.0, "done": False}
+        return {
+            "observation_state": search_results_state(),
+            "reward": 0.0,
+            "done": False,
+        }
 
 
 class ReleaseFailingEnv(FakeEnv):
@@ -84,25 +171,29 @@ class GuardRecoveryEnv(FakeEnv):
         self.actions.append(action)
         if action == "search[乳胶枕]":
             return {
-                "instruction": "results [SEP] 100000000001 [SEP] 乳胶枕",
+                "observation_state": search_results_state(),
                 "reward": 0.0,
                 "done": False,
             }
         if action == "click[100000000001]":
             return {
-                "instruction": 'detail\n\n可点击的按钮: ["Features", "Buy Now"]',
+                "observation_state": product_detail_state(
+                    actions=["Features", "Buy Now"]
+                ),
                 "reward": 0.0,
                 "done": False,
             }
         if action == "click[Features]":
             return {
-                "instruction": 'features\n\n可点击的按钮: ["< Prev"]',
+                "observation_state": information_subpage_state(),
                 "reward": 0.0,
                 "done": False,
             }
         if action == "click[< Prev]":
             return {
-                "instruction": 'detail\n\n可点击的按钮: ["Features", "Buy Now"]',
+                "observation_state": product_detail_state(
+                    actions=["Features", "Buy Now"]
+                ),
                 "reward": 0.0,
                 "done": False,
             }
@@ -173,7 +264,7 @@ class RolloutTest(unittest.TestCase):
         message = action_guard_tool_message(
             assistant_tool("view_attributes", {}, "call_attributes"),
             "click_not_in_previous_observation",
-            '详情页内容\n\n可点击的按钮: ["< Prev"]',
+            render_structured_observation(information_subpage_state()),
         )
 
         self.assertIn("你处于信息子页", message["content"])
@@ -275,22 +366,46 @@ class RolloutTest(unittest.TestCase):
             def step(self, action):
                 self.actions.append(action)
                 if action == "search[乳胶枕]":
-                    return {"instruction": "results [SEP] 100000000001", "reward": 0.0, "done": False}
+                    return {
+                        "observation_state": search_results_state(),
+                        "reward": 0.0,
+                        "done": False,
+                    }
                 if action == "click[100000000001]":
                     return {
-                        "instruction": 'detail\n\n可点击的按钮: ["满天星", "Description", "Buy Now"]',
+                        "observation_state": product_detail_state(
+                            actions=["满天星", "Description", "Buy Now"],
+                            available_options={"花色": ["满天星"]},
+                        ),
                         "reward": 0.0,
                         "done": False,
                     }
                 if action == "click[满天星]":
                     return {
-                        "instruction": 'selected\n\n可点击的按钮: ["Description", "Buy Now"]',
+                        "observation_state": product_detail_state(
+                            actions=["Description", "Buy Now"],
+                            selected_options={"花色": "满天星"},
+                            available_options={"花色": ["满天星"]},
+                        ),
                         "reward": 0.0,
                         "done": False,
                     }
                 if action == "click[Description]":
                     return {
-                        "instruction": 'details\n\n可点击的按钮: ["Buy Now"]',
+                        "observation_state": information_subpage_state(
+                            subpage="description",
+                            content="满天星花色天然乳胶枕。",
+                        ),
+                        "reward": 0.0,
+                        "done": False,
+                    }
+                if action == "click[< Prev]":
+                    return {
+                        "observation_state": product_detail_state(
+                            actions=["Description", "Buy Now"],
+                            selected_options={"花色": "满天星"},
+                            available_options={"花色": ["满天星"]},
+                        ),
                         "reward": 0.0,
                         "done": False,
                     }
@@ -310,7 +425,8 @@ class RolloutTest(unittest.TestCase):
                 assistant_tool("search_products", {"query": "乳胶枕"}, "call_search"),
                 assistant_tool("open_product", {"asin": "100000000001"}, "call_open"),
                 assistant_tool("select_option", {"value": "满天星"}, "call_option"),
-                assistant_tool("view_description", {}, "call_wrong_navigation"),
+                assistant_tool("view_description", {}, "call_description"),
+                assistant_tool("prev_page", {}, "call_return"),
                 assistant_tool("buy_now", {}, "call_buy"),
             ]
         )
@@ -324,6 +440,7 @@ class RolloutTest(unittest.TestCase):
             "click[100000000001]",
             "click[满天星]",
             "click[Description]",
+            "click[< Prev]",
             "click[Buy Now]",
         ])
         self.assertEqual(traj["blocked_tool_calls"], [])
@@ -334,16 +451,27 @@ class RolloutTest(unittest.TestCase):
             def step(self, action):
                 self.actions.append(action)
                 if action == "search[乳胶枕]":
-                    return {"instruction": "results [SEP] 100000000001", "reward": 0.0, "done": False}
+                    return {
+                        "observation_state": search_results_state(),
+                        "reward": 0.0,
+                        "done": False,
+                    }
                 if action == "click[100000000001]":
                     return {
-                        "instruction": 'detail\n\n可点击的按钮: ["满天星", "Buy Now"]',
+                        "observation_state": product_detail_state(
+                            actions=["满天星", "Buy Now"],
+                            available_options={"花色": ["满天星"]},
+                        ),
                         "reward": 0.0,
                         "done": False,
                     }
                 if action == "click[满天星]":
                     return {
-                        "instruction": 'selected\n\n可点击的按钮: ["Buy Now"]',
+                        "observation_state": product_detail_state(
+                            actions=["Buy Now"],
+                            selected_options={"花色": "满天星"},
+                            available_options={"花色": ["满天星"]},
+                        ),
                         "reward": 0.0,
                         "done": False,
                     }
@@ -447,7 +575,10 @@ class RolloutTest(unittest.TestCase):
     def test_collect_tasks_skips_existing_output_rows(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             output = Path(tmpdir) / "raw.jsonl"
-            output.write_text(json.dumps({"task_id": 1, "trajectory_id": "old"}) + "\n")
+            output.write_text(
+                json.dumps({"task_id": 1, "trajectory_id": "old"}) + "\n",
+                encoding="utf-8",
+            )
             client = MockClient([assistant_tool("buy_now", {}, "call_buy")])
 
             written = collect_tasks(
@@ -458,7 +589,10 @@ class RolloutTest(unittest.TestCase):
                 max_steps=1,
                 env_factory=FakeEnv,
             )
-            rows = [json.loads(line) for line in output.read_text().splitlines()]
+            rows = [
+                json.loads(line)
+                for line in output.read_text(encoding="utf-8").splitlines()
+            ]
 
         self.assertEqual([row["task_id"] for row in rows], [1, 2])
         self.assertEqual(len(written), 1)
@@ -641,8 +775,34 @@ class RolloutTest(unittest.TestCase):
         self.assertEqual(captured["payload"]["tools"], [{"type": "function"}])
         self.assertEqual(captured["payload"]["max_tokens"], 512)
         self.assertEqual(captured["payload"]["temperature"], 0.2)
+        self.assertEqual(captured["payload"]["seed"], 2026)
         self.assertEqual(captured["headers"]["Authorization"], "Bearer secret")
         self.assertEqual(captured["headers"]["User-Agent"], "shopping-grpo-longhorizon/0.1")
+
+    def test_openai_client_derives_reproducible_seed_per_attempt(self):
+        captured = []
+
+        def transport(url, payload, headers, timeout):
+            captured.append(payload["seed"])
+            return {"choices": [{"message": {"role": "assistant", "content": "ok"}}]}
+
+        client = OpenAIChatClient(
+            model="local-model",
+            base_url="http://127.0.0.1:8000/v1",
+            api_key="EMPTY",
+            seed=17,
+            transport=transport,
+        )
+        first_attempt_seed = client.begin_attempt(42, 1)
+        client.complete([{"role": "user", "content": "hi"}], tools=[])
+        client.complete([{"role": "user", "content": "hi"}], tools=[])
+        replay_seed = client.begin_attempt(42, 1)
+        client.complete([{"role": "user", "content": "hi"}], tools=[])
+        next_attempt_seed = client.begin_attempt(42, 2)
+
+        self.assertEqual(first_attempt_seed, replay_seed)
+        self.assertNotEqual(first_attempt_seed, next_attempt_seed)
+        self.assertEqual(captured, [first_attempt_seed, first_attempt_seed + 1, replay_seed])
 
     def test_openai_client_allows_bounded_completion_override(self):
         """本地推理服务必须收到单次生成上限，避免无工具文本耗尽上下文。"""

@@ -17,6 +17,8 @@ data:
   return_raw_chat: true
   filter_overlong_prompts: true
   truncation: error
+  dataloader_num_workers: 0
+  seed: ${oc.decode:${oc.env:SHOPPING_TRAINING_SEED,2026}}
 
 actor_rollout_ref:
   model:
@@ -45,12 +47,15 @@ actor_rollout_ref:
     use_kl_loss: false
     kl_loss_coef: 0.0
     kl_loss_type: low_var_kl
+    data_loader_seed: ${oc.decode:${oc.env:SHOPPING_TRAINING_SEED,2026}}
     optim:
       lr: 1.0e-6
       lr_warmup_steps_ratio: 0.03
     fsdp_config:
       optimizer_offload: true
       param_offload: true
+      seed: ${oc.decode:${oc.env:SHOPPING_TRAINING_SEED,2026}}
+      full_determinism: true
   rollout:
     name: vllm
     mode: async
@@ -64,6 +69,9 @@ actor_rollout_ref:
     max_num_batched_tokens: 24576
     free_cache_engine: true
     calculate_log_probs: true
+    engine_kwargs:
+      vllm:
+        seed: ${oc.decode:${oc.env:SHOPPING_TRAINING_SEED,2026}}
     log_prob_micro_batch_size_per_gpu: 1
     log_prob_max_token_len_per_gpu: 24576
     log_prob_use_dynamic_bsz: false
@@ -110,12 +118,16 @@ shopping_dynamic_sampling:
   max_consecutive_skipped_updates: 10
   reward_tolerance: 1.0e-8
 
+
 reward_model:
   enable: false
 
 ray_kwargs:
   ray_init:
     runtime_env:
+      # Ray 2.56's uv hook rejects veRL's inherited `working_dir: null`.
+      # train_grpo.py fixes cwd to the project root, so this stays machine-neutral.
+      working_dir: .
       worker_process_setup_hook: shopping_grpo.training.grpo.compat.install_torch_padding_fallback
 
 trainer:

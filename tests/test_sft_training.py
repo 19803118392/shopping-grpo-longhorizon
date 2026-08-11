@@ -220,7 +220,11 @@ class SftTrainingTest(unittest.TestCase):
 
         self.assertEqual(len(examples), 1)
         self.assertEqual(examples[0]["task_id"], 1)
-        self.assertEqual(stats, {"total": 2, "kept": 1, "dropped": 1})
+        self.assertEqual(stats["total"], 2)
+        self.assertEqual(stats["kept"], 1)
+        self.assertEqual(stats["dropped"], 1)
+        self.assertGreater(stats["input_tokens"], stats["assistant_loss_tokens"])
+        self.assertGreater(stats["assistant_loss_tokens"], 0)
 
     def test_split_keeps_same_task_out_of_both_train_and_validation(self):
         """同一 task 的多次轨迹不能跨 train/validation，避免评估泄漏。"""

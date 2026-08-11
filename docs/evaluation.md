@@ -2,6 +2,12 @@
 
 配套的可视化页面：[Final-200 Benchmark Dashboard](evaluation-dashboard.html)。
 
+> **实现状态。** 本文记录项目的完整离线评测设计与实验协议。
+> `bash scripts/evaluate.sh NAME` 当前只执行 Actor Rollout 和确定性 Reward v3 汇总。
+> `src/shopping_grpo/evaluation/` 中的 TaskFacts、Rubric、Judge-safe payload、契约校验、
+> 四面板聚合与配对比较都有独立测试，但仓库尚未提供把这些阶段串起来的端到端 CLI。
+> 因此下面列出的完整 Judge 产物不能被描述为“一条命令即可复现”。
+
 本项目的正式评估不是“让一个模型看结果后打一个总分”，而是由代码硬检查、
 DeepSeek V4 Flash Rubric 整理器、DeepSeek V4 Pro 轨迹 Judge 和最终聚合器组成。
 四类结果始终分栏报告，不合成一个不可解释的总分。
@@ -39,7 +45,7 @@ Rubric 只需要为每个任务生成一次；它不依赖某个 Actor 的轨迹
 
 ## 2. Benchmark 中的一条 Test
 
-正式 Final-200 文件只公开任务 ID，防止将盲测 Query 或目标商品意外送入训练流程：
+Final-200 文件本身只公开任务 ID，防止将 Query 或目标商品意外送入训练流程：
 
 ```json
 {"task_id": 8187}
@@ -58,11 +64,17 @@ customization options，以及 Reward v3 已编译的结构化需求。它们用
 Final-200 的约束如下：
 
 - 200 个任务；
-- 与 SFT、GRPO train/validation 和历史 benchmark 零重叠；
+- 与 SFT、GRPO train/validation 零重叠；
 - SHA-256：
   `2c4ff070e13ddc30796d38e85170210e7d3c211992425a62090f2419fe8e0208`；
-- 不用于 Prompt 调优、Rubric/Judge 校准或 checkpoint 选择；
+- 后续冻结确认阶段不根据该阶段结果调 Prompt、Reward 或 checkpoint；
 - 每个模型每题一次确定性 Rollout。
+
+同一批任务已用于项目早期的 Base/SFT/GRPO 流水线基准，项目文档和静态 Dashboard
+也披露了 `task_id=8187` 的 Query 与案例分析。因此这个集合应称为“训练零重叠的
+确认集”，不能称为项目生命周期内从未看过的完全盲测集。冻结确认保证的是该阶段结果
+出来后不再调参；后来为估计随机推理方差执行的 Final-200×3 明确标记为
+`posthoc_reused`，不用于改写冻结结论或继续调参。
 
 ## 3. 第一位 LLM：V4 Flash 生成冻结 Rubric
 
@@ -350,7 +362,7 @@ Reward 与 Rubric 冲突时两者都保留。例如 Reward 判为 gold，但 Rub
 统计成功状态迁移、Reward type 迁移、hard violation 差值、五维分数差值、步数、
 Guard 和重复动作变化；仍然不生成一个综合总分。
 
-正式运行的 Pro Judge 覆盖率为：
+初始单次评测记录的 Pro Judge 覆盖率为：
 
 | Actor | Valid Judge | Not judged | Coverage |
 |---|---:|---:|---:|
@@ -376,7 +388,7 @@ src/shopping_grpo/evaluation/
   comparison.py       Baseline/SFT/GRPO 配对比较
 ```
 
-正式运行会产生：
+按设计，完整流水线会产生：
 
 ```text
 shared/task_facts.jsonl
@@ -392,4 +404,5 @@ model_comparison.json
 ```
 
 完整轨迹和 Judge 请求可能体积较大，因此属于 `outputs/` 运行产物；Git 中只提交
-紧凑的配置与结果摘要。
+紧凑的配置与结果摘要。当前公开 CLI 尚不能自动生成这整套目录；实际可执行的
+Reward v3 评测命令和开发集/Final-200 隔离流程见 [GPU runbook](gpu-runbook.md)。

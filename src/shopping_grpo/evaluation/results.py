@@ -257,11 +257,13 @@ def summarize_evaluations(
     missing = sorted(expected_set - set(by_task))
     reward_type_counts = Counter()
     strict_successes = []
+    constraint_complete_v4 = []
     purchase_successes = 0
     reward_valid = 0
     total_reward = 0.0
     total_terminal_utility = 0.0
     total_weighted_score = 0.0
+    total_optimization_reward_v4 = 0.0
     rubric_status = Counter()
     rubric_status_by_hardness = defaultdict(Counter)
     disagreement_tasks = []
@@ -271,6 +273,8 @@ def summarize_evaluations(
     }
     primary_errors = Counter()
     secondary_errors = Counter()
+    primary_error_task_ids = defaultdict(list)
+    secondary_error_task_ids = defaultdict(list)
     total_steps = 0
     total_attempts = 0
     total_guards = 0
@@ -284,6 +288,8 @@ def summarize_evaluations(
         reward_type_counts[str(reward.get("reward_type") or "unknown")] += 1
         if reward.get("strict_gold_success") is True:
             strict_successes.append(task_id)
+        if reward.get("constraint_complete_purchase_v4") is True:
+            constraint_complete_v4.append(task_id)
         purchase_successes += reward.get("purchase_success") is True
         reward_valid += reward.get("reward_valid") is True
         total_reward += float(reward.get("final_reward", 0.0) or 0.0)
@@ -292,6 +298,9 @@ def summarize_evaluations(
         )
         total_weighted_score += float(
             reward.get("weighted_score", 0.0) or 0.0
+        )
+        total_optimization_reward_v4 += float(
+            reward.get("optimization_reward_v4", 0.0) or 0.0
         )
 
         rubric = record["requirement_rubric"]
@@ -318,7 +327,10 @@ def summarize_evaluations(
             primary = quality["errors"].get("primary")
             if primary:
                 primary_errors[str(primary)] += 1
-            secondary_errors.update(quality["errors"].get("secondary") or [])
+                primary_error_task_ids[str(primary)].append(task_id)
+            for secondary in quality["errors"].get("secondary") or []:
+                secondary_errors[str(secondary)] += 1
+                secondary_error_task_ids[str(secondary)].append(task_id)
 
         deterministic = record["deterministic"]
         actions = deterministic["actions_and_efficiency"]
@@ -361,6 +373,11 @@ def summarize_evaluations(
             "strict_gold_successes": len(strict_successes),
             "strict_gold_task_ids": sorted(strict_successes),
             "gold_purchase_rate": _mean(len(strict_successes), denominator),
+            "constraint_complete_v4_successes": len(constraint_complete_v4),
+            "constraint_complete_v4_task_ids": sorted(constraint_complete_v4),
+            "constraint_complete_v4_rate": _mean(
+                len(constraint_complete_v4), denominator
+            ),
             "purchase_successes": purchase_successes,
             "purchase_success_rate": _mean(
                 purchase_successes, denominator
@@ -377,6 +394,9 @@ def summarize_evaluations(
             ),
             "mean_weighted_score_fixed_denominator": _mean(
                 total_weighted_score, denominator
+            ),
+            "mean_optimization_reward_v4_fixed_denominator": _mean(
+                total_optimization_reward_v4, denominator
             ),
         },
         "requirement_rubric": {
@@ -397,9 +417,17 @@ def summarize_evaluations(
             "judge_coverage_rate": _mean(valid_judges, denominator),
             "dimensions": dimension_summary,
             "primary_error_counts": dict(sorted(primary_errors.items())),
+            "primary_error_task_ids": {
+                error: sorted(task_ids)
+                for error, task_ids in sorted(primary_error_task_ids.items())
+            },
             "secondary_error_counts": dict(
                 sorted(secondary_errors.items())
             ),
+            "secondary_error_task_ids": {
+                error: sorted(task_ids)
+                for error, task_ids in sorted(secondary_error_task_ids.items())
+            },
         },
         "deterministic": {
             "average_executed_steps_fixed_denominator": _mean(

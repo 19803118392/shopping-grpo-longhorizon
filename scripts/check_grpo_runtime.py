@@ -3,13 +3,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
 import sys
 from importlib.metadata import PackageNotFoundError, distribution, version
+from importlib.util import find_spec
 from pathlib import Path
-
 
 EXPECTED_VERSIONS = {
     "verl": "0.8.0",
@@ -22,40 +23,86 @@ EXPECTED_VERSIONS = {
     "swanlab": "0.9.1",
 }
 EXPECTED_TRANSFORMERS_REVISION = "7ea2320c76117e6742364808a666ef6f2fb40a67"
-PATCH_MARKER = "SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V3"
+PATCH_MARKER = "SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V4"
 MAX_SAFE_RESPONSE_LENGTH = 20480
 MAX_SAFE_SEQUENCE_LENGTH = 24576
-CURRENT_RUNTIME_FILES = {
-    "observation.py": "environments/ShopSimulator/shop_env/web_agent_site/engine/observation.py",
-    "pack_api.py": "environments/ShopSimulator/shop_env/shop_env/pack_api.py",
-    "reward.py": "environments/ShopSimulator/shop_env/web_agent_site/engine/reward.py",
-    "slot_lease_pool.py": "environments/ShopSimulator/shop_env/shop_env/slot_lease_pool.py",
-    "web_agent_text_env.py": "environments/ShopSimulator/shop_env/web_agent_site/envs/web_agent_text_env.py",
-}
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def validate_training_artifacts(model_path, train_path, val_path, *, root=None):
+    """Hash the initial policy and reject modified canonical GRPO datasets."""
+    root = Path(root or Path(__file__).resolve().parents[1]).resolve()
+    model_path = Path(model_path).resolve()
+    train_path = Path(train_path).resolve()
+    val_path = Path(val_path).resolve()
+    model_files = [model_path / "config.json"]
+    model_files.extend(sorted(model_path.glob("*.safetensors")))
+    model_files.extend(sorted(model_path.glob("pytorch_model*.bin")))
+    model_files.extend(sorted(model_path.glob("*.safetensors.index.json")))
+    model_files.extend(sorted(model_path.glob("pytorch_model*.bin.index.json")))
+    model_files = list(dict.fromkeys(path for path in model_files if path.is_file()))
+    if not model_files or model_files[0].name != "config.json":
+        raise SystemExit(f"model artifact is missing config.json: {model_path}")
+    if len(model_files) == 1:
+        raise SystemExit(f"model artifact has no supported weights: {model_path}")
+
+    model_file_hashes = {path.name: sha256_file(path) for path in model_files}
+    combined = hashlib.sha256()
+    for name, digest in sorted(model_file_hashes.items()):
+        combined.update(name.encode("utf-8"))
+        combined.update(b"\0")
+        combined.update(digest.encode("ascii"))
+        combined.update(b"\n")
+
+    datasets = {
+        "train": {"path": str(train_path), "sha256": sha256_file(train_path)},
+        "validation": {"path": str(val_path), "sha256": sha256_file(val_path)},
+    }
+    metadata_path = root / "data/grpo/metadata.json"
+    if metadata_path.is_file():
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        canonical = {
+            "train": root / str(metadata["train"]["parquet"]),
+            "validation": root / str(metadata["validation"]["parquet"]),
+        }
+        for split, path in (("train", train_path), ("validation", val_path)):
+            if path == canonical[split].resolve():
+                expected = str(metadata[split]["parquet_sha256"])
+                datasets[split]["expected_sha256"] = expected
+                if datasets[split]["sha256"] != expected:
+                    raise SystemExit(
+                        f"canonical GRPO {split} parquet hash mismatch: "
+                        f"expected {expected}, got {datasets[split]['sha256']}"
+                    )
+            else:
+                datasets[split]["expected_sha256"] = None
+
+    audit = {
+        "model": {
+            "path": str(model_path),
+            "fingerprint_sha256": combined.hexdigest(),
+            "files": model_file_hashes,
+        },
+        "datasets": datasets,
+    }
+    print("GRPO artifact preflight passed: " + json.dumps(audit, sort_keys=True))
+    return audit
 
 
 def validate_reward_runtime_files(manifest, root):
-    if manifest.get("lease_contract") != "explicit-client-release-v1":
-        raise SystemExit(
-            "Environment v2.1 manifest must select explicit-client-release-v1"
-        )
-    expected = manifest.get("runtime_files_sha256")
-    if not isinstance(expected, dict) or set(expected) != set(CURRENT_RUNTIME_FILES):
-        raise SystemExit(
-            "Environment v2.1 manifest runtime_files_sha256 is missing or incomplete"
-        )
-    from shopping_grpo.environment.manifest import sha256_file
+    from shopping_grpo.environment.manifest import validate_runtime_files
 
-    mismatches = {}
-    for name, relative_path in CURRENT_RUNTIME_FILES.items():
-        actual = sha256_file(Path(root) / relative_path)
-        if actual != expected[name]:
-            mismatches[name] = {"expected": expected[name], "actual": actual}
-    if mismatches:
-        raise SystemExit(
-            "Environment v2.1 runtime file hash mismatch: "
-            + json.dumps(mismatches, sort_keys=True)
-        )
+    try:
+        return validate_runtime_files(manifest, root)
+    except (OSError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 def validate_environment_contract():
@@ -64,9 +111,7 @@ def validate_environment_contract():
         "shopsimulator-environment-v2.1",
     )
     if required_version != "shopsimulator-environment-v2.1":
-        raise SystemExit(
-            "this repository supports only shopsimulator-environment-v2.1"
-        )
+        raise SystemExit("this repository supports only shopsimulator-environment-v2.1")
     manifest_path = os.environ.get("SHOPPING_ENV_MANIFEST")
     if not manifest_path or not Path(manifest_path).is_file():
         raise SystemExit(
@@ -75,9 +120,7 @@ def validate_environment_contract():
     try:
         from shopping_grpo.environment.manifest import validate_manifest
 
-        manifest = validate_manifest(
-            json.loads(Path(manifest_path).read_text(encoding="utf-8"))
-        )
+        manifest = validate_manifest(json.loads(Path(manifest_path).read_text(encoding="utf-8")))
     except (ImportError, OSError, ValueError, json.JSONDecodeError) as exc:
         raise SystemExit(f"invalid {required_version} manifest: {exc}") from exc
     actual_environment_version = manifest.get(
@@ -92,15 +135,11 @@ def validate_environment_contract():
     tools_path = Path(
         os.environ.get(
             "SHOPPING_TOOL_CONFIG",
-            Path(__file__).resolve().parents[1]
-            / "configs/tools.json",
+            Path(__file__).resolve().parents[1] / "configs/tools.json",
         )
     )
     tools = json.loads(tools_path.read_text(encoding="utf-8")).get("tools", [])
-    tool_names = {
-        item.get("tool_schema", {}).get("function", {}).get("name")
-        for item in tools
-    }
+    tool_names = {item.get("tool_schema", {}).get("function", {}).get("name") for item in tools}
     if "finish_without_purchase" not in tool_names:
         raise SystemExit("Environment v2 tool config is missing finish_without_purchase")
     if int(manifest["max_steps"]) != 35:
@@ -130,12 +169,25 @@ def compose_runtime_config(overrides):
     try:
         from hydra import compose, initialize_config_dir
         from hydra.core.global_hydra import GlobalHydra
+        from omegaconf import OmegaConf
     except ImportError as exc:
         raise SystemExit(f"cannot parse GRPO config before preflight: {exc}") from exc
 
-    GlobalHydra.instance().clear()
     config_dir = Path(__file__).resolve().parents[1] / "configs"
     config_name = os.environ.get("GRPO_CONFIG_NAME", "grpo")
+    try:
+        verl_config_available = find_spec("verl.trainer.config") is not None
+    except (ImportError, ModuleNotFoundError):
+        verl_config_available = False
+    if not verl_config_available:
+        # CPU preflight still validates every project-owned safety field.  The full
+        # Hydra defaults tree is composed below once the pinned veRL runtime exists.
+        config = OmegaConf.load(config_dir / f"{config_name}.yaml")
+        config.pop("defaults", None)
+        config.pop("hydra", None)
+        return OmegaConf.merge(config, OmegaConf.from_dotlist(list(overrides)))
+
+    GlobalHydra.instance().clear()
     with initialize_config_dir(version_base=None, config_dir=str(config_dir)):
         return compose(config_name=config_name, overrides=list(overrides))
 
@@ -145,9 +197,7 @@ def validate_transformers_revision():
     dist = distribution("transformers")
     direct_url = Path(dist.locate_file("transformers-5.15.0.dev0.dist-info/direct_url.json"))
     if not direct_url.is_file():
-        raise SystemExit(
-            "cannot verify pinned Transformers revision: direct_url.json is missing"
-        )
+        raise SystemExit("cannot verify pinned Transformers revision: direct_url.json is missing")
     try:
         metadata = json.loads(direct_url.read_text(encoding="utf-8"))
         revision = metadata["vcs_info"]["commit_id"]
@@ -220,7 +270,9 @@ def validate_dynamic_sampling(config, verl_source: Path, installed):
         )
     reward_tolerance = float(dynamic_config.get("reward_tolerance", -1))
     if reward_tolerance < 0 or not math.isfinite(reward_tolerance):
-        raise SystemExit("shopping_dynamic_sampling.reward_tolerance must be finite and non-negative")
+        raise SystemExit(
+            "shopping_dynamic_sampling.reward_tolerance must be finite and non-negative"
+        )
     if not bool(config.algorithm.rollout_correction.get("bypass_mode", False)):
         raise SystemExit("shopping dynamic sampling requires rollout_correction.bypass_mode=true")
     if not bool(config.actor_rollout_ref.rollout.get("calculate_log_probs", False)):
@@ -253,15 +305,12 @@ def validate_swanlab_tracking(config):
     forbidden = {"wandb", "tracking", "vemlp_wandb"} & set(logger_backends)
     if forbidden:
         raise SystemExit(
-            "Reward v3 GRPO forbids W&B logger backends: "
-            + ", ".join(sorted(forbidden))
+            "Reward v3 GRPO forbids W&B logger backends: " + ", ".join(sorted(forbidden))
         )
     if os.environ.get("SWANLAB_MODE") != "online":
         raise SystemExit("Reward v3 GRPO requires SWANLAB_MODE=online")
     if not os.environ.get("SWANLAB_API_KEY"):
-        raise SystemExit(
-            "Reward v3 GRPO requires SWANLAB_API_KEY in the launching environment"
-        )
+        raise SystemExit("Reward v3 GRPO requires SWANLAB_API_KEY in the launching environment")
     log_dir = os.environ.get("SWANLAB_LOG_DIR")
     if not log_dir:
         raise SystemExit("Reward v3 GRPO requires SWANLAB_LOG_DIR")
@@ -281,6 +330,36 @@ def validate_swanlab_tracking(config):
             },
             sort_keys=True,
         )
+    )
+
+
+def validate_training_seed(config):
+    """Require one CLI seed to control sampling, updates and vLLM rollout."""
+    try:
+        expected = int(os.environ["SHOPPING_TRAINING_SEED"])
+    except (KeyError, ValueError) as exc:
+        raise SystemExit("SHOPPING_TRAINING_SEED must be an integer") from exc
+    actual = {
+        "data.seed": int(config.data.seed),
+        "actor.data_loader_seed": int(config.actor_rollout_ref.actor.data_loader_seed),
+        "actor.fsdp_config.seed": int(config.actor_rollout_ref.actor.fsdp_config.seed),
+        "rollout.engine_kwargs.vllm.seed": int(
+            config.actor_rollout_ref.rollout.engine_kwargs.vllm.seed
+        ),
+    }
+    mismatched = {name: value for name, value in actual.items() if value != expected}
+    if mismatched:
+        raise SystemExit(
+            "GRPO seed is not consistently wired: "
+            + json.dumps({"expected": expected, "actual": actual}, sort_keys=True)
+        )
+    if not bool(config.actor_rollout_ref.actor.fsdp_config.full_determinism):
+        raise SystemExit("actor.fsdp_config.full_determinism must be true")
+    if os.environ.get("PYTHONHASHSEED") != str(expected):
+        raise SystemExit("PYTHONHASHSEED must equal SHOPPING_TRAINING_SEED")
+    print(
+        "GRPO seed preflight passed: "
+        + json.dumps({"seed": expected, "bindings": actual}, sort_keys=True)
     )
 
 
@@ -362,13 +441,22 @@ def main():
     config = compose_runtime_config(sys.argv[1:])
     validate_environment_contract()
     required_paths = {
+        "GRPO_MODEL_PATH": os.environ.get("GRPO_MODEL_PATH"),
         "GRPO_TRAIN_FILE": os.environ.get("GRPO_TRAIN_FILE"),
         "GRPO_VAL_FILE": os.environ.get("GRPO_VAL_FILE"),
     }
-    missing = [name for name, value in required_paths.items() if not value or not Path(value).is_file()]
+    missing = [
+        name for name, value in required_paths.items() if not value or not Path(value).exists()
+    ]
     if missing:
-        raise SystemExit("missing GRPO parquet file(s): " + ", ".join(missing))
+        raise SystemExit("missing GRPO artifact(s): " + ", ".join(missing))
+    validate_training_artifacts(
+        required_paths["GRPO_MODEL_PATH"],
+        required_paths["GRPO_TRAIN_FILE"],
+        required_paths["GRPO_VAL_FILE"],
+    )
     validate_training_memory_budget(config)
+    validate_training_seed(config)
 
     if sys.version_info[:2] != (3, 12):
         raise SystemExit(f"incompatible Python: expected 3.12, got {sys.version.split()[0]}")
@@ -388,13 +476,14 @@ def main():
     try:
         import torch
         import verl
-        from verl.experimental.agent_loop.tool_parser import ToolParser
         from verl.experimental.agent_loop.tool_agent_loop import AgentState, ToolAgentLoop
+        from verl.experimental.agent_loop.tool_parser import ToolParser
+        from verl.tools.base_tool import BaseTool
+        from verl.utils.tracking import Tracking
+
         from shopping_grpo.training.grpo.adapter.agent_loop import ShoppingToolAgentLoop
         from shopping_grpo.training.grpo.adapter.tools import ShopSimulatorTool
         from shopping_grpo.training.grpo.compat import install_torch_padding_fallback
-        from verl.tools.base_tool import BaseTool
-        from verl.utils.tracking import Tracking
     except ImportError as exc:
         raise SystemExit(
             "incompatible veRL 0.8 install: required AgentLoop/Tool APIs are unavailable; "

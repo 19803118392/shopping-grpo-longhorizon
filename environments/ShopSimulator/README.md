@@ -2,7 +2,7 @@
 
 This is the embedded ShopSimulator environment used by the tutorial. The
 snapshot includes the product archive, Environment v2.1, Reward v3 and the
-structured `/api/shop_agent` service. Its upstream source commit is recorded in
+structured `/api/shop_agent` service. Its source revision is recorded in
 [`EMBEDDED_SOURCE.json`](EMBEDDED_SOURCE.json).
 
 Users should not install or start this directory manually. From the repository

@@ -15,6 +15,11 @@ import re
 from shopping_grpo.evaluation.contracts import CONTRACT_VERSION
 from shopping_grpo.evaluation.trajectory import NORMALIZED_TRAJECTORY_VERSION
 from shopping_grpo.environment.product_id import PRODUCT_ID_CAPTURE
+from shopping_grpo.training.grpo.adapter.runtime import (
+    constraint_complete_purchase_v4,
+    optimization_reward_v4,
+    validate_reward,
+)
 
 
 DETERMINISTIC_METRICS_VERSION = "shopping-deterministic-metrics-v1"
@@ -209,6 +214,30 @@ def compute_deterministic_metrics(normalized: object) -> dict:
         or trajectory_error_type in _INFRASTRUCTURE_ERROR_TYPES
         or release_error_type in _INFRASTRUCTURE_ERROR_TYPES
     )
+    validated_reward = None
+    if reward_detail:
+        try:
+            validated_reward = validate_reward(reward_detail)
+        except (TypeError, ValueError):
+            validated_reward = None
+    normal_terminal = bool(
+        normalized.get("status") == "done"
+        and normalized.get("done") is True
+        and terminal.get("done") is True
+        and terminal.get("over") is True
+        and not infrastructure_invalid
+        and not normalized.get("error")
+    )
+    constraint_complete_v4 = bool(
+        normal_terminal
+        and validated_reward
+        and constraint_complete_purchase_v4(validated_reward)
+    )
+    v4_reward = (
+        float(optimization_reward_v4(validated_reward))
+        if normal_terminal and validated_reward
+        else 0.0
+    )
     contract_issues = []
     if normalized.get("status") == "done":
         if normalized.get("done") is not True:
@@ -252,6 +281,8 @@ def compute_deterministic_metrics(normalized: object) -> dict:
             ),
             "purchase_success": reward_detail.get("purchase_success") is True,
             "strict_gold_success": _strict_success(normalized, reward_detail),
+            "constraint_complete_purchase_v4": constraint_complete_v4,
+            "optimization_reward_v4": v4_reward,
             "done": normalized.get("done") is True,
             "terminal_done": terminal.get("done") is True,
             "terminal_over": terminal.get("over") is True,

@@ -8,8 +8,8 @@ from typing import Any
 from uuid import uuid4
 
 from shopping_grpo.environment.actions import action_reject_reason
-from shopping_grpo.environment.tools import tool_call_to_action
 from shopping_grpo.environment.observation import render_structured_observation
+from shopping_grpo.environment.tools import tool_call_to_action
 from shopping_grpo.training.grpo.adapter.runtime import (
     current_environment,
     current_runtime_state,
@@ -149,7 +149,7 @@ class ShopSimulatorTool(BaseTool):
                         state["reward_type"] = public_detail["reward_type"]
                         state["reward_valid"] = public_detail["reward_valid"]
                         state["reward_unverifiable"] = not public_detail["reward_valid"]
-                        state["reward_detail"] = public_detail
+                        state["reward_public"] = public_detail
                         state["termination_reason"] = public_detail[
                             "termination_reason"
                         ]

@@ -16,7 +16,7 @@ from web_agent_site.engine.reward_features import (
 )
 
 
-VARIANT_PRICE_VERSION = "variant-price-v1"
+VARIANT_PRICE_VERSION = "variant-price-v2"
 
 
 def _finite_price(value):
@@ -340,12 +340,46 @@ def resolve_variant_price(product: dict, selected_options: object) -> dict:
         if len(prices) > 1:
             effective_axes.append(canonical_axis)
     if len(effective_axes) > 1:
+        selected_axis_prices = {}
+        for price_axis in effective_axes:
+            selection = selected.get(price_axis)
+            if selection is None:
+                continue
+            entry = indexed["axes"][price_axis]["values"].get(
+                normalize_option_text(selection["value"])
+            )
+            price = entry["price"] if entry else None
+            if price is not None:
+                selected_axis_prices[price_axis] = price
+
+        # Some source records repeat the resolved variant price on every
+        # selected option axis instead of providing variant_combinations.
+        # Treat that evidence as deterministic only when every price-bearing
+        # axis is selected and all of those selected entries agree. Any
+        # missing or conflicting price remains unverifiable.
+        if (
+            len(selected_axis_prices) == len(effective_axes)
+            and len(set(selected_axis_prices.values())) == 1
+        ):
+            return {
+                "status": PASS,
+                "price": next(iter(selected_axis_prices.values())),
+                "version": VARIANT_PRICE_VERSION,
+                "method": "selected_effective_axes_consensus",
+                "evidence": {
+                    "effective_price_axes": effective_axes,
+                    "selected_axis_prices": selected_axis_prices,
+                },
+            }
         return {
             "status": UNVERIFIABLE,
             "price": None,
             "version": VARIANT_PRICE_VERSION,
             "method": "multiple_effective_price_axes",
-            "evidence": {"effective_price_axes": effective_axes},
+            "evidence": {
+                "effective_price_axes": effective_axes,
+                "selected_axis_prices": selected_axis_prices,
+            },
         }
     if len(effective_axes) == 1:
         price_axis = effective_axes[0]

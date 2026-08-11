@@ -4,32 +4,32 @@
 入口，不负责修改环境仓库或训练模型。
 """
 
+import hashlib
 import json
 import os
 import time
 import traceback
 from datetime import datetime, timezone
 from http.client import RemoteDisconnected
-from urllib.error import URLError
 from pathlib import Path
+from urllib.error import URLError
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
 from shopping_grpo.environment.actions import action_guard_tool_message, action_reject_reason
+from shopping_grpo.environment.client import ShopAgentEnv, ShopEnvironmentError, ShopHttpError
 from shopping_grpo.environment.context import (
     ContextBudgetError,
     VllmChatTokenCounter,
     VllmTextTokenCounter,
     compact_chat_messages,
 )
+from shopping_grpo.environment.observation import render_structured_observation
 from shopping_grpo.environment.projection import project_observation
-from shopping_grpo.environment.client import ShopAgentEnv, ShopEnvironmentError, ShopHttpError
 from shopping_grpo.environment.tools import (
     SHOP_TOOL_SCHEMAS,
     tool_call_to_action,
 )
-from shopping_grpo.environment.observation import render_structured_observation
-
 
 SYSTEM_PROMPT = """你是一个购物 Agent，负责在 ShopSimulator 中替用户完成一次单轮购物任务。
 
@@ -64,6 +64,8 @@ class OpenAIChatClient:
         api_key,
         temperature=0.0,
         top_p=1.0,
+        seed=2026,
+        tool_choice="auto",
         timeout=60,
         max_tokens=512,
         thinking=False,
@@ -72,7 +74,7 @@ class OpenAIChatClient:
         context_safety_margin=512,
         context_compaction_enable=False,
         observation_token_budget=None,
-        observation_detail_token_budget=4096,
+        observation_detail_token_budget=2048,
         observation_generic_token_budget=768,
         observation_search_top_k=20,
         token_counter=None,
@@ -84,6 +86,12 @@ class OpenAIChatClient:
         self.api_key = api_key
         self.temperature = float(temperature)
         self.top_p = float(top_p)
+        self.seed = None if seed is None else int(seed)
+        self.current_attempt_seed = self.seed
+        if tool_choice not in {"auto", "required"}:
+            raise ValueError("tool_choice must be 'auto' or 'required'")
+        self.tool_choice = str(tool_choice)
+        self.completion_index = 0
         self.timeout = timeout
         self.max_tokens = int(max_tokens)
         if self.max_tokens < 1:
@@ -113,20 +121,29 @@ class OpenAIChatClient:
         if self.observation_token_budget is not None:
             if self.observation_token_budget < 64:
                 raise ValueError("observation_token_budget must be at least 64")
-            self.observation_token_counter = (
-                observation_token_counter
-                or VllmTextTokenCounter(
-                    model=self.model,
-                    base_url=self.base_url,
-                    api_key=self.api_key,
-                    timeout=self.timeout,
-                )
+            self.observation_token_counter = observation_token_counter or VllmTextTokenCounter(
+                model=self.model,
+                base_url=self.base_url,
+                api_key=self.api_key,
+                timeout=self.timeout,
             )
         else:
             self.observation_token_counter = observation_token_counter
         self.last_context_event = None
         self.last_context_tokens = None
         self.transport = transport
+
+    def begin_attempt(self, task_id, attempt_index):
+        """Derive a stable rollout seed shared by paired control/candidate attempts."""
+        self.completion_index = 0
+        if self.seed is None:
+            self.current_attempt_seed = None
+            return None
+        material = f"{self.seed}:{int(task_id)}:{int(attempt_index)}".encode()
+        self.current_attempt_seed = int.from_bytes(hashlib.sha256(material).digest()[:8], "big") % (
+            2**31
+        )
+        return self.current_attempt_seed
 
     def complete(self, messages, tools):
         """请求模型下一轮回复，并在上下文超限时按配置压缩历史。"""
@@ -154,11 +171,15 @@ class OpenAIChatClient:
             "model": self.model,
             "messages": request_messages,
             "tools": tools,
-            "tool_choice": "auto",
+            "tool_choice": self.tool_choice,
             # 约束单个 assistant 回合的输出；--max-model-len 只限制上下文，
             # 不能防止模型在未调用工具时持续生成纯文本。
             "max_tokens": self.max_tokens,
         }
+        if self.current_attempt_seed is not None:
+            payload["seed"] = (int(self.current_attempt_seed) + int(self.completion_index)) % (
+                2**31
+            )
         if self.thinking:
             # DeepSeek tool-call thinking requires reasoning_content in later messages.
             payload.update(
@@ -194,7 +215,9 @@ class OpenAIChatClient:
                     )
                     with urlopen(request, timeout=self.timeout) as raw:
                         response = json.loads(raw.read().decode("utf-8"))
-                return _response_message(response)
+                message = _response_message(response)
+                self.completion_index += 1
+                return message
             except (RemoteDisconnected, TimeoutError, URLError):
                 if attempt >= MODEL_COMPLETION_RETRIES:
                     raise
@@ -271,6 +294,10 @@ def collect_for_task(
     attempt_index=0,
 ):
     """执行一个任务并返回完整轨迹；所有异常都会被写入轨迹后再释放环境。"""
+    begin_attempt = getattr(client, "begin_attempt", None)
+    attempt_seed = (
+        begin_attempt(task["task_id"], attempt_index) if callable(begin_attempt) else None
+    )
     trajectory = {
         "trajectory_id": str(uuid4()),
         "task_id": int(task["task_id"]),
@@ -289,20 +316,24 @@ def collect_for_task(
         "done": False,
         "error": None,
         "release_error": None,
+        "actor_sampling": {
+            "model": getattr(client, "model", None),
+            "temperature": getattr(client, "temperature", None),
+            "top_p": getattr(client, "top_p", None),
+            "base_seed": getattr(client, "seed", None),
+            "attempt_seed": attempt_seed,
+        },
     }
     env = env_factory(base_url=base_url)
     try:
         # reset 建立任务状态；后续每一轮只允许一个工具调用。
         initial = env.reset(task["task_id"])
         if initial.get("observation_state") is not None:
-            latest_observation = render_structured_observation(
-                initial["observation_state"]
-            )
+            latest_observation = render_structured_observation(initial["observation_state"])
         else:
-            latest_observation = initial.get(
-                "instruction", initial.get("observation", "")
-            )
+            latest_observation = initial.get("instruction", initial.get("observation", ""))
         trajectory["initial_result"] = initial
+        trajectory["initial_observation"] = latest_observation
         messages = _initial_messages(task, initial)
         trajectory["messages"] = messages
         tool_schemas = tools or SHOP_TOOL_SCHEMAS
@@ -375,6 +406,7 @@ def collect_for_task(
             messages.append(assistant)
             # 只有通过当前 observation 守卫的调用才会触碰环境并消耗一个执行步骤。
             step = _execute_tool_call(env, tool_call, len(trajectory["steps"]))
+            step["input_observation"] = latest_observation
             raw_observation = step["observation"]
             projector = getattr(client, "project_observation", None)
             if projector is not None:
@@ -390,9 +422,7 @@ def collect_for_task(
             trajectory["steps"].append(step)
             consecutive_blocked_calls = 0
             latest_observation = step["observation"]
-            latest_observation_truncated = bool(
-                (step.get("projection") or {}).get("truncated")
-            )
+            latest_observation_truncated = bool((step.get("projection") or {}).get("truncated"))
             messages.append(_tool_message(tool_call, step))
             if step["done"]:
                 trajectory["status"] = "done"
@@ -533,7 +563,7 @@ def _tool_message(tool_call, step):
         "role": "tool",
         "tool_call_id": tool_call.get("id"),
         "name": step["tool_name"],
-        "content": step["observation"],
+        "content": step.get("model_observation", step["observation"]),
     }
 
 
@@ -601,6 +631,7 @@ def client_from_env(
     api_key=None,
     temperature=0.0,
     top_p=1.0,
+    seed=2026,
     timeout=60,
     max_tokens=512,
     thinking=False,
@@ -609,7 +640,7 @@ def client_from_env(
     context_safety_margin=512,
     context_compaction_enable=False,
     observation_token_budget=None,
-    observation_detail_token_budget=4096,
+    observation_detail_token_budget=2048,
     observation_generic_token_budget=768,
     observation_search_top_k=20,
 ):
@@ -622,6 +653,7 @@ def client_from_env(
         api_key=api_key,
         temperature=temperature,
         top_p=top_p,
+        seed=seed,
         timeout=timeout,
         max_tokens=max_tokens,
         thinking=thinking,

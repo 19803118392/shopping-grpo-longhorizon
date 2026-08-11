@@ -1,0 +1,101 @@
+--- a/verl/trainer/ppo/ray_trainer.py
++++ b/verl/trainer/ppo/ray_trainer.py
+@@ -18,7 +18,7 @@
+ This trainer supports model-agonistic model initialization with huggingface
+ """
+ 
+-# SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V3
++# SHOPPING_GRPO_DYNAMIC_SAMPLING_PATCH_V4
+ 
+ import json
+ import os
+@@ -1026,6 +1026,18 @@
+         dataloader_state_dict = self.train_dataloader.state_dict()
+         torch.save(dataloader_state_dict, dataloader_local_path)
+ 
++        shopping_state = getattr(self, "_shopping_dynamic_sampling_state", None)
++        if shopping_state is not None:
++            if int(shopping_state.get("global_step", -1)) != self.global_steps:
++                raise RuntimeError(
++                    "shopping dynamic-sampling checkpoint state does not match "
++                    f"global_steps={self.global_steps}: {shopping_state}"
++                )
++            torch.save(
++                shopping_state,
++                os.path.join(local_global_step_folder, "shopping_state.pt"),
++            )
++
+         # latest checkpointed iteration tracker (for atomic usage)
+         if (
+             hasattr(self.config.actor_rollout_ref.actor.checkpoint, "async_save")
+@@ -1454,6 +1466,46 @@
+ 
+         # load checkpoint and update weights before doing anything
+         self._load_checkpoint()
++        if dynamic_sampling_enabled and self.global_steps > 0:
++            shopping_state_path = os.path.join(
++                self.config.trainer.default_local_dir,
++                f"global_step_{self.global_steps}",
++                "shopping_state.pt",
++            )
++            if not os.path.isfile(shopping_state_path):
++                raise RuntimeError(
++                    "shopping dynamic-sampling resume state is missing: "
++                    f"{shopping_state_path}"
++                )
++            shopping_state = torch.load(shopping_state_path, weights_only=False)
++            expected_sampling_config = {
++                "metric": dynamic_sampling_metric,
++                "max_num_gen_batches": dynamic_max_gen_batches,
++                "max_consecutive_skipped_updates": dynamic_max_consecutive_skips,
++                "reward_tolerance": dynamic_reward_tolerance,
++                "train_batch_size": dynamic_target_prompts,
++                "rollout_n": dynamic_rollout_n,
++            }
++            if shopping_state.get("schema_version") != "shopping-dynamic-sampling-state-v1":
++                raise RuntimeError(f"invalid shopping dynamic-sampling state: {shopping_state}")
++            if int(shopping_state.get("global_step", -1)) != self.global_steps:
++                raise RuntimeError(
++                    "shopping dynamic-sampling state global step mismatch: "
++                    f"checkpoint={self.global_steps}, state={shopping_state.get('global_step')}"
++                )
++            if shopping_state.get("config") != expected_sampling_config:
++                raise RuntimeError(
++                    "shopping dynamic-sampling resume configuration changed: "
++                    f"expected={expected_sampling_config}, state={shopping_state.get('config')}"
++                )
++            dynamic_skipped_updates = int(shopping_state.get("skipped_updates_total", -1))
++            dynamic_consecutive_skips = int(shopping_state.get("consecutive_skips", -1))
++            if dynamic_skipped_updates < 0 or dynamic_consecutive_skips < 0:
++                raise RuntimeError(f"invalid shopping dynamic-sampling counters: {shopping_state}")
++            print(
++                "SHOPPING_GRPO_DYNAMIC_SAMPLING_RESTORED "
++                + json.dumps(shopping_state, sort_keys=True)
++            )
+         self.checkpoint_manager.update_weights(self.global_steps)
+ 
+         current_epoch = self.global_steps // len(self.train_dataloader)
+@@ -2059,6 +2111,23 @@
+                             or current_step % self.config.trainer.save_freq == 0
+                             or esi_close_to_expiration
+                         ):
++                            if dynamic_sampling_enabled:
++                                self._shopping_dynamic_sampling_state = {
++                                    "schema_version": "shopping-dynamic-sampling-state-v1",
++                                    "global_step": int(self.global_steps),
++                                    "skipped_updates_total": int(dynamic_skipped_updates),
++                                    "consecutive_skips": int(dynamic_consecutive_skips),
++                                    "config": {
++                                        "metric": dynamic_sampling_metric,
++                                        "max_num_gen_batches": dynamic_max_gen_batches,
++                                        "max_consecutive_skipped_updates": (
++                                            dynamic_max_consecutive_skips
++                                        ),
++                                        "reward_tolerance": dynamic_reward_tolerance,
++                                        "train_batch_size": dynamic_target_prompts,
++                                        "rollout_n": dynamic_rollout_n,
++                                    },
++                                }
+                             if esi_close_to_expiration:
+                                 print("Force saving checkpoint: ESI instance expiration approaching.")
+                             with marked_timer("save_checkpoint", timing_raw, color="green"):
