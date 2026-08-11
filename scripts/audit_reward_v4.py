@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 from collections import Counter, defaultdict
 from copy import deepcopy
 from pathlib import Path
@@ -49,6 +50,21 @@ def _active_bucket(value: int | None) -> str:
     return str(value)
 
 
+def _pearson(left: list[float], right: list[float]) -> float | None:
+    if len(left) != len(right) or not left:
+        return None
+    left_mean = sum(left) / len(left)
+    right_mean = sum(right) / len(right)
+    numerator = sum(
+        (left_value - left_mean) * (right_value - right_mean)
+        for left_value, right_value in zip(left, right)
+    )
+    left_scale = sum((value - left_mean) ** 2 for value in left)
+    right_scale = sum((value - right_mean) ** 2 for value in right)
+    denominator = math.sqrt(left_scale * right_scale)
+    return numerator / denominator if denominator else None
+
+
 def audit(paths: list[Path]) -> dict:
     rows = []
     provenance = []
@@ -65,6 +81,10 @@ def audit(paths: list[Path]) -> dict:
     invariance_failures = []
     manual_review = []
     v4_total = 0.0
+    v3_rewards = []
+    v4_rewards = []
+    scalar_reward_changes = 0
+    maximum_scalar_delta = 0.0
     strict = constraint_complete = valid = 0
     for row, source_path in rows:
         detail = ((row.get("terminal_result") or {}).get("reward_detail") or {})
@@ -74,6 +94,12 @@ def audit(paths: list[Path]) -> dict:
         complete = is_constraint_complete_purchase_v4(row)
         constraint_complete += complete
         score = optimization_reward_v4_from_trajectory(row)
+        native_score = float(row.get("final_reward", 0.0))
+        delta = abs(native_score - score)
+        scalar_reward_changes += delta > 1.0e-12
+        maximum_scalar_delta = max(maximum_scalar_delta, delta)
+        v3_rewards.append(native_score)
+        v4_rewards.append(score)
         v4_total += score
         valid += detail.get("reward_valid") is True
         bucket = _active_bucket(_active_dimension_count(detail))
@@ -124,7 +150,12 @@ def audit(paths: list[Path]) -> dict:
         "strict_gold_successes_v3": strict,
         "constraint_complete_successes_v4": constraint_complete,
         "constraint_complete_rate_v4": constraint_complete / attempts if attempts else 0.0,
+        "mean_environment_reward_v3": sum(v3_rewards) / attempts if attempts else 0.0,
         "mean_optimization_reward_v4": v4_total / attempts if attempts else 0.0,
+        "scalar_reward_changed_attempts": scalar_reward_changes,
+        "scalar_reward_unchanged_attempts": attempts - scalar_reward_changes,
+        "maximum_absolute_scalar_delta": maximum_scalar_delta,
+        "reward_v3_v4_pearson": _pearson(v3_rewards, v4_rewards),
         "target_asin_invariance_failures": invariance_failures,
         "by_active_soft_dimension_count": {
             bucket: dict(counts) for bucket, counts in sorted(active_counts.items())

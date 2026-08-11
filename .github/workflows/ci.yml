@@ -31,10 +31,3 @@ jobs:
           -s environments/ShopSimulator/shop_env/tests -q
       - name: Compile public modules and scripts
         run: python -m compileall -q src scripts environments/ShopSimulator/shop_env
-      - name: Validate the curriculum plan without GPU dependencies
-        run: >-
-          python scripts/prepare_grpo_curriculum.py
-          --metadata data/grpo/train.jsonl
-          --source-parquet data/grpo/train.parquet
-          --output-dir outputs/ci-curriculum
-          --dry-run

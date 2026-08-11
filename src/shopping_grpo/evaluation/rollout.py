@@ -317,6 +317,7 @@ def collect_for_task(
         "error": None,
         "release_error": None,
         "actor_sampling": {
+            "model": getattr(client, "model", None),
             "temperature": getattr(client, "temperature", None),
             "top_p": getattr(client, "top_p", None),
             "base_seed": getattr(client, "seed", None),

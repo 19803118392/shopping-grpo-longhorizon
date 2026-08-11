@@ -49,13 +49,23 @@ def parse_args():
             "dev50x3",
             "dev50x5",
             "single-seed-dev50x3",
+            "posthoc-final200x3",
         ),
         default="custom",
     )
-    parser.add_argument(
+    benchmark_mode = parser.add_mutually_exclusive_group()
+    benchmark_mode.add_argument(
         "--final-200",
         action="store_true",
         help="authorize one frozen deterministic pass over data/evaluation/tasks.jsonl",
+    )
+    benchmark_mode.add_argument(
+        "--posthoc-final-200-repeated",
+        action="store_true",
+        help=(
+            "authorize the explicitly post-hoc 200x3 repeated protocol; this reuses "
+            "the observed holdout and is not a frozen Final-200 result"
+        ),
     )
     parser.add_argument("--frozen-artifact-manifest", type=Path)
     parser.add_argument("--timeout", type=int, default=180)
@@ -108,6 +118,71 @@ def _sha256_tree(path: Path) -> str:
         digest.update(_sha256_file(item).encode("ascii"))
         digest.update(b"\n")
     return digest.hexdigest()
+
+
+def _attempt_seed(base_seed: int, task_id: int, attempt_index: int) -> int:
+    material = f"{base_seed}:{task_id}:{attempt_index}".encode()
+    return int.from_bytes(hashlib.sha256(material).digest()[:8], "big") % (2**31)
+
+
+def validate_resumable_output(
+    output: Path,
+    *,
+    expected_task_ids: list[int],
+    attempts_per_task: int,
+    model: str,
+    temperature: float,
+    top_p: float,
+    seed: int,
+) -> int:
+    """Validate every existing trajectory before a costly repeated run resumes."""
+    rows = _read_jsonl(output)
+    expected = {int(task_id) for task_id in expected_task_ids}
+    if len(expected) != len(expected_task_ids):
+        raise SystemExit("resumable benchmark contains duplicate task IDs")
+    seen = set()
+    for row_number, row in enumerate(rows, start=1):
+        try:
+            task_id = int(row["task_id"])
+            attempt_index = int(row["attempt_index"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise SystemExit(f"invalid resumable trajectory at row {row_number}") from exc
+        if task_id not in expected:
+            raise SystemExit(f"resumable output contains unexpected task_id={task_id}")
+        if not 0 <= attempt_index < attempts_per_task:
+            raise SystemExit(
+                f"resumable output attempt_index={attempt_index} is outside "
+                f"[0, {attempts_per_task})"
+            )
+        key = (task_id, attempt_index)
+        if key in seen:
+            raise SystemExit(
+                f"duplicate resumable trajectory for task_id={task_id}, "
+                f"attempt_index={attempt_index}"
+            )
+        seen.add(key)
+        sampling = row.get("actor_sampling") or {}
+        actual_sampling = (
+            sampling.get("model"),
+            sampling.get("temperature"),
+            sampling.get("top_p"),
+            sampling.get("base_seed"),
+            sampling.get("attempt_seed"),
+        )
+        expected_sampling = (
+            model,
+            temperature,
+            top_p,
+            seed,
+            _attempt_seed(seed, task_id, attempt_index),
+        )
+        if actual_sampling != expected_sampling:
+            raise SystemExit(
+                f"resumable output protocol mismatch at task_id={task_id}, "
+                f"attempt_index={attempt_index}: expected {expected_sampling}, "
+                f"got {actual_sampling}"
+            )
+    return len(rows)
 
 
 def validate_frozen_candidate(
@@ -193,9 +268,9 @@ def main():
     if not tasks:
         raise SystemExit("benchmark 没有可运行任务")
     is_final_benchmark = args.benchmark.resolve() == FINAL_BENCHMARK
-    if is_final_benchmark and not args.final_200:
+    if is_final_benchmark and not (args.final_200 or args.posthoc_final_200_repeated):
         raise SystemExit(
-            "data/evaluation/tasks.jsonl is Final-200; pass --final-200 only after promotion"
+            "data/evaluation/tasks.jsonl requires an explicit Final-200 or post-hoc authorization"
         )
     if args.final_200:
         if not is_final_benchmark:
@@ -221,11 +296,45 @@ def main():
             )
         if (args.output.exists() and args.output.stat().st_size) or args.summary.exists():
             raise SystemExit("Final-200 output and summary must be new")
+    if args.posthoc_final_200_repeated:
+        if not is_final_benchmark:
+            raise SystemExit("post-hoc Final-200 repeated evaluation requires data/evaluation/tasks.jsonl")
+        if args.frozen_artifact_manifest is not None:
+            raise SystemExit("post-hoc repeated evaluation must not reuse a frozen Final-200 manifest")
+        posthoc_protocol = (
+            len(tasks),
+            args.attempts_per_task,
+            args.temperature,
+            args.top_p,
+            args.max_steps,
+            args.limit,
+            args.seed,
+            args.protocol,
+        )
+        expected_posthoc = (200, 3, 0.7, 0.9, 35, None, 42, "posthoc-final200x3")
+        if posthoc_protocol != expected_posthoc:
+            raise SystemExit(
+                "post-hoc Final-200 repeated evaluation requires "
+                f"tasks/attempts/temperature/top_p/max_steps/limit/seed/protocol={expected_posthoc}, "
+                f"got {posthoc_protocol}"
+            )
+        if args.summary.exists():
+            raise SystemExit("post-hoc Final-200 repeated summary must be new")
+        validate_resumable_output(
+            args.output,
+            expected_task_ids=[int(task["task_id"]) for task in tasks],
+            attempts_per_task=args.attempts_per_task,
+            model=args.model,
+            temperature=args.temperature,
+            top_p=args.top_p,
+            seed=args.seed,
+        )
     protocol_expectations = {
         "seed-replay": (5, 2, 2026),
         "dev50x3": (50, 3, 2026),
         "dev50x5": (50, 5, 2026),
         "single-seed-dev50x3": (50, 3, 42),
+        "posthoc-final200x3": (200, 3, 42),
     }
     if args.protocol != "custom":
         expected_tasks, expected_attempts, expected_seed = protocol_expectations[args.protocol]
@@ -288,7 +397,8 @@ def main():
         "selected_task_ids_sha256": hashlib.sha256(
             json.dumps(expected_task_ids, separators=(",", ":")).encode("utf-8")
         ).hexdigest(),
-        "deterministic_reference_attempt": 0,
+        "reference_attempt": 0,
+        "deterministic_reference_attempt": 0 if args.temperature == 0.0 else None,
         "max_tokens": args.max_tokens,
         "temperature": args.temperature,
         "top_p": args.top_p,
@@ -296,6 +406,14 @@ def main():
         "tool_choice": args.tool_choice,
         "protocol_name": args.protocol,
         "final_200": bool(args.final_200),
+        "posthoc_final_200_repeated": bool(args.posthoc_final_200_repeated),
+        "holdout_status": (
+            "frozen_unseen"
+            if args.final_200
+            else "posthoc_reused"
+            if args.posthoc_final_200_repeated
+            else "development"
+        ),
         "frozen_artifact_manifest": (
             str(args.frozen_artifact_manifest.resolve()) if args.frozen_artifact_manifest else None
         ),
