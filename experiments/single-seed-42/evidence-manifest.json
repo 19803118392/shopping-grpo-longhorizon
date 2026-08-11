@@ -1,0 +1,29 @@
+{
+  "schema_version": "shopping-single-seed-evidence-v1",
+  "scope": "seed-42 mechanism experiments and low-cost active-set pilot",
+  "availability": "Large raw trajectories, checkpoints, and logs are intentionally Git-ignored; this manifest fixes their repository-relative names, byte sizes, row counts, and SHA-256 values.",
+  "reproducibility_boundary": "A repository clone can audit code, protocols, aggregate reports, and artifact identities. Recomputing trajectory-level metrics additionally requires the matching local artifacts or release assets with these hashes.",
+  "artifacts": [
+    {"path": "outputs/single-seed-42/data/manifest.json", "sha256": "eef815f7b8b6cb3986650a4b479342faaf97c1459bc659fb207554fa0d62b82c", "bytes": 12548},
+    {"path": "outputs/single-seed-42/evaluation/dev50x3/sft-n95-s144/raw.jsonl", "sha256": "f3ca060ae777294b7cab8ad1b6bedc8b38b58b5ac38bd8e71434c33a75864d6f", "bytes": 23814988, "rows": 150},
+    {"path": "outputs/single-seed-42/evaluation/dev50x3/sft-n190-s144/raw.jsonl", "sha256": "fd3d695e0350c66fe8332936e5c4fcfb95bccf65a9e5d30b4eca1ede95cab7a9", "bytes": 22388802, "rows": 150},
+    {"path": "outputs/single-seed-42/evaluation/dev50x3/sft-n379-s144/raw.jsonl", "sha256": "457e6acda4e0877c82b7cfb4b43993738db7dcb98a204dd461c3730c84d31d00", "bytes": 21905174, "rows": 150},
+    {"path": "outputs/single-seed-42/evaluation/dev50x3/sft-n379-s288/raw.jsonl", "sha256": "27a20ad4568d31685fd20a86ad15a47ac41b28f98b1eb4bf42515c74a87b9ff2", "bytes": 19527620, "rows": 150},
+    {"path": "outputs/single-seed-42/evaluation/posthoc-final200x3/sft-n379-s288/raw.jsonl", "sha256": "64c556ba333d95aca20ef4f4349bc70739840f83411558547c82c689bc1f2c64", "bytes": 83106287, "rows": 600},
+    {"path": "outputs/single-seed-42/evaluation/posthoc-final200x3/terminal-grpo-30/raw.jsonl", "sha256": "04dd4136b8b7245676d1c61a911cd80d05a5480a560233058f947757b4ab5d2e", "bytes": 89459676, "rows": 600},
+    {"path": "outputs/single-seed-42/evaluation/posthoc-final200x3/comparison/comparison.json", "sha256": "66099a7159a3407d3050ced6dca6078a19b36de0ec3d87551e3d716cf4f13904", "bytes": 430238},
+    {"path": "outputs/low-cost-grpo-pilot/data/active-set-manifest.json", "sha256": "4ade8c7d931ca9bf10402861e631af3f62ebe816f1940a3438da435dc3f51b13", "bytes": 7415},
+    {"path": "outputs/low-cost-grpo-pilot/evaluation/screen-48x4-raw.jsonl", "sha256": "7ecdfe9d830b04d5cb53adddbdb89576edad039625639eaef94e5d5bc4d2a8ed", "bytes": 36508335, "rows": 192},
+    {"path": "outputs/low-cost-grpo-pilot/evaluation/dev50x3/active-grpo-10/raw.jsonl", "sha256": "79eb1fea67a3ac9f8b71cf8f81711a6987d5aba6afc48690296434f9e3b5ba5f", "bytes": 19934989, "rows": 150},
+    {"path": "outputs/low-cost-grpo-pilot/evaluation/dev50x3/comparison/comparison.json", "sha256": "1ba0afec34796dfdfb750962c69374b19c132665cf5baf484f689c7465883c6d", "bytes": 181366},
+    {"path": "outputs/low-cost-grpo-pilot/logs/active-v3-g4-s5.log", "sha256": "1b346c5d222d9980a43d4c0f8db7420ec338bbabcbe5d936c2e51b14045b708f", "bytes": 181257},
+    {"path": "outputs/low-cost-grpo-pilot/logs/active-v3-g4-s10-resume.log", "sha256": "6b78aed2e2715e8142ebf9b14aa424e26a579e2e9a7e3151b0c1292ca80ecd8c", "bytes": 185699},
+    {"path": "outputs/single-seed-42/logs/reward-v3-g4-s100-interrupted-step94-20260810.log", "sha256": "4cda236d9b559abf4a8418c19468f92c2b184403434dfab1549544726274edcf", "bytes": 1046295}
+  ],
+  "reward_v4_audit_inputs": [
+    {"path": "outputs/eval/sft-50x3/raw.jsonl", "sha256": "6ccce3418d37b4546ece2fd8bc4dcb02af9230494d4c5f40116061e4f0b15a96", "rows": 150},
+    {"path": "outputs/eval/terminal-grpo-50x3/raw.jsonl", "sha256": "67e2500b0e3f3b74160f41a2f10f0bc95cf7925003c136661a574e55f95c828b", "rows": 150},
+    {"path": "outputs/final-200/sft/trajectories.jsonl", "sha256": "1a3f6e5ec0ac27952822a09178ccd5f685caa32d8cca39559e769c259198372a", "rows": 200},
+    {"path": "outputs/final-200/terminal-grpo-30/trajectories.jsonl", "sha256": "8fa7419bf12e3d505d50feb2a499f5f305bb89c4b51d120d8e7c77146d54e627", "rows": 200}
+  ]
+}

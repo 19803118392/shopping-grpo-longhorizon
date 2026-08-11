@@ -66,14 +66,71 @@ Dynamic sampling can generate at most three batches to find a useful update and
 permits at most ten consecutive skipped updates. These bounds prevent an
 all-equal reward batch from causing an unbounded resampling loop.
 
-The canonical configuration is [`configs/grpo.yaml`](../configs/grpo.yaml).
-Advanced overrides may be appended after `--`:
+## Optional reward-variance screen
+
+For a budget-limited pilot, the training pool can be screened before GRPO. The
+screen is balanced across the frozen short/medium/long metadata buckets and
+prioritizes difficult, option-bearing Queries without reading gold-product
+fields:
 
 ```bash
-bash scripts/grpo.sh -- \
-  trainer.total_training_steps=20 \
-  trainer.save_freq=10
+python scripts/prepare_grpo_active_set.py \
+  --output outputs/active-screen/tasks.jsonl \
+  --manifest outputs/active-screen/screen-manifest.json
 ```
+
+Evaluate that JSONL with the normal benchmark runner and four attempts per task,
+then materialize only complete, `reward_valid=true` groups whose Reward v3
+outcomes vary:
+
+```bash
+python scripts/prepare_grpo_active_set.py \
+  --screening outputs/active-screen/raw.jsonl \
+  --attempts-per-task 4 \
+  --output outputs/active-screen/train.parquet \
+  --manifest outputs/active-screen/active-manifest.json
+```
+
+This is a sampling-efficiency mechanism, not a performance claim. Any resulting
+checkpoint must still beat its SFT initialization under the paired validation
+protocol before further training or held-out evaluation.
+
+## What the GRPO experiments showed
+
+| Experiment | Matched comparison | Strict-success difference | Interpretation |
+|---|---|---:|---|
+| Initial pipeline, deterministic Final-200×1 | GRPO step 100 vs pipeline SFT | +1.5pp | Descriptive; no sampling interval |
+| Validation-50×3 selection | Terminal-GRPO-30 vs SFT | +8.0pp, CI [+2.0,+14.7] | Positive development result |
+| Frozen-stage Final-200×1 | Terminal-GRPO-30 vs SFT | +1.5pp, CI [-2.0,+5.0] | Development effect did not reproduce |
+| Active-set Validation-50×3 | Active-GRPO-10 vs More-SFT | +1.3pp, CI [-5.3,+8.0] | Failed the promotion gate |
+
+The uniform seed-42 Reward-v3 attempt exposed the main efficiency problem. It
+reached step 94 before interruption, with about 37.9% effective groups, 51.4%
+all-equal groups, and 58 skipped updates; no final checkpoint from that run was
+used as a performance result. Reward-v3 and Reward-v4 five-update runs and a
+step-1→2 dynamic-state resume validated the integration only.
+
+The active-set pilot selected 20 reward-varying tasks from a 48-task×4 screen.
+It observed a 71.7% effective-group ratio and applied all ten updates, but
+`pass@3` and `pass^3` stayed unchanged and the emphasized 4+ constraint stratum
+regressed. Because the earlier uniform run used another initialization and run
+length, the ratio difference is not a controlled causal estimate. The pilot did
+not test turn-level credit assignment or demonstrate a policy gain.
+
+The complete evidence ledger, including the stopped branches and protocol
+limitations, is in [`experiments/comparison.md`](../experiments/comparison.md).
+
+The canonical configuration is [`configs/grpo.yaml`](../configs/grpo.yaml).
+Use explicit launcher arguments for the cumulative target and periodic
+checkpoints:
+
+```bash
+bash scripts/grpo.sh --target-global-step 100 --checkpoint-every 10
+```
+
+Other advanced Hydra overrides may be appended after `--`. The launcher rejects
+duplicate Hydra overrides for the training target and save frequency when the
+explicit arguments are active.
 
 ## Export
 
@@ -86,8 +143,10 @@ bash scripts/export_grpo.sh \
   outputs/models/grpo-merged
 ```
 
-The reported comparison uses step 100. Select checkpoints using validation
-metrics rather than assuming that the final training step is best.
+The initial pipeline comparison uses step 100, while the later statistically
+selected Terminal-GRPO checkpoint uses step 30. Select checkpoints using the
+registered validation protocol rather than assuming that the final training
+step is best.
 
 The exporter first reconstructs veRL's FSDP state and then applies the emitted
 LoRA adapter with `merge_and_unload`. The final directory is standalone and must

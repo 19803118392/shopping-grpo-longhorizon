@@ -64,15 +64,17 @@ customization options，以及 Reward v3 已编译的结构化需求。它们用
 Final-200 的约束如下：
 
 - 200 个任务；
-- 与 SFT、GRPO train/validation 和历史 benchmark 零重叠；
+- 与 SFT、GRPO train/validation 零重叠；
 - SHA-256：
   `2c4ff070e13ddc30796d38e85170210e7d3c211992425a62090f2419fe8e0208`；
-- 不用于 Prompt 调优、Rubric/Judge 校准或 checkpoint 选择；
+- 后续冻结确认阶段不根据该阶段结果调 Prompt、Reward 或 checkpoint；
 - 每个模型每题一次确定性 Rollout。
 
-项目文档和静态 Dashboard 已披露 `task_id=8187` 的 Query 与案例分析，因此这个集合
-应称为“训练零重叠的留出集”，不能再严格称为完全盲测集。项目不得根据该案例或任何
-Final-200 结果调整 Prompt、Reward 或 checkpoint。
+同一批任务已用于项目早期的 Base/SFT/GRPO 流水线基准，项目文档和静态 Dashboard
+也披露了 `task_id=8187` 的 Query 与案例分析。因此这个集合应称为“训练零重叠的
+确认集”，不能称为项目生命周期内从未看过的完全盲测集。冻结确认保证的是该阶段结果
+出来后不再调参；后来为估计随机推理方差执行的 Final-200×3 明确标记为
+`posthoc_reused`，不用于改写冻结结论或继续调参。
 
 ## 3. 第一位 LLM：V4 Flash 生成冻结 Rubric
 

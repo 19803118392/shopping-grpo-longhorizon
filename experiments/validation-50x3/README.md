@@ -55,3 +55,12 @@ and [summary.json](summary.json).
 and the current repository config hash. They differ because launcher reliability
 edits were made after this 30-update checkpoint was trained; the model hash, not
 the current config file, identifies the evaluated checkpoint.
+
+## Later controls
+
+The seed-42 More-SFT control reached 70.0% on a separate Validation-50×3 run,
+and Active-GRPO-10 reached 71.3% against that matched baseline. Their paired
+difference was only +1.3 points with CI `[-5.3,+8.0]` and `p=0.8238`, so the
+active-set branch was stopped. These values use a different seed root and model
+family from the 66.7%/74.7% table above and must not be subtracted across rows.
+See the [single-seed mechanism card](../single-seed-42/README.md).

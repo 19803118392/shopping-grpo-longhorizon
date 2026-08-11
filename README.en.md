@@ -25,11 +25,28 @@ and statistical tests
 
 ![Shopping GRPO project overview](docs/images/project-overview-pipeline.png)
 
+## Project scope and evidence boundary
+
+This project builds on the public capabilities of Qwen, veRL, and
+ShopSimulator; it does not claim original authorship of the foundation model,
+training framework, or simulator. Repository-owned upgrades focus on
+long-horizon trajectory acceptance, online-GRPO integration, checkpoint
+recovery, paired repeated evaluation, frozen confirmation, and budget-aware
+mechanism diagnosis. The upgrade scope is anchored at the fixed baseline
+`d99a0ac` and audited with `git diff d99a0ac..HEAD`; see the
+[upgrade and evidence map](docs/local-upgrades.md).
+
+The strongest supported conclusion is that SFT establishes most of the agent
+capability, while the positive GRPO development signal did not become a
+reliable frozen-confirmation gain. More-SFT, the Reward-v4 audit, and the
+active-set pilot diagnose that gap and control GPU cost; they are not promoted
+as unverified algorithmic improvements.
+
 ## Complete experimental results
 
 The project progressed through three consecutive stages: establishing the
 Baseline/SFT/GRPO pipeline, adding statistical evaluation, and confirming the
-selected method on a frozen held-out set. The table keeps each checkpoint and
+selected method on a frozen confirmation set. The table keeps each checkpoint and
 protocol explicit so absolute rates are not compared across protocols.
 
 | Stage | Model and protocol | Strict success | vs stage-matched SFT | Statistical conclusion |
@@ -43,20 +60,105 @@ protocol explicit so absolute rates are not compared across protocols.
 | Frozen confirmation, Final-200×1 | Terminal-GRPO 30 | 117/200 = **58.5%** | +1.5 points | paired CI [-2.0,+5.0], `p=0.6072` |
 
 Before the final row pair, the commit, models, configuration, and data hashes
-were frozen. Strict success used all 200 tasks as the denominator, and no tuning
-or rerun occurred after the results became visible. Both models had 100%
-coverage, zero infrastructure-invalid attempts, zero critical footer failures,
-and a win/tie/loss count of 9/185/6. The +8.0-point validation effect did not
-reproduce on Final-200. The final conclusion is therefore: **SFT establishes
+were frozen. Strict success used all 200 tasks as the denominator, and the
+frozen-stage decision was not revised or rerun after its results became visible.
+Both models had 100% coverage, zero infrastructure-invalid attempts, zero
+critical footer failures, and a win/tie/loss count of 9/185/6. The +8.0-point
+validation effect did not reproduce on Final-200. The final conclusion is
+therefore: **SFT establishes
 most of the agent capability; GRPO shows a small positive signal, but the
 current evidence does not establish a reliable final improvement.** See the
 [experiment comparison](experiments/comparison.md),
 [Validation-50×3 card](experiments/validation-50x3/README.md), and
 [Final-200 card](experiments/final-200/README.md).
 
+Final-200 has zero overlap with training data, but the same 200 tasks were used
+in the project's earlier pipeline benchmark. The later freeze therefore means
+that no tuning followed that stage's result; it is a frozen recheck rather than
+the project's first blind look at a pristine test set.
+
 The pipeline benchmark and frozen confirmation used different SFT/GRPO
 checkpoints and code snapshots. They are stages of one project, but differences
 between their absolute success rates are not training-effect estimates.
+
+### Single-seed mechanism ablation (development set)
+
+An additional low-cost `seed=42` experiment evaluated four SFT configurations
+on the same Validation-50×3 protocol, with temperature/top-p `0.7/0.9` and a
+fixed denominator of 150 attempts:
+
+| Configuration | Strict success | Wilson 95% CI | `pass@3` | `pass^3` |
+|---|---:|---:|---:|---:|
+| 95 trajectories, 144 steps | 93/150 = 62.0% | [54.0%, 69.4%] | 74.0% | 46.0% |
+| 190 trajectories, 144 steps | 99/150 = 66.0% | [58.1%, 73.1%] | 82.0% | 48.0% |
+| 379 trajectories, 144 steps | 100/150 = 66.7% | [58.8%, 73.7%] | 80.0% | 56.0% |
+| 379 trajectories, 288 steps | 105/150 = **70.0%** | [62.2%, 76.8%] | **84.0%** | **58.0%** |
+
+The point estimates are consistent with possible benefits from data diversity
+and additional SFT compute, but neither key paired interval excludes zero:
+`95→379@144` is +4.7 points with CI [-4.7,+14.0], and
+`379@144→379@288` is +3.3 points with CI [-2.7,+10.0]. These are not claims of
+statistically reliable gains.
+
+Put directly: **doubling SFT from 144 to 288 steps raised the development-set
+point estimate by 3.3 points and reduced loops from 18.0% to 4.7%.** That point
+estimate exceeds the +1.5-point frozen Final-200 GRPO estimate, but the protocols
+differ and do not establish that SFT outperforms GRPO. Under the same
+Validation-50×3 protocol, Terminal-GRPO gained +8.0 points, more than the
++3.3-point More-SFT gain. The defensible conclusion is that additional SFT is a
+cheap, competitive control that can explain or exceed a small GRPO gain, so RL
+claims should not omit a More-SFT control.
+
+The later **post-hoc Final-200×3** stochastic evaluation measured
+Terminal-GRPO-30 at 379/600 = 63.2% and More-SFT at 394/600 = 65.7%. More-SFT
+was +2.5 points, with `pass@3/pass^3` 76.0%/55.5% versus 74.0%/53.0%, and loop
+rate 9.0% versus 11.2%. Task win/tie/loss was `32/146/22`, paired CI
+[-1.2,+6.2] points, and McNemar `p=0.1756`. This makes More-SFT a competitive
+practical checkpoint, but not a proven causal winner: the benchmark was reused
+after prior results were known and the checkpoints are not a matched same-
+initialization, same-compute training pair.
+
+The ASIN-neutral Reward v4 audit replayed 700 existing trajectories. Reward v3
+had 443 strict successes and v4 had 444 constraint-complete successes; the
+scalar optimization reward also changed on only one trajectory, with zero
+target-ASIN invariance failures.
+The project therefore completed only five-effective-update v3/v4 integration
+smokes and checkpoint-resume validation; it did not complete a matched
+100-update comparison and **does not claim a Reward v4 algorithmic gain**. See
+the [single-seed mechanism card](experiments/single-seed-42/README.md).
+
+A final low-cost pilot targeted terminal-GRPO sampling waste. More-SFT first
+sampled 48 difficult training tasks four times; the 20 tasks with varying valid
+Reward v3 outcomes formed a ten-update active set. The effective-group ratio
+reached 71.7% and all 10 updates were applied, but matched Validation-50×3 moved
+only from 70.0% to 71.3% (+1.3 points; bootstrap 95% CI [-5.3,+8.0], McNemar
+`p=0.8238`), with unchanged `pass@3` and `pass^3`. The pilot observed a higher
+effective-group ratio, but different initializations and run lengths prevent a
+causal attribution to active screening. It did **not** establish a GRPO gain over
+More-SFT. The run failed its promotion gate, so training stopped and Final-200
+was not run.
+
+### Overall experimental analysis
+
+1. **SFT is the main source of capability.** In the initial pipeline,
+   Base→SFT moves strict success from 0.0% to 60.5% and valid termination from
+   18.0% to 96.5%. It primarily teaches the action protocol, long-horizon tool
+   use, and termination—not merely product knowledge.
+2. **The GRPO development gain is unstable.** Terminal-GRPO-30 gains 8.0 points
+   on Validation-50×3 with a positive interval, but only 1.5 points with an
+   interval crossing zero in frozen confirmation.
+3. **More-SFT is a required low-cost control.** It reaches 70.0% on development
+   and 65.7% in post-hoc Final-200×3, with better loop, Guard, and step metrics
+   than Terminal-GRPO in that repeated run. The point estimates are still not
+   significant and do not form a same-initialization, same-compute causal pair.
+4. **The demonstrated issue is insufficient within-group terminal-reward
+   variance.** The active-set pilot observed 71.7% effective groups without
+   changing `pass@3` or `pass^3`. Turn-level credit assignment remains a
+   plausible hypothesis, not a bottleneck established by this experiment.
+5. **The strongest contribution is the experimental loop.** The project
+   demonstrates usable SFT, online and resumable GRPO, strict rewards, paired
+   statistics, and failure auditing, while retaining negative results for
+   methods that fail confirmation or promotion gates.
 
 ## Core implementation and experimental upgrades
 
@@ -66,8 +168,10 @@ between their absolute success rates are not training-effect estimates.
 | Statistical tests | Wilson CI, `pass@k` / `pass^k`, task-paired bootstrap, exact McNemar, win/tie/loss |
 | Stratified diagnostics | constraint, option, price, and reference-length strata derived only from Query fields |
 | Failure audit | separate infrastructure, Reward validity, Guard, footer, loop, termination, and context errors |
+| Mechanism stop rule | audit Reward v4 signal on 700 trajectories first; stop costly long training when only one sample differentiates it, and never treat smoke as performance evidence |
+| Effective-group screening | pre-screen repeated Reward v3 rollouts for within-group variance; the ten-update pilot observed 71.7% effective groups, without a controlled uniform-sampling attribution, and gained only +1.3 points on development |
 | Final freeze | pre-frozen commit, model, checkpoint, configuration, validation-report, and Final-200 hashes; one frozen-confirmation run only |
-| Reproducibility | JSON/Markdown/CSV reports, model/data/config SHA-256, deterministic training seeds, explicit checkpoint resume |
+| Reproducibility | JSON/Markdown/CSV reports, model/data/config SHA-256, deterministic training seeds, explicit checkpoint resume, and periodic saves |
 
 ## Five questions an Agentic RL project must answer
 
@@ -79,8 +183,8 @@ are also the canonical way to describe this project.
 | Task environment | ShopSimulator Environment v2.1. Each Chinese Query may specify category, budget, brand/model, functions, and product options. The agent operates a stateful shopping page only through incremental Observations and must buy or stop within 35 steps. | [Environment source](environments/ShopSimulator/) · [Evaluation protocol](docs/evaluation.md) |
 | Action space | The public schema contains 13 serial tools. Twelve effective environment actions cover search, product opening, option selection, four evidence views, pagination/navigation, purchase, and abstention. `think` has no environment effect and is explicitly discouraged. Arguments must be grounded in the current Observation; the Guard rejects illegal or stale actions. | [Tool definitions](src/shopping_grpo/environment/tools.py) |
 | Training trajectories | A trajectory is `Query → tool call → Observation → … → terminal`. SFT retained 428 strict-success trajectories from 604 executed teacher rollouts, used a 379/49 train/validation split, and applies loss only to Assistant action tokens. GRPO starts from merged SFT and samples four fresh environment trajectories per prompt online. | [Data collection](docs/data-collection.md) · [SFT](docs/sft.md) · [GRPO](docs/grpo.md) |
-| Reward design | Reward v3 is a deterministic terminal reward without an LLM judge. It first gates category and budget, then scores active preferences with brand 0.35, model 0.25, core functions 0.25, and key options 0.15, while distinguishing exact, valid-alternative, partial, abstention, loop, and wrong-purchase outcomes. The Actor sees only Query and Observation; Gold ASIN and target-product fields are used only for terminal scoring. | [Reward v3 specification](docs/reward-v3.md) |
-| Evaluation loop | Paired-seed Validation-50×3 is used for selection and reports a fixed denominator, Wilson intervals, `pass@3`/`pass^3`, paired bootstrap, McNemar, win/tie/loss, and failure profiles. Code, models, configuration, and hashes are then frozen before one deterministic Final-200 run, with no post-result tuning. | [Validation card](experiments/validation-50x3/README.md) · [Final-200 card](experiments/final-200/README.md) |
+| Reward design | Reward v3 is a deterministic terminal reward without an LLM judge. It first gates category and budget, then scores active preferences with brand 0.35, model 0.25, core functions 0.25, and key options 0.15, while distinguishing exact, valid-alternative, partial, abstention, loop, and wrong-purchase outcomes. The Actor sees only Query and Observation; Gold ASIN and target-product fields are used only for terminal scoring. An adapter-only ASIN-neutral v4 was also implemented, but its offline audit found too little additional signal for promotion to the project reward. | [Reward v3 specification](docs/reward-v3.md) · [Mechanism card](experiments/single-seed-42/README.md) |
+| Evaluation loop | Paired-seed Validation-50×3 is used for selection and reports a fixed denominator, Wilson intervals, `pass@3`/`pass^3`, paired bootstrap, McNemar, win/tie/loss, and failure profiles. Code, models, configuration, and hashes are then frozen for one deterministic frozen-stage Final-200 run, with no revision of that decision after its result. Later repeated runs are explicitly labeled post-hoc. | [Validation card](experiments/validation-50x3/README.md) · [Final-200 card](experiments/final-200/README.md) |
 
 The twelve effective actions are `search_products`, `open_product`,
 `select_option`, `view_description`, `view_features`, `view_reviews`,
@@ -95,7 +199,7 @@ Final-200, where the observed gain was +1.5 points with an interval crossing
 zero. The strongest contribution at this stage is a reproducible connection
 between agent training, strict terminal scoring, paired statistics, and failure
 auditing—and the honest rejection of an algorithmic hypothesis that did not
-survive held-out evaluation.
+survive frozen confirmation.
 
 ## What is ShopSimulator?
 
@@ -404,12 +508,13 @@ configs/                         current GRPO, AgentLoop and tool configuration
 data/
   sft/                           379 train + 49 validation trajectories
   grpo/                          ready-to-train JSONL and veRL Parquet
-  evaluation/                    frozen 200-task held-out set
+  evaluation/                    200-task training-held-out confirmation set
 docs/                            one guide for each tutorial stage and Reward v3
 environments/ShopSimulator/      embedded environment and product archive
 experiments/
   final-200/                      frozen confirmation result and hashes
   validation-50x3/               paired 50×3 evaluation card and hashes
+  single-seed-42/                SFT/More-SFT, post-hoc evaluation, active-set GRPO, and Reward v4
   baseline/                      baseline config and result summary
   sft/                           SFT config and result summary
   grpo/                          GRPO config and result summary
@@ -441,13 +546,14 @@ Most users only need these environment variables:
 | `SFT_ADAPTER_DIR` | `outputs/models/sft-lora` |
 | `SFT_MERGED_DIR` | `outputs/models/sft-merged` |
 
-Advanced GRPO overrides can be appended after `--`:
+Use explicit arguments for the cumulative target and periodic checkpoints:
 
 ```bash
-bash scripts/grpo.sh -- \
-  trainer.total_training_steps=20 \
-  trainer.save_freq=10
+bash scripts/grpo.sh --target-global-step 100 --checkpoint-every 10
 ```
+
+Other advanced Hydra overrides may still follow `--`. Launcher-owned training
+steps and save frequency cannot be overridden there a second time.
 
 SwanLab logging is opt-in:
 
@@ -461,6 +567,7 @@ bash scripts/grpo.sh --logger swanlab
 - [Data collection and dataset provenance](docs/data-collection.md)
 - [LoRA SFT](docs/sft.md)
 - [GRPO with veRL](docs/grpo.md)
+- [Single-seed mechanism card](experiments/single-seed-42/README.md)
 - [Held-out evaluation](docs/evaluation.md)
 - [Statistical evaluation upgrade](docs/local-upgrades.md)
 - [50×3 GPU runbook](docs/gpu-runbook.md)

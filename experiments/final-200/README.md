@@ -14,7 +14,10 @@ freeze manifests remain under the Git-ignored `outputs/final-200/` tree.
 - strict success requires `gold_purchase` and `reward_valid=true`;
 - commit, checkpoint, model, config, validation report, and benchmark hashes were
   verified immediately before each run;
-- results were not used for tuning and Final-200 was not rerun.
+- results were not used to tune or rerun this frozen-stage decision;
+- the 200 tasks have zero training overlap, but they had already appeared in the
+  earlier pipeline benchmark, so they are not a never-before-seen test set over
+  the full project history.
 
 ## Result
 
@@ -44,7 +47,28 @@ conclusion is therefore:
 > success improvement over SFT.
 
 No hyperparameter, prompt, reward, checkpoint, or inference setting may be
-changed in response to this result and then reevaluated on Final-200.
+changed in response to this result and then presented as part of the same frozen
+confirmation.
+
+## Later post-hoc repeated evaluation
+
+A later cost-controlled study sampled Terminal-GRPO-30 and More-SFT
+`n379@288` three times on the same 200 tasks. It used stochastic decoding
+(`temperature/top-p=0.7/0.9`) and seed root 42, after prior Final-200 results
+were already known. Its summaries explicitly set `final_200=false` and
+`holdout_status=posthoc_reused`.
+
+| Model | Strict success | `pass@3` | `pass^3` | Loop rate | Mean steps |
+|---|---:|---:|---:|---:|---:|
+| Terminal-GRPO-30 | 379/600 = 63.2% | 74.0% | 53.0% | 11.2% | 11.09 |
+| More-SFT `n379@288` | 394/600 = **65.7%** | **76.0%** | **55.5%** | **9.0%** | **10.33** |
+
+More-SFT minus Terminal-GRPO is +2.5 points, task win/tie/loss `32/146/22`,
+paired CI `[-1.2,+6.2]` points, and McNemar `p=0.1756`. This supports More-SFT
+as a strong practical control but does not replace the frozen result: the
+interval includes zero, the benchmark is reused, and the checkpoints do not
+form a clean same-initialization training ablation. Full details are in the
+[single-seed mechanism card](../single-seed-42/README.md).
 
 Machine-readable provenance and metrics are in [run_config.json](run_config.json)
 and [summary.json](summary.json).
